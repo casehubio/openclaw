@@ -1,6 +1,8 @@
 name: Publish
 
 on:
+  repository_dispatch:
+    types: [upstream-published]
   push:
     branches: [main]
   pull_request:
@@ -26,8 +28,26 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: GITHUB_TOKEN
 
-      - name: Build and publish
-        run: mvn --batch-mode deploy ${{ github.event_name == 'pull_request' && '-DskipTests' || '' }}
+      - name: Build and test
+        if: github.event_name == 'pull_request'
+        run: mvn --batch-mode install
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_PAT: ${{ secrets.GH_PAT }}
+
+      - name: Publish to GitHub Packages
+        if: github.event_name != 'pull_request'
+        run: mvn --batch-mode deploy -DskipTests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger downstream CI
+        if: github.event_name != 'pull_request' && success()
+        run: |
+          for repo in life; do
+            gh api repos/casehubio/$repo/dispatches \
+              -f event_type=upstream-published \
+              -f client_payload[source]="${GITHUB_REPOSITORY}" \
+              2>/dev/null && echo "  ✅ $repo triggered" || echo "  ⚠️  $repo trigger failed"
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
