@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.casehub</groupId>
+    <artifactId>casehub-openclaw-parent</artifactId>
+    <version>0.2-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>casehub-openclaw-casehub</artifactId>
+
+  <name>CaseHub OpenClaw :: CaseHub</name>
+  <description>CaseHub SPI implementations — WorkerProvisioner (provisions OpenClaw instances via
+    /hooks/agent), ChannelBackend (bidirectional Qhorus ↔ OpenClaw bridge), MessageObserver
+    (feeds ChannelContextWindow ring buffer), CaseChannelProvider, WorkerStatusListener,
+    pluggable context engine (kind: context-engine)</description>
+
+  <dependencies>
+
+    <!-- casehub-openclaw core — hook API client, ChannelContextWindow -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-openclaw-core</artifactId>
+    </dependency>
+
+    <!-- Qhorus runtime — MessageObserver registration, ChannelBackend SPI -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-qhorus</artifactId>
+    </dependency>
+
+    <!-- Engine runtime — WorkerProvisioner, CaseChannelProvider, WorkerStatusListener -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-engine</artifactId>
+    </dependency>
+
+    <!-- Platform API — CurrentPrincipal + GroupMembershipProvider for permission-aware context -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-platform-api</artifactId>
+    </dependency>
+
+    <!-- Ledger API — optional: for speech act type ledger integration -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-ledger-api</artifactId>
+      <optional>true</optional>
+    </dependency>
+
+    <!-- Quarkus core -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-arc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-rest</artifactId>
+    </dependency>
+
+    <!-- Test -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-junit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-qhorus-testing</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-engine-testing</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>io.smallrye</groupId>
+        <artifactId>jandex-maven-plugin</artifactId>
+        <version>${jandex-maven-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>make-index</id>
+            <goals>
+              <goal>jandex</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

@@ -1,0 +1,9 @@
+wksp
+.DS_Store
+target/
+*.class
+.idea/
+python/.venv/
+python/__pycache__/
+python/*.egg-info/
+python/dist/

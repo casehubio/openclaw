@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.casehub</groupId>
+    <artifactId>casehub-parent</artifactId>
+    <version>0.2-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>casehub-openclaw-parent</artifactId>
+  <version>0.2-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>CaseHub OpenClaw :: Parent</name>
+  <description>CaseHub × OpenClaw integration — ChannelContextWindow, bidirectional Qhorus wiring,
+    WorkerProvisioner, ChannelBackend SPI implementations</description>
+  <url>https://github.com/casehubio/openclaw</url>
+
+  <modules>
+    <module>core</module>
+    <module>casehub</module>
+    <module>app</module>
+  </modules>
+
+  <properties>
+    <java.version>21</java.version>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <version.quarkus.platform>3.32.2</version.quarkus.platform>
+    <version.io.casehub>0.2-SNAPSHOT</version.io.casehub>
+    <jandex-maven-plugin.version>3.3.1</jandex-maven-plugin.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>io.quarkus.platform</groupId>
+        <artifactId>quarkus-bom</artifactId>
+        <version>${version.quarkus.platform}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- casehub-openclaw inter-module -->
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-openclaw-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-openclaw-casehub</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <!-- Foundation — Qhorus (mandatory: ChannelBackend, MessageObserver SPIs) -->
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-qhorus-api</artifactId>
+        <version>${version.io.casehub}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-qhorus</artifactId>
+        <version>${version.io.casehub}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-qhorus-testing</artifactId>
+        <version>${version.io.casehub}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <!-- Foundation — Engine (WorkerProvisioner, CaseChannelProvider, WorkerStatusListener SPIs) -->
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-engine-api</artifactId>
+        <version>${version.io.casehub}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-engine</artifactId>
+        <version>${version.io.casehub}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-engine-testing</artifactId>
+        <version>${version.io.casehub}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <!-- Foundation — Platform (CurrentPrincipal, GroupMembershipProvider for permission-aware context) -->
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-platform-api</artifactId>
+        <version>${version.io.casehub}</version>
+      </dependency>
+      <!-- MockPreferenceProvider @DefaultBean — runtime scope in app module (PP-20260524-a8f597) -->
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-platform</artifactId>
+        <version>${version.io.casehub}</version>
+      </dependency>
+      <!-- JQEvaluator required by casehub-engine CDI beans -->
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-platform-expression</artifactId>
+        <version>${version.io.casehub}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-platform-testing</artifactId>
+        <version>${version.io.casehub}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <!-- Foundation — Ledger (optional: tamper-evident record of OpenClaw interactions) -->
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-ledger-api</artifactId>
+        <version>${version.io.casehub}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-ledger</artifactId>
+        <version>${version.io.casehub}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>3.27.7</version>
+        <scope>test</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <repositories>
+    <repository>
+      <id>github</id>
+      <name>casehubio GitHub Packages</name>
+      <url>https://maven.pkg.github.com/casehubio/*</url>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>casehubio GitHub Packages</name>
+      <url>https://maven.pkg.github.com/casehubio/openclaw</url>
+    </repository>
+    <snapshotRepository>
+      <id>github</id>
+      <name>casehubio GitHub Packages</name>
+      <url>https://maven.pkg.github.com/casehubio/openclaw</url>
+      <uniqueVersion>false</uniqueVersion>
+    </snapshotRepository>
+  </distributionManagement>
+
+  <scm>
+    <connection>scm:git:https://github.com/casehubio/openclaw.git</connection>
+    <developerConnection>scm:git:https://github.com/casehubio/openclaw.git</developerConnection>
+    <url>https://github.com/casehubio/openclaw</url>
+  </scm>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.13.0</version>
+          <configuration>
+            <parameters>true</parameters>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.2.5</version>
+          <configuration>
+            <rerunFailingTestsCount>2</rerunFailingTestsCount>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+
+</project>

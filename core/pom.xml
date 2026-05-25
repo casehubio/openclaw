@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.casehub</groupId>
+    <artifactId>casehub-openclaw-parent</artifactId>
+    <version>0.2-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>casehub-openclaw-core</artifactId>
+
+  <name>CaseHub OpenClaw :: Core</name>
+  <description>OpenClaw hook API client, ChannelContextWindow ring buffer service,
+    agent context query — pure Java + Quarkus CDI, no Quarkus build goal</description>
+
+  <dependencies>
+
+    <!-- Qhorus API — MessageObserver SPI, speech act types, channel model -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-qhorus-api</artifactId>
+    </dependency>
+
+    <!-- Engine API — WorkerProvisioner, CaseChannelProvider, WorkerStatusListener SPIs -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-engine-api</artifactId>
+    </dependency>
+
+    <!-- Platform API — CurrentPrincipal, GroupMembershipProvider (permission-aware context) -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-platform-api</artifactId>
+    </dependency>
+
+    <!-- Quarkus CDI — for MessageObserver SPI bean registration -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-arc</artifactId>
+    </dependency>
+
+    <!-- REST client — for OpenClaw /hooks/agent and ChannelContextWindow REST query -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-rest-client-jackson</artifactId>
+    </dependency>
+
+    <!-- Test -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-junit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Jandex index — required for CDI bean discovery in library modules -->
+      <plugin>
+        <groupId>io.smallrye</groupId>
+        <artifactId>jandex-maven-plugin</artifactId>
+        <version>${jandex-maven-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>make-index</id>
+            <goals>
+              <goal>jandex</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
