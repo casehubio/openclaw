@@ -68,7 +68,7 @@ public class OpenClawHookClient {
 
         AgentInvocationRequest request = AgentInvocationRequest.forWebhook(
                 message, agentId, session.webhookUrl(),
-                effectiveModel, effectiveTimeout, session.sessionKey(), null);
+                effectiveModel, effectiveTimeout, session.sessionKey(), null /* wakeMode: null = OpenClaw default */);
 
         Response response = gatewayClient.invokeAgent(request);
         // Response does not implement AutoCloseable — use try-finally for explicit close
