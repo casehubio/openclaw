@@ -8,8 +8,12 @@ import java.util.Map;
 
 public class OpenClawWireMockResource implements QuarkusTestResourceLifecycleManager {
 
-    // Accessible from test class for stubbing and verification
-    static WireMockServer INSTANCE;
+    // Accessible from test class for stubbing and verification.
+    // volatile: start() and test methods may run on different threads.
+    // Single-class constraint: if a second @QuarkusTest class registers this resource,
+    // start() overwrites INSTANCE (invalidating references held by the first class)
+    // and resetAll() in one class will clear the other's stubs. Design for one class only.
+    static volatile WireMockServer INSTANCE;
 
     private WireMockServer server;
 

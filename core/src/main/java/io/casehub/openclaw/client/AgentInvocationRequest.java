@@ -9,13 +9,18 @@ public record AgentInvocationRequest(
         String to,
         String model,
         int timeoutSeconds,
+        // @JsonInclude(NON_NULL) is placed on the record component declaration.
+        // Jackson maps it from the component to the serialised property when processing the record.
+        // Correctness is verified by OpenClawGatewayClientIT#invokeAgent_nullSessionKey_sessionNameOmittedFromJson.
         @JsonInclude(JsonInclude.Include.NON_NULL) String sessionName,
         @JsonInclude(JsonInclude.Include.NON_NULL) String wakeMode
 ) {
     /**
      * Factory for the only delivery mode casehub-openclaw uses. Callers must not
      * construct AgentInvocationRequest directly — use this factory to prevent
-     * accidental use of a different deliver value.
+     * accidental use of a different deliver value. Package-private visibility
+     * enforces this: callers outside this package must go through
+     * {@link io.casehub.openclaw.client.OpenClawHookClient#invoke(String, String, String, int)}.
      *
      * sessionName: maps to OpenClaw's session_name (Python SDK). JSON field name is
      * "sessionName" (camelCase), consistent with other OpenClaw fields (agentId,

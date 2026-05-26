@@ -61,6 +61,10 @@ class OpenClawHookClientTest {
     }
 
     // ── invoke ───────────────────────────────────────────────────────────────
+    // Note: these tests use a mock that returns a Response object on 5xx.
+    // In production, Quarkus REST Client throws WebApplicationException instead.
+    // The catch(WebApplicationException) branch in invoke() and wake() is covered
+    // by OpenClawGatewayClientIT (real HTTP transport via WireMock), not here.
 
     @Test
     void invoke_noRegisteredSession_throwsInvocationException() {
