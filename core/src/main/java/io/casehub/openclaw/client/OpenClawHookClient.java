@@ -2,6 +2,7 @@ package io.casehub.openclaw.client;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
@@ -70,16 +71,26 @@ public class OpenClawHookClient {
                 message, agentId, session.webhookUrl(),
                 effectiveModel, effectiveTimeout, session.sessionKey(), null /* wakeMode: null = OpenClaw default */);
 
-        Response response = gatewayClient.invokeAgent(request);
-        // Response does not implement AutoCloseable — use try-finally for explicit close
+        // Quarkus Reactive REST client throws WebApplicationException (specifically
+        // ClientWebApplicationException) for non-2xx responses when return type is Response.
+        // Catch and re-wrap as OpenClawInvocationException so callers have a stable exception type.
         try {
-            if (response.getStatus() / 100 != 2) {
-                throw new OpenClawInvocationException(
-                        "OpenClaw /hooks/agent returned HTTP " + response.getStatus()
-                        + " for agentId: " + agentId);
+            Response response = gatewayClient.invokeAgent(request);
+            try {
+                if (response.getStatus() / 100 != 2) {
+                    throw new OpenClawInvocationException(
+                            "OpenClaw /hooks/agent returned HTTP " + response.getStatus()
+                            + " for agentId: " + agentId);
+                }
+            } finally {
+                response.close();
             }
-        } finally {
-            response.close();
+        } catch (OpenClawInvocationException e) {
+            throw e;
+        } catch (WebApplicationException e) {
+            throw new OpenClawInvocationException(
+                    "OpenClaw /hooks/agent returned HTTP " + e.getResponse().getStatus()
+                    + " for agentId: " + agentId);
         }
     }
 
@@ -92,16 +103,25 @@ public class OpenClawHookClient {
      * @throws OpenClawInvocationException if the gateway returns non-2xx
      */
     public void wake(String agentId, String message) {
-        Response response = gatewayClient.wakeAgent(new AgentWakeRequest(agentId, message));
-        // Response does not implement AutoCloseable — use try-finally for explicit close
+        // Same Quarkus Reactive REST client behaviour as invoke() — catch WebApplicationException
+        // and re-wrap as OpenClawInvocationException for a stable exception contract.
         try {
-            if (response.getStatus() / 100 != 2) {
-                throw new OpenClawInvocationException(
-                        "OpenClaw /hooks/wake returned HTTP " + response.getStatus()
-                        + " for agentId: " + agentId);
+            Response response = gatewayClient.wakeAgent(new AgentWakeRequest(agentId, message));
+            try {
+                if (response.getStatus() / 100 != 2) {
+                    throw new OpenClawInvocationException(
+                            "OpenClaw /hooks/wake returned HTTP " + response.getStatus()
+                            + " for agentId: " + agentId);
+                }
+            } finally {
+                response.close();
             }
-        } finally {
-            response.close();
+        } catch (OpenClawInvocationException e) {
+            throw e;
+        } catch (WebApplicationException e) {
+            throw new OpenClawInvocationException(
+                    "OpenClaw /hooks/wake returned HTTP " + e.getResponse().getStatus()
+                    + " for agentId: " + agentId);
         }
     }
 }
