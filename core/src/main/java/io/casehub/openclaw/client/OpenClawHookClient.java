@@ -88,8 +88,9 @@ public class OpenClawHookClient {
         } catch (OpenClawInvocationException e) {
             throw e;
         } catch (WebApplicationException e) {
+            int status = e.getResponse() != null ? e.getResponse().getStatus() : -1;
             throw new OpenClawInvocationException(
-                    "OpenClaw /hooks/agent returned HTTP " + e.getResponse().getStatus()
+                    "OpenClaw /hooks/agent returned HTTP " + status
                     + " for agentId: " + agentId);
         }
     }
@@ -119,8 +120,9 @@ public class OpenClawHookClient {
         } catch (OpenClawInvocationException e) {
             throw e;
         } catch (WebApplicationException e) {
+            int status = e.getResponse() != null ? e.getResponse().getStatus() : -1;
             throw new OpenClawInvocationException(
-                    "OpenClaw /hooks/wake returned HTTP " + e.getResponse().getStatus()
+                    "OpenClaw /hooks/wake returned HTTP " + status
                     + " for agentId: " + agentId);
         }
     }
