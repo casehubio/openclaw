@@ -34,13 +34,38 @@ Cross-references:
 
 ## Epic 2 — OpenClaw Hook API Client
 
-**Status:** Pending
-**Issue:** casehubio/openclaw#2 (to be created)
-**Planned scope:**
-- `OpenClawHookClient` in core/ — typed wrapper around POST /hooks/agent and POST /hooks/wake
-- Session management: agentId → session key mapping
-- `deliver: webhook` configuration — routes OpenClaw output to Qhorus delivery endpoint
-- Integration test: mock OpenClaw Gateway; assert /hooks/agent call shape
+**Status:** Complete
+**Issue:** casehubio/openclaw#2
+**What was built (core/ module):**
+
+`OpenClawHookClient` (`@ApplicationScoped`) — session registry and invocation service.
+- In-memory `ConcurrentHashMap<String, OpenClawSession>` keyed by agentId; last-write-wins
+  per agentId (known limitation: concurrent same-agentId workers not supported; upstream fix
+  requires workerId in WorkResult — engine enhancement tracked separately)
+- `registerSession(agentId, sessionKey, webhookUrl)` / `deregisterSession` / `findSession`
+- `invoke(agentId, message, model, timeoutSeconds)` — session lookup, model/timeout defaulting,
+  `AgentInvocationRequest.forWebhook()` factory (enforces deliver=webhook), catch
+  `WebApplicationException` (Quarkus REST Client throws on 5xx, does not return Response),
+  `Response.close()` in finally
+- `wake(agentId, message)` — no session lookup required, same error handling pattern
+
+`OpenClawGatewayClient` — `@RegisterRestClient(configKey = "openclaw-gateway")` MicroProfile
+REST Client. `@RegisterProvider(BearerTokenRequestFilter.class)` for bearer auth — the only
+pattern that reliably applies the filter via CDI (RestClientBuilder does not honour it).
+
+`AgentInvocationRequest` — record with `forWebhook()` package-private static factory.
+`sessionName` and `wakeMode` are nullable with `@JsonInclude(NON_NULL)` — omitted from JSON
+when null. Session name maps to OpenClaw Python SDK's `session_name` (assumed camelCase for
+HTTP API — to verify against live API before casehub/ SPI work).
+
+Tests: 12 pure unit tests (Mockito, no CDI) + 5 `@QuarkusTest` WireMock integration tests
+(dynamic port via `QuarkusTestResourceLifecycleManager`). 17/17 green.
+
+**Open questions deferred to later epics:**
+- `sessionName` vs `session_name` JSON field name — verify against OpenClaw HTTP API
+- `wakeMode` values for direct-call pattern — verify against OpenClaw API docs
+- `/hooks/wake` body schema — assumed `{agentId, message}`
+- Concurrent same-agentId workers — tracked in casehubio/engine (upstream fix)
 
 ---
 
