@@ -378,33 +378,58 @@ Per-channel ring buffer of recent messages. Configurable:
 
 **REST endpoint — query layer:**
 
-`GET /channel-context/{agentId}?since={sequenceNumber}`
+`GET /channel-context/{agentId}?since={windowSeq}`
 
-Returns messages on channels associated with the agent since the specified sequence number,
-formatted for LLM system prompt injection. Single call, pre-filtered, pre-formatted.
+Returns messages on channels associated with the agent since the specified cursor, structured
+as JSON. `since` defaults to `0` (all buffered messages). Single call, pre-filtered; the SDK
+formats for the system prompt.
 
-**`since` cursor — use sequenceNumber, not timestamp:**
+**`since` cursor — internal `windowSeq`, not Qhorus `sequenceNumber`:**
 
-Qhorus messages carry a monotonic `sequenceNumber`. casehub-openclaw tracks the last
-sequenceNumber seen per agent session. Using wall-clock timestamps introduces clock skew risk;
-sequenceNumber is unambiguous.
+`MessageReceivedEvent` carries no `sequenceNumber` field. Qhorus's internal `sequenceNumber`
+is per-channel (not global) — two messages on different channels can both have `sequenceNumber = 1`,
+making it ambiguous as a cross-channel cursor. `ChannelContextWindow` assigns its own global
+monotonic `windowSeq` (via `AtomicLong`) to every ingested message. The `since` parameter
+references this internal sequence. See design spec §5 for the full cursor design and restart
+reset detection via `currentWindowSeq`.
 
 **Python SDK hook — injection layer:**
+
+Overflow notice and message context are **additive** — both must be injected when eviction
+has occurred but messages still remain in the buffer. The SDK injects all relevant signals
+independently:
 
 ```python
 @agent.on("before_prompt_build")
 def inject_channel_context(ctx):
-    recent = cache_client.get(
+    response = cache_client.get(
         agent_id=ctx.agent_id,
-        since=ctx.last_sequence_number
+        since=ctx.last_window_seq
     )
-    if recent.overflow:
-        note = f"Note: {recent.dropped} messages not retained (volume). Full history in ledger."
-    elif recent.empty:
-        note = f"No channel activity in the last {recent.ttl_minutes} minutes."
-    else:
-        note = format_channel_messages(recent.messages)
-    return { "appendSystemContext": note }
+    if not response.agent_has_association:
+        return {}
+
+    # Detect service restart: counter reset below our cursor
+    if ctx.last_window_seq > response.current_window_seq:
+        ctx.last_window_seq = 0
+        return {}  # skip this turn; next turn calls with since=0
+
+    parts = []
+
+    # Overflow notice (additive — independent of whether messages exist)
+    if response.last_eviction_window_seq > ctx.last_window_seq:
+        parts.append("Note: Some messages evicted (high volume). Full history in ledger.")
+
+    # Available messages (always injected if present)
+    if response.messages:
+        parts.append(format_channel_messages(response.messages))
+
+    # Idle notice only when no messages AND no relevant eviction
+    if not response.messages and response.last_eviction_window_seq <= ctx.last_window_seq:
+        parts.append(f"No channel activity in the last {ttl_minutes} minutes.")
+
+    ctx.last_window_seq = response.last_window_seq
+    return {"appendSystemContext": "\n\n".join(parts)} if parts else {}
 ```
 
 `appendSystemContext` lands in the system prompt — rebuilt every turn, never compacted. This
@@ -451,17 +476,17 @@ Qhorus. The message is in the ledger; the only loss is the cache copy.
 
 **Failure mode: multiple OpenClaw instances**
 
-Per-agent last-turn sequenceNumber needs consistency across instances. Options: sticky routing
-(each agentId always hits the same cache instance), shared cache (Redis or equivalent), or
-accept per-instance state with slight risk of re-delivering messages the agent has already seen.
-Consequence: redundant context, not missing context.
+The Python SDK's `last_window_seq` cursor is per-process state. Multiple OpenClaw instances
+running the same agent have independent cursors. Options: sticky routing (each agentId always
+hits the same instance), shared cursor store, or accept per-instance cursor drift with slight
+risk of re-delivering messages. Consequence: redundant context, not missing context.
 
 ### 5.7 Design Rules
 
 1. Never fail a Qhorus fanOut because of cache write failure
 2. Always signal partial views — overflow and TTL expiry inject explicit notices, not silent
    empty windows
-3. Use sequenceNumber as the `since` cursor — not wall-clock timestamp
+3. Use internal `windowSeq` as the `since` cursor — not wall-clock timestamp, not Qhorus per-channel `sequenceNumber`
 4. Fail open on cache unavailability — agent turn continues with less context
 5. Buffer size and TTL are deployment configuration — tuned to heartbeat interval and expected
    message volume
