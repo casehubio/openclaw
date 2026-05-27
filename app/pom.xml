@@ -79,7 +79,7 @@
     </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-junit5-mockito</artifactId>
+      <artifactId>quarkus-junit-mockito</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -92,11 +92,13 @@
       <artifactId>casehub-qhorus-testing</artifactId>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>io.casehub</groupId>
-      <artifactId>casehub-engine-testing</artifactId>
-      <scope>test</scope>
-    </dependency>
+    <!-- casehub-engine-testing is intentionally NOT included here.
+         casehub-engine embeds an application.properties that self-indexes its beans —
+         pulling in engine beans that require WorkerExecutionManager, JobScheduler,
+         RoutingCursorStore, and JQEvaluator SPIs not provided in the test classpath.
+         The ChannelContextWindowResource test uses @InjectMock for ChannelContextWindowService
+         and has no dependency on engine infrastructure.
+         See docs/BUGS-AND-ODDITIES.md if engine-testing is needed for future tests. -->
     <dependency>
       <groupId>io.casehub</groupId>
       <artifactId>casehub-platform-testing</artifactId>
