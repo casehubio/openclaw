@@ -45,9 +45,7 @@ class ChannelContextWindowObserverTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = MessageType.class,
-                names = {"COMMAND", "RESPONSE", "STATUS", "DONE",
-                         "FAILURE", "DECLINE", "HANDOFF", "QUERY"})
+    @EnumSource(value = MessageType.class, mode = EnumSource.Mode.EXCLUDE, names = {"EVENT"})
     void agentVisibleTypes_passedToService(MessageType type) {
         MessageReceivedEvent e = event(type);
         observer.onMessage(e);

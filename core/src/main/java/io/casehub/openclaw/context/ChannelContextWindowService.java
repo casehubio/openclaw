@@ -3,6 +3,7 @@ package io.casehub.openclaw.context;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -51,9 +52,10 @@ public class ChannelContextWindowService {
      * Called by WorkerProvisioner (Epic 4).
      */
     public void associate(String agentId, Set<UUID> channelIds) {
-        agentChannels.merge(agentId, new HashSet<>(channelIds), (existing, added) -> {
-            existing.addAll(added);
-            return existing;
+        agentChannels.merge(agentId, Set.copyOf(channelIds), (existing, added) -> {
+            Set<UUID> merged = new HashSet<>(existing);
+            merged.addAll(added);
+            return Collections.unmodifiableSet(merged);
         });
         channelIds.forEach(id ->
                 buffers.computeIfAbsent(id, k -> new ChannelRingBuffer(maxMessagesPerChannel, ttl)));

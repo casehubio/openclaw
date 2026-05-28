@@ -1,6 +1,5 @@
 package io.casehub.openclaw.app;
 
-import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
@@ -24,7 +23,6 @@ import io.casehub.openclaw.context.WindowContent;
  */
 @Path("/channel-context")
 @Produces(MediaType.APPLICATION_JSON)
-@ApplicationScoped
 public class ChannelContextWindowResource {
 
     @Inject

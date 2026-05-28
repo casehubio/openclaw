@@ -246,9 +246,52 @@ class ChannelContextWindowServiceTest {
         }
         latch.await(10, TimeUnit.SECONDS);
         executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.SECONDS);
 
         WindowContent result = service.query("agent-1", 0L);
         assertThat(result.messages()).hasSizeLessThanOrEqualTo(10);
+        assertThat(result.agentHasAssociation()).isTrue();
+    }
+
+    @Test
+    void concurrency_associate_and_query_noException() throws InterruptedException {
+        UUID ch1 = UUID.randomUUID();
+        UUID ch2 = UUID.randomUUID();
+        service.associate("agent-1", Set.of(ch1));
+        service.add(event(ch1, "work", MessageType.STATUS));
+
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+        CountDownLatch latch = new CountDownLatch(4);
+
+        // Two threads: concurrent associate() calls for the same agent
+        executor.submit(() -> {
+            try {
+                for (int i = 0; i < 50; i++) service.associate("agent-1", Set.of(ch2));
+            } finally { latch.countDown(); }
+        });
+        executor.submit(() -> {
+            try {
+                for (int i = 0; i < 50; i++) service.associate("agent-1", Set.of(ch1, ch2));
+            } finally { latch.countDown(); }
+        });
+        // Two threads: concurrent query() calls
+        executor.submit(() -> {
+            try {
+                for (int i = 0; i < 100; i++) service.query("agent-1", 0L);
+            } finally { latch.countDown(); }
+        });
+        executor.submit(() -> {
+            try {
+                for (int i = 0; i < 100; i++) service.query("agent-1", 0L);
+            } finally { latch.countDown(); }
+        });
+
+        latch.await(10, TimeUnit.SECONDS);
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.SECONDS);
+
+        // After all concurrent operations, the agent must still be queryable
+        WindowContent result = service.query("agent-1", 0L);
         assertThat(result.agentHasAssociation()).isTrue();
     }
 }
