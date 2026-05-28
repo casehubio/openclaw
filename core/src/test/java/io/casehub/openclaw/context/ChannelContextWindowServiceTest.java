@@ -142,15 +142,43 @@ class ChannelContextWindowServiceTest {
     }
 
     @Test
-    void restartDetection_staleClientCursor() {
+    void noAssociation_lastWindowSeq_isZero_sdkMustNotAdvanceCursor() {
+        // When agentHasAssociation=false, SDK must not update its cursor.
+        // The lastWindowSeq=0 is a sentinel — not a valid position.
+        // SDK checks agentHasAssociation first; lastWindowSeq is irrelevant in this branch.
+        WindowContent result = service.query("unregistered", 42L);
+        assertThat(result.agentHasAssociation()).isFalse();
+        assertThat(result.lastWindowSeq()).isEqualTo(0L); // sentinel, not a cursor advance
+    }
+
+    @Test
+    void restartDetection_newServiceInstance_correctlySignalsReset() {
+        // Step 1-2: original instance processes 3 messages; cursor advances to 3
         UUID channelId = UUID.randomUUID();
         service.associate("agent-1", Set.of(channelId));
         service.add(event(channelId, "work", MessageType.STATUS)); // seq=1
         service.add(event(channelId, "work", MessageType.STATUS)); // seq=2
+        service.add(event(channelId, "work", MessageType.STATUS)); // seq=3
+        long cursorBeforeRestart = service.query("agent-1", 0L).lastWindowSeq(); // = 3
 
-        WindowContent result = service.query("agent-1", 50L);
+        // Step 3: simulate restart — new service instance, AtomicLong resets to 0
+        ChannelContextWindowService restarted = new ChannelContextWindowService();
+        restarted.maxMessagesPerChannel = 100;
+        restarted.ttl = Duration.ofMinutes(30);
+
+        // Step 4: re-associate the agent
+        restarted.associate("agent-1", Set.of(channelId));
+
+        // Step 5: 2 new messages (windowSeq 1 and 2 in the new instance)
+        restarted.add(event(channelId, "work", MessageType.STATUS)); // seq=1
+        restarted.add(event(channelId, "work", MessageType.STATUS)); // seq=2
+
+        // Step 6-7: SDK sends stale cursor (3); currentWindowSeq is 2
+        WindowContent result = restarted.query("agent-1", cursorBeforeRestart);
         assertThat(result.currentWindowSeq()).isEqualTo(2L);
-        assertThat(result.messages()).isEmpty();
+        // since(3) > currentWindowSeq(2) → SDK detects restart and resets cursor to 0
+        assertThat(cursorBeforeRestart).isGreaterThan(result.currentWindowSeq());
+        assertThat(result.messages()).isEmpty(); // nothing with seq > 3
         assertThat(result.agentHasAssociation()).isTrue();
     }
 
