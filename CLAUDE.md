@@ -164,16 +164,18 @@ python/     — before_prompt_build hook + channel client (NOT a Maven module)
 **`core/`** owns:
 - OpenClaw hook API client: `POST /hooks/agent` with fields `{message, agentId, deliver, to, model, timeoutSeconds}`
 - `deliver: webhook` configuration — OpenClaw POSTs the agent result back to a Qhorus channel endpoint
-- `ChannelContextWindow` — ring buffer, TTL eviction, sequence-number cursor, overflow notice injection
-- `ChannelContextWindowService` — manages the buffer per agent; exposed via REST in `app/`
+- `ChannelContextWindow` — ring buffer, TTL eviction, global `windowSeq` cursor, overflow signal via `lastEvictionWindowSeq`
+- `ChannelContextWindowService` — manages the buffer per agent (`associate`/`add`/`query`/`evictExpired`); exposed via REST in `app/`
+- `ContextMessage` record, `WindowContent` record, `ChannelRingBuffer` (package-private)
 
 **`casehub/`** owns:
 - All CaseHub SPI implementations
-- `MessageObserver` — `@ObservesAsync` Qhorus channel events → feeds `ChannelContextWindow`; must never throw to Qhorus
+- `ChannelContextWindowObserver` — implements `MessageObserver` SPI; synchronously receives every Qhorus dispatch and feeds the ring buffer; must never throw to Qhorus
 
 **`app/`** owns:
 - Delivery webhook endpoint — receives `deliver:webhook` callbacks from OpenClaw; posts to Qhorus channel
-- `GET /channel-context/{agentId}?since={sequenceNumber}` — ChannelContextWindow REST API
+- `GET /channel-context/{agentId}?since={windowSeq}` — ChannelContextWindow REST API (always 200; `since` defaults to 0)
+- `EvictionScheduler` — `@Scheduled` bean that calls `service.evictExpired()` at the TTL interval
 
 **`python/`** owns:
 - `before_prompt_build` hook implementation
@@ -239,8 +241,8 @@ Protocol files live at: `../garden/docs/protocols/casehub/`
 The ChannelContextWindow sits on the intelligence path, not the correctness path. These constraints are non-negotiable:
 
 - **MessageObserver must never throw to Qhorus.** Wrap all window-update logic in try/catch, log the error, and return normally. A failed observation is tolerable; a propagated exception is not.
-- **Ring buffer overflow:** When the buffer is full and a new message arrives, evict the oldest entry and inject an explicit notice into the window content: `"[N earlier messages evicted]"`. Do not silently drop — the Python hook needs to know the context is partial.
-- **Sequence cursor:** Use `sequenceNumber` (a monotonic integer), not wall-clock timestamps, as the `since` cursor parameter. Timestamps are unreliable across restarts and clock drift.
+- **Ring buffer overflow:** When the buffer is full and a new message arrives, evict the oldest entry and update `lastEvictionWindowSeq`. The Python SDK injects an overflow notice when `lastEvictionWindowSeq > since` — never silently drops. Overflow notice and available messages are additive, not mutually exclusive.
+- **Sequence cursor:** Use the internal `windowSeq` (a global `AtomicLong` assigned by `ChannelContextWindowService`), not Qhorus's per-channel `sequenceNumber`. Qhorus sequenceNumber is per-channel and restarts at 1 per channel — unusable as a cross-channel cursor. `WindowContent.currentWindowSeq` enables the Python SDK to detect service restarts (`since > currentWindowSeq` → reset cursor to 0).
 - **Cache unavailable — fail open.** If `GET /channel-context/{agentId}` returns an error or times out, the `before_prompt_build` hook logs the failure and continues the agent turn without injected context. Never block the agent turn on context retrieval.
 - **Two-layer reliability model:** Qhorus is the correctness layer — messages are durable and sequenced. ChannelContextWindow is the intelligence layer — best-effort, lossy, time-bounded. Never conflate them. Do not use ChannelContextWindow as a message delivery mechanism.
 
@@ -327,7 +329,7 @@ JAVA_HOME=$(/usr/libexec/java_home -v 26) mvn --batch-mode install -pl core
 JAVA_HOME=$(/usr/libexec/java_home -v 26) mvn --batch-mode test -pl app
 
 # Test a single class
-JAVA_HOME=$(/usr/libexec/java_home -v 26) mvn --batch-mode test -pl app -Dtest=ChannelContextWindowTest -Dsurefire.failIfNoSpecifiedTests=false
+JAVA_HOME=$(/usr/libexec/java_home -v 26) mvn --batch-mode test -pl core -Dtest=ChannelContextWindowServiceTest -Dsurefire.failIfNoSpecifiedTests=false
 
 # Python component (separate toolchain — not part of Maven build)
 cd python && pip install -e ".[dev]" && pytest
