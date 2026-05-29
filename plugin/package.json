@@ -1,0 +1,19 @@
+{
+  "name": "casehub-openclaw-plugin",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "CaseHub ChannelContextWindow plugin for OpenClaw",
+  "main": "dist/index.js",
+  "exports": { ".": "./dist/index.js" },
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5.4",
+    "vitest": "^1.6"
+  }
+}

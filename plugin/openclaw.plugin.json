@@ -1,0 +1,6 @@
+{
+  "name": "casehub-openclaw",
+  "version": "0.2.0",
+  "description": "Injects recent Qhorus channel activity as appendSystemContext before each OpenClaw agent turn",
+  "entry": "dist/index.js"
+}
