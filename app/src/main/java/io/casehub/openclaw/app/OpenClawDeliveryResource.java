@@ -52,7 +52,7 @@ public class OpenClawDeliveryResource {
         try {
             channelId = UUID.fromString(channelIdStr);
         } catch (IllegalArgumentException e) {
-            return Response.status(404).build();
+            return Response.status(400).build(); // malformed UUID — client error, not missing resource
         }
 
         if (channelService.findById(channelId).isEmpty()) {

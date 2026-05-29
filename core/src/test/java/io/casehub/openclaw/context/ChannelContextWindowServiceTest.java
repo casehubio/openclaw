@@ -260,6 +260,27 @@ class ChannelContextWindowServiceTest {
     }
 
     @Test
+    void windowSeq_isGloballyMonotonic_acrossChannels() {
+        UUID caseId = UUID.randomUUID();
+        UUID ch1 = UUID.randomUUID();
+        UUID ch2 = UUID.randomUUID();
+        service.bindAgent("agent-1", caseId);
+        service.bindChannel(caseId, ch1);
+        service.bindChannel(caseId, ch2);
+
+        // Interleave messages across two channels
+        for (int i = 0; i < 5; i++) {
+            service.add(event(i % 2 == 0 ? ch1 : ch2, "chan", MessageType.STATUS));
+        }
+
+        List<Long> seqs = service.query("agent-1", 0L).messages().stream()
+                .map(ContextMessage::windowSeq).toList();
+        for (int i = 1; i < seqs.size(); i++) {
+            assertThat(seqs.get(i)).isGreaterThan(seqs.get(i - 1));
+        }
+    }
+
+    @Test
     void concurrency_bindAndQuery_noException() throws InterruptedException {
         UUID caseId = UUID.randomUUID();
         UUID ch1 = UUID.randomUUID();

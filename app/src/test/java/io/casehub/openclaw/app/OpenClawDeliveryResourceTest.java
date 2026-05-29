@@ -26,7 +26,7 @@ class OpenClawDeliveryResourceTest {
     }
 
     @Test
-    void deliver_invalidUuid_returns404() {
+    void deliver_invalidUuid_returns400() {
         given()
             .contentType(JSON)
             .body("""
@@ -35,6 +35,6 @@ class OpenClawDeliveryResourceTest {
         .when()
             .post("/openclaw/delivery/channel/not-a-uuid")
         .then()
-            .statusCode(404);
+            .statusCode(400);
     }
 }

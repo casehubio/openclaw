@@ -89,8 +89,12 @@ public class OpenClawChannelBackend implements ChannelBackend {
             return;
         }
 
-        String sessionKey = registry.findSessionKey(agentId)
-                .orElseThrow(() -> new IllegalStateException("No session key for agentId: " + agentId));
+        // Log-and-return rather than throw — post() must never propagate exceptions through fanOut()
+        String sessionKey = registry.findSessionKey(agentId).orElse(null);
+        if (sessionKey == null) {
+            log.warnf("No session key found for agentId=%s (registry write race?) — ignoring COMMAND", agentId);
+            return;
+        }
 
         // webhookUrl is embedded in the POST /hooks/agent body — OpenClaw uses this
         // request-body URL for delivery. Concurrent overwrites of the session entry

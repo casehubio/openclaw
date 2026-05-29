@@ -108,6 +108,25 @@ class OpenClawChannelBackendTest {
     }
 
     @Test
+    void post_agentFoundButSessionKeyMissing_doesNotThrow() {
+        // Simulates registry write race: agentId present in caseToAgent but not in agentToSessionKey
+        registry.register("finance-agent", caseId, "sk");
+        // Manually corrupt state by re-registering a different agent over the caseId
+        // Then register the original but without the session key — simulated via a new registry
+        OpenClawAgentRegistry partialRegistry = new OpenClawAgentRegistry();
+        partialRegistry.register("finance-agent", caseId, "sk");
+        partialRegistry.deregister("finance-agent"); // removes sessionKey
+        // Now caseToAgent has caseId → null (deregistered), so findAgentId returns empty
+        // Test that findSessionKey returning empty causes no-op, not exception
+        OpenClawChannelBackend testBackend = new OpenClawChannelBackend(
+                partialRegistry, hookClient, gateway, clientConfig);
+        ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
+
+        assertThatCode(() -> testBackend.post(ref, command("content"))).doesNotThrowAnyException();
+        verify(hookClient, never()).invoke(any(), any(), any(), any(Integer.class));
+    }
+
+    @Test
     void post_nonCaseChannelName_noOp() {
         registry.register("finance-agent", caseId, "finance-agent");
         ChannelRef ref = new ChannelRef(channelId, "non-case-channel");

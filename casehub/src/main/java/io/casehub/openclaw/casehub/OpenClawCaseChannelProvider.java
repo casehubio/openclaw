@@ -38,7 +38,9 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
     private static final String QHORUS_NAME_KEY = "qhorus-name";
 
     // Normative layout: purpose → [description, allowedTypes CSV or null]
-    // Matches Claudony's NormativeChannelLayout — consolidation tracked in parent#93.
+    // Source of truth: Claudony's NormativeChannelLayout (casehub/src/main/.../NormativeChannelLayout.java).
+    // The spec §7.1 table differs (observe=EVENT+QUERY+STATUS, oversight=COMMAND+RESPONSE) — Claudony's
+    // actual implementation is used here as the platform ground truth. Consolidation: parent#93.
     private static final Map<String, String[]> LAYOUT = Map.of(
             "work",     new String[]{"Primary coordination — all obligation-carrying message types", null},
             "observe",  new String[]{"Telemetry — EVENT only, no obligations created", "EVENT"},
