@@ -460,8 +460,11 @@ history available in ledger."* The LLM knows it has a partial view. Never return
 **Failure mode: TTL expiry before agent wakes**
 
 If an agent is dormant beyond the TTL, messages expire. An empty window must never return
-silently — inject: *"No channel activity retained in the last {TTL} — agent was dormant."*
-Absence of activity is itself informative.
+silently — inject elapsed time since last activity: *"No channel activity in the last N
+minute(s)."* If `lastChannelActivity` is the epoch sentinel (`1970-01-01T00:00:00Z`), inject:
+*"No channel activity recorded for this agent yet."* Absence of activity is itself informative.
+The idle notice is computed from `lastChannelActivity` in the REST response, not from the
+configured TTL value — actual elapsed time is more informative than a static config label.
 
 **Failure mode: cache service unavailable**
 
