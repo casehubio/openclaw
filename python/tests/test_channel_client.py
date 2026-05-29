@@ -2,8 +2,10 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
+import httpx
 import pytest
-from casehub_openclaw import ContextMessage, WindowContent
+import respx
+from casehub_openclaw import ChannelClient, ContextMessage, WindowContent
 
 
 class TestWindowContentDeserialization:
@@ -51,3 +53,36 @@ class TestWindowContentDeserialization:
     def test_last_eviction_window_seq_minus_one_deserialises_correctly(self, full_window_json):
         result = WindowContent.model_validate(full_window_json)
         assert result.last_eviction_window_seq == -1
+
+
+class TestChannelClientGetContext:
+    @respx.mock
+    def test_successful_response_returns_window_content(self, full_window_json):
+        respx.get("http://localhost:8080/channel-context/home-agent").mock(
+            return_value=httpx.Response(200, json=full_window_json)
+        )
+        client = ChannelClient("http://localhost:8080")
+        result = client.get_context("home-agent", since=0)
+        assert result.agent_has_association is True
+        assert result.current_window_seq == 100
+
+    @respx.mock
+    def test_http_503_raises_http_status_error(self):
+        respx.get("http://localhost:8080/channel-context/home-agent").mock(
+            return_value=httpx.Response(503)
+        )
+        client = ChannelClient("http://localhost:8080")
+        with pytest.raises(httpx.HTTPStatusError):
+            client.get_context("home-agent", since=0)
+
+    @respx.mock
+    def test_agent_id_with_slash_is_url_encoded(self, full_window_json):
+        # Raw slash in agent_id must be percent-encoded in the URL path
+        respx.get("http://localhost:8080/channel-context/agent%2Fwith%2Fslash").mock(
+            return_value=httpx.Response(200, json=full_window_json)
+        )
+        client = ChannelClient("http://localhost:8080")
+        # This would raise a ConnectionError if URL encoding is wrong
+        # (the mock only matches the encoded URL)
+        result = client.get_context("agent/with/slash", since=0)
+        assert result.agent_has_association is True
