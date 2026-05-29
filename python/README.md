@@ -1,42 +1,56 @@
 # casehub-openclaw Python SDK
 
-OpenClaw plugin that injects [CaseHub](https://github.com/casehubio/openclaw) channel
-context into OpenClaw agent turns via the `before_prompt_build` hook.
+Python client library for the CaseHub ChannelContextWindow REST API. Used by
+OpenClaw Python skill scripts to query recent Qhorus channel activity.
 
-## What it does
+> **Note:** Automatic `before_prompt_build` injection is handled by the
+> **TypeScript plugin** (`casehub-openclaw-plugin` on npm), not this package.
+> See the TypeScript plugin's README for automatic injection setup.
 
-Before each OpenClaw agent turn, this plugin:
-1. Queries the `ChannelContextWindow` REST service for recent Qhorus channel activity
-   relevant to the current agent (scoped by agentId, since last turn's sequenceNumber)
-2. Injects the result as `appendSystemContext` — the compaction-safe injection point
-   in OpenClaw's system prompt
+## What this package is for
 
-This bridges OpenClaw's episodic model with Qhorus's continuous channel mesh:
-- Cross-agent awareness: home-agent sees what finance-agent posted to the observe channel
-- Observe channel monitoring: heartbeat agents wake with fresh ambient state
-- Overflow signals: "N messages not retained (high volume) — full history in ledger"
-- TTL signals: "No channel activity in the last N minutes — agent was dormant"
+OpenClaw skill scripts are Python scripts invoked as supporting resources
+in SKILL.md files. This package provides a typed HTTP client so Python skill
+scripts can explicitly query the ChannelContextWindow before acting.
 
-## Installation (pending Epic 5)
+## Installation
 
 ```bash
 pip install casehub-openclaw
 ```
 
-Then in your OpenClaw agent configuration:
+Requires a running `casehub-openclaw` Quarkus app instance.
+
+## Usage
 
 ```python
-from casehub_openclaw import register_context_hook
+from casehub_openclaw import ChannelClient, WindowContent
+from datetime import datetime, timezone
 
-agent = client.get_agent("home-agent", session_name="household-main")
-register_context_hook(agent, casehub_url="http://localhost:8080")
+client = ChannelClient("http://localhost:8080")
+content: WindowContent = client.get_context("home-agent", since=0)
+
+if not content.agent_has_association:
+    # Agent not yet wired to any Qhorus channels
+    pass
+elif content.messages:
+    for msg in content.messages:
+        print(f"{msg.sender_id} [{msg.message_type}]: {msg.content}")
 ```
 
-## Requirements
+## Error handling
 
-- Python 3.11+
-- A running `casehub-openclaw-app` instance (the Java Quarkus app)
-- OpenClaw Gateway with plugin support
+`get_context` raises `httpx.HTTPStatusError` on non-2xx and
+`httpx.TimeoutException` on timeout. Callers decide whether to fail open.
+
+```python
+import httpx
+
+try:
+    content = client.get_context("home-agent", since=0)
+except (httpx.HTTPStatusError, httpx.TimeoutException):
+    content = None  # proceed without context
+```
 
 ## Design
 

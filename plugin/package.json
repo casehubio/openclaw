@@ -5,6 +5,7 @@
   "description": "CaseHub ChannelContextWindow plugin for OpenClaw",
   "main": "dist/index.js",
   "exports": { ".": "./dist/index.js" },
+  "files": ["dist"],
   "engines": { "node": ">=18" },
   "scripts": {
     "build": "tsc",
