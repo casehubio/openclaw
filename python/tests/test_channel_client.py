@@ -86,3 +86,12 @@ class TestChannelClientGetContext:
         # (the mock only matches the encoded URL)
         result = client.get_context("agent/with/slash", since=0)
         assert result.agent_has_association is True
+
+    @respx.mock
+    def test_timeout_raises_timeout_exception(self):
+        respx.get("http://localhost:8080/channel-context/home-agent").mock(
+            side_effect=httpx.TimeoutException("timed out")
+        )
+        client = ChannelClient("http://localhost:8080")
+        with pytest.raises(httpx.TimeoutException):
+            client.get_context("home-agent", since=0)

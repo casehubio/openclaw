@@ -2,7 +2,6 @@
 import { ChannelClient } from "./channel-client.js";
 import { formatMessages, formatIdle } from "./formatters.js";
 import type {
-  ContextMessage,
   HookResult,
   OpenClawPluginApi,
   PluginHookContext,
@@ -68,7 +67,7 @@ export class ChannelContextPlugin {
 
     // Available messages — always injected when present
     if (result.messages.length > 0) {
-      parts.push(formatMessages(result.messages as ContextMessage[]));
+      parts.push(formatMessages(result.messages));
     }
 
     // Idle notice — only when no messages AND no relevant eviction.
