@@ -32,10 +32,12 @@
       <artifactId>casehub-qhorus</artifactId>
     </dependency>
 
-    <!-- Engine runtime — WorkerProvisioner, CaseChannelProvider, WorkerStatusListener SPIs -->
+    <!-- Engine API — SPI interfaces only (WorkerProvisioner, CaseChannelProvider, etc.).
+         Using casehub-engine-api (not casehub-engine) to avoid pulling in the engine
+         runtime CDI beans which have many unsatisfied persistence SPIs in this module. -->
     <dependency>
       <groupId>io.casehub</groupId>
-      <artifactId>casehub-engine</artifactId>
+      <artifactId>casehub-engine-api</artifactId>
     </dependency>
 
     <!-- Platform API — CurrentPrincipal + GroupMembershipProvider for permission-aware context -->
