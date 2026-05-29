@@ -26,22 +26,16 @@
       <artifactId>casehub-openclaw-core</artifactId>
     </dependency>
 
-    <!-- Qhorus runtime — MessageObserver registration, ChannelBackend SPI.
-         Scope: provided — no Qhorus beans exist yet in this module; the runtime
-         is wired by the app module. Prevents CDI augmentation failures on empty scaffold. -->
+    <!-- Qhorus runtime — ChannelBackend, MessageObserver SPIs + ChannelGateway for registration -->
     <dependency>
       <groupId>io.casehub</groupId>
       <artifactId>casehub-qhorus</artifactId>
-      <scope>provided</scope>
     </dependency>
 
-    <!-- Engine runtime — WorkerProvisioner, CaseChannelProvider, WorkerStatusListener.
-         Scope: provided — no engine SPI implementations exist yet; the runtime is wired
-         by the app module. Remove provided when SPI impls are written. -->
+    <!-- Engine runtime — WorkerProvisioner, CaseChannelProvider, WorkerStatusListener SPIs -->
     <dependency>
       <groupId>io.casehub</groupId>
       <artifactId>casehub-engine</artifactId>
-      <scope>provided</scope>
     </dependency>
 
     <!-- Platform API — CurrentPrincipal + GroupMembershipProvider for permission-aware context -->
