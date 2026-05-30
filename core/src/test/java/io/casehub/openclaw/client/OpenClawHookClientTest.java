@@ -145,6 +145,31 @@ class OpenClawHookClientTest {
                 .hasMessageContaining("503");
     }
 
+    @Test
+    void invoke_withExplicitDeliveryUrl_usesProvidedUrlNotSessionUrl() {
+        // arrange
+        OpenClawGatewayClient gatewayClient = mock(OpenClawGatewayClient.class);
+        OpenClawClientConfig config = mockConfig("claude-opus-4-5", 120);
+        OpenClawHookClient client = new OpenClawHookClient(gatewayClient, config);
+
+        Response okResponse = mockResponse(200);
+        when(gatewayClient.invokeAgent(any(AgentInvocationRequest.class))).thenReturn(okResponse);
+
+        client.registerSession("my-agent", "sk-abc", "http://host/channel/123");
+
+        // act — invoke with a DIFFERENT delivery URL (the oversight endpoint)
+        client.invoke("my-agent", "approve this?", "claude-opus-4-5", 30,
+                "http://host/openclaw/delivery/oversight/gate-uuid");
+
+        // assert — gatewayClient received the explicit URL, not the session's registered URL
+        ArgumentCaptor<AgentInvocationRequest> captor = ArgumentCaptor.forClass(AgentInvocationRequest.class);
+        verify(gatewayClient).invokeAgent(captor.capture());
+        assertThat(captor.getValue().to()).isEqualTo("http://host/openclaw/delivery/oversight/gate-uuid");
+        assertThat(captor.getValue().message()).isEqualTo("approve this?");
+        assertThat(captor.getValue().agentId()).isEqualTo("my-agent");
+        assertThat(captor.getValue().deliver()).isEqualTo("webhook");
+    }
+
     // ── wake ─────────────────────────────────────────────────────────────────
 
     @Test

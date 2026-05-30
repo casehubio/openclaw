@@ -44,6 +44,7 @@ public class OpenClawHookClient {
 
     /**
      * Invokes an OpenClaw agent via the hook API using webhook delivery.
+     * The delivery URL is taken from the registered session's webhookUrl.
      * The agent must have a registered session (agentId → sessionKey + webhookUrl).
      *
      * @param agentId        OpenClaw agent identifier
@@ -53,6 +54,28 @@ public class OpenClawHookClient {
      * @throws OpenClawInvocationException if no session is registered or the gateway returns non-2xx
      */
     public void invoke(String agentId, String message, String model, int timeoutSeconds) {
+        OpenClawSession session = sessions.get(agentId);
+        if (session == null) {
+            throw new OpenClawInvocationException(
+                    "No session registered for agentId: " + agentId);
+        }
+        invoke(agentId, message, model, timeoutSeconds, session.webhookUrl());
+    }
+
+    /**
+     * Invokes an OpenClaw agent via the hook API using an explicit delivery URL.
+     * The registered session's sessionKey is still used for authentication.
+     * Use this overload when the delivery target differs from the session's default webhook URL
+     * (e.g. the oversight delivery endpoint for a gate invocation).
+     *
+     * @param agentId        OpenClaw agent identifier
+     * @param message        prompt to deliver to the agent
+     * @param model          Claude model to use; null or blank uses the configured default
+     * @param timeoutSeconds invocation timeout; 0 uses the configured default
+     * @param deliveryUrl    the webhook URL OpenClaw will POST the result to
+     * @throws OpenClawInvocationException if no session is registered or the gateway returns non-2xx
+     */
+    public void invoke(String agentId, String message, String model, int timeoutSeconds, String deliveryUrl) {
         OpenClawSession session = sessions.get(agentId);
         if (session == null) {
             throw new OpenClawInvocationException(
@@ -68,7 +91,7 @@ public class OpenClawHookClient {
                 : config.agent().defaultTimeoutSeconds();
 
         AgentInvocationRequest request = AgentInvocationRequest.forWebhook(
-                message, agentId, session.webhookUrl(),
+                message, agentId, deliveryUrl,
                 effectiveModel, effectiveTimeout, session.sessionKey(), null /* wakeMode: null = OpenClaw default */);
 
         // Quarkus Reactive REST client throws WebApplicationException (specifically
