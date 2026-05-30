@@ -98,7 +98,10 @@ class OpenClawWorkerProvisionerTest {
     }
 
     private OpenClawCasehubConfig buildConfig(Map<String, OpenClawCasehubConfig.AgentEntry> agents) {
-        return () -> agents;
+        return new OpenClawCasehubConfig() {
+            @Override public Map<String, AgentEntry> agents() { return agents; }
+            @Override public Oversight oversight() { return () -> ""; }
+        };
     }
 
     private OpenClawCasehubConfig.AgentEntry entry(List<String> caps, String sk) {
