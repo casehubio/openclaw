@@ -136,6 +136,12 @@ This is **not** an application layer and **not** a framework. It is the wiring b
 - `WorkerStatusListener` — maps OpenClaw agent lifecycle events to CaseHub worker status
 - `MessageObserver` — observes Qhorus channel activity and feeds the ChannelContextWindow
 
+**Oversight gate (Java — `casehub/` module):**
+- `OversightGateService` — classifies agent output (speech act + risk), dispatches to work channel on AUTONOMOUS, or opens a human oversight gate on GATE_REQUIRED
+- `ActionRiskClassifier` — SPI interface (Phase 1: always AUTONOMOUS; local placeholder for casehubio/engine#402 SPI). Override via `@Alternative @Priority(1)`
+- `SpeechActClassifier` — SPI interface classifying agent output into a Qhorus MessageType (Phase 1: always DONE; groundwork for openclaw#10 Phase 2/3). Override via `@Alternative @Priority(1)`
+- `CaseChannelNames` — package-private utility for case channel name operations shared across the `casehub/` module
+
 **ChannelContextWindow service (`core/` module):**
 A short-term, TTL-evicting ring buffer of Qhorus channel activity. Exposed as a REST API. Consumed by the Python SDK hook at agent turn start to inject channel context into the agent's system prompt. Provides best-effort intelligence enrichment — not correctness — so it is allowed to fail open.
 
@@ -144,7 +150,7 @@ A short-term, TTL-evicting ring buffer of Qhorus channel activity. Exposed as a 
 - Channel client — thin HTTP client to the ChannelContextWindow REST API
 - Compaction-safe: uses `appendSystemContext` (not context replacement) so Claude's compaction pass preserves it
 
-**Bidirectional channel wiring:** Qhorus channel messages drive OpenClaw agents; OpenClaw agent outputs are posted back to Qhorus channels. The integration is symmetric.
+**Bidirectional channel wiring:** Qhorus channel messages drive OpenClaw agents; OpenClaw agent outputs are posted back to Qhorus channels. The integration is symmetric. Human oversight gates interrupt the return path when `ActionRiskClassifier` returns `GATE_REQUIRED`.
 
 ---
 
@@ -171,9 +177,14 @@ python/     — before_prompt_build hook + channel client (NOT a Maven module)
 **`casehub/`** owns:
 - All CaseHub SPI implementations
 - `ChannelContextWindowObserver` — implements `MessageObserver` SPI; synchronously receives every Qhorus dispatch and feeds the ring buffer; must never throw to Qhorus
+- `OversightGateService` — evaluate() classifies agent output and dispatches to work channel or opens gate; fulfill() processes human response and resolves the gate Commitment
+- `ActionRiskClassifier` / `DefaultActionRiskClassifier` — risk SPI (Phase 1: always AUTONOMOUS)
+- `SpeechActClassifier` / `DefaultSpeechActClassifier` — speech act SPI (Phase 1: always DONE)
+- `CaseChannelNames` — package-private channel name utility
 
 **`app/`** owns:
-- Delivery webhook endpoint — receives `deliver:webhook` callbacks from OpenClaw; posts to Qhorus channel
+- `POST /openclaw/delivery/channel/{channelId}` — receives `deliver:webhook` callbacks from OpenClaw; delegates to `OversightGateService.evaluate()` (always 200)
+- `POST /openclaw/delivery/oversight/{gateId}` — receives human oversight responses from OpenClaw; delegates to `OversightGateService.fulfill()` (always 200)
 - `GET /channel-context/{agentId}?since={windowSeq}` — ChannelContextWindow REST API (always 200; `since` defaults to 0)
 - `EvictionScheduler` — `@Scheduled` bean that calls `service.evictExpired()` at the TTL interval
 
