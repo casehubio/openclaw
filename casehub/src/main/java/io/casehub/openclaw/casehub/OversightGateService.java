@@ -185,83 +185,87 @@ public class OversightGateService {
      * <p>Fail-open on all error conditions: unknown gateId, missing channels, etc.
      */
     public void fulfill(UUID gateId, String rawOutput) {
-        // Look up the original COMMAND message (dispatched in openGate) to get its Long ID for inReplyTo
-        Long commandMessageId = messageService.findAllByCorrelationId(gateId.toString()).stream()
-                .filter(m -> m.messageType == MessageType.COMMAND)
-                .mapToLong(m -> m.id)
-                .findFirst()
-                .orElse(-1L);
-        if (commandMessageId == -1L) {
-            log.warnf("fulfill() called for gateId=%s — no COMMAND message found via correlationId; " +
-                    "possible restart or duplicate delivery; failing open", gateId);
-            return;
-        }
+        try {
+            // Look up the original COMMAND message (dispatched in openGate) to get its Long ID for inReplyTo
+            Long commandMessageId = messageService.findAllByCorrelationId(gateId.toString()).stream()
+                    .filter(m -> m.messageType == MessageType.COMMAND)
+                    .mapToLong(m -> m.id)
+                    .findFirst()
+                    .orElse(-1L);
+            if (commandMessageId == -1L) {
+                log.warnf("fulfill() called for gateId=%s — no COMMAND message found via correlationId; " +
+                        "possible restart or duplicate delivery; failing open", gateId);
+                return;
+            }
 
-        boolean approved = parseApproval(gateId, rawOutput);
+            boolean approved = parseApproval(gateId, rawOutput);
 
-        Optional<Commitment> commitmentOpt = commitmentStore.findByCorrelationId(gateId.toString());
-        if (commitmentOpt.isEmpty()) {
-            log.warnf("fulfill() called for unknown gateId=%s — possible duplicate delivery, ignoring", gateId);
-            return;
-        }
+            Optional<Commitment> commitmentOpt = commitmentStore.findByCorrelationId(gateId.toString());
+            if (commitmentOpt.isEmpty()) {
+                log.warnf("fulfill() called for unknown gateId=%s — possible duplicate delivery, ignoring", gateId);
+                return;
+            }
 
-        Commitment commitment = commitmentOpt.get();
-        Channel oversightChannel = channelService.findById(commitment.channelId).orElse(null);
-        if (oversightChannel == null) {
-            log.errorf("Oversight channel %s not found for gateId=%s — failing open",
-                    commitment.channelId, gateId);
-            return;
-        }
+            Commitment commitment = commitmentOpt.get();
+            Channel oversightChannel = channelService.findById(commitment.channelId).orElse(null);
+            if (oversightChannel == null) {
+                log.errorf("Oversight channel %s not found for gateId=%s — failing open",
+                        commitment.channelId, gateId);
+                return;
+            }
 
-        UUID caseId = CaseChannelNames.extractCaseId(oversightChannel.name);
-        if (caseId == null) {
-            log.errorf("Could not extract caseId from oversight channel '%s' for gateId=%s — failing open",
-                    oversightChannel.name, gateId);
-            return;
-        }
+            UUID caseId = CaseChannelNames.extractCaseId(oversightChannel.name);
+            if (caseId == null) {
+                log.errorf("Could not extract caseId from oversight channel '%s' for gateId=%s — failing open",
+                        oversightChannel.name, gateId);
+                return;
+            }
 
-        Channel workChannel = channelService.findByName(CaseChannelNames.workChannelName(caseId)).orElse(null);
-        if (workChannel == null) {
-            log.errorf("Work channel not found for caseId=%s gateId=%s — failing open", caseId, gateId);
-            return;
-        }
+            Channel workChannel = channelService.findByName(CaseChannelNames.workChannelName(caseId)).orElse(null);
+            if (workChannel == null) {
+                log.errorf("Work channel not found for caseId=%s gateId=%s — failing open", caseId, gateId);
+                return;
+            }
 
-        if (approved) {
-            messageService.dispatch(MessageDispatch.builder()
-                    .channelId(oversightChannel.id)
-                    .sender(GATE_SENDER)
-                    .type(MessageType.RESPONSE)
-                    .content(rawOutput != null ? rawOutput : "approved")
-                    .correlationId(gateId.toString())
-                    .inReplyTo(commandMessageId)
-                    .actorType(ActorType.AGENT)
-                    .build());
-            messageService.dispatch(MessageDispatch.builder()
-                    .channelId(workChannel.id)
-                    .sender(GATE_SENDER)
-                    .type(MessageType.STATUS)
-                    .content("Gate approved")
-                    .actorType(ActorType.AGENT)
-                    .build());
-            log.infof("Gate approved: gateId=%s caseId=%s", gateId, caseId);
-        } else {
-            messageService.dispatch(MessageDispatch.builder()
-                    .channelId(oversightChannel.id)
-                    .sender(GATE_SENDER)
-                    .type(MessageType.DECLINE)
-                    .content(rawOutput != null ? rawOutput : "rejected")
-                    .correlationId(gateId.toString())
-                    .inReplyTo(commandMessageId)
-                    .actorType(ActorType.AGENT)
-                    .build());
-            messageService.dispatch(MessageDispatch.builder()
-                    .channelId(workChannel.id)
-                    .sender(GATE_SENDER)
-                    .type(MessageType.STATUS)
-                    .content("Human rejected the proposed action via oversight gate")
-                    .actorType(ActorType.AGENT)
-                    .build());
-            log.infof("Gate rejected: gateId=%s caseId=%s", gateId, caseId);
+            if (approved) {
+                messageService.dispatch(MessageDispatch.builder()
+                        .channelId(oversightChannel.id)
+                        .sender(GATE_SENDER)
+                        .type(MessageType.RESPONSE)
+                        .content(rawOutput != null ? rawOutput : "approved")
+                        .correlationId(gateId.toString())
+                        .inReplyTo(commandMessageId)
+                        .actorType(ActorType.AGENT)
+                        .build());
+                messageService.dispatch(MessageDispatch.builder()
+                        .channelId(workChannel.id)
+                        .sender(GATE_SENDER)
+                        .type(MessageType.STATUS)
+                        .content("Gate approved")
+                        .actorType(ActorType.AGENT)
+                        .build());
+                log.infof("Gate approved: gateId=%s caseId=%s", gateId, caseId);
+            } else {
+                messageService.dispatch(MessageDispatch.builder()
+                        .channelId(oversightChannel.id)
+                        .sender(GATE_SENDER)
+                        .type(MessageType.DECLINE)
+                        .content(rawOutput != null ? rawOutput : "rejected")
+                        .correlationId(gateId.toString())
+                        .inReplyTo(commandMessageId)
+                        .actorType(ActorType.AGENT)
+                        .build());
+                messageService.dispatch(MessageDispatch.builder()
+                        .channelId(workChannel.id)
+                        .sender(GATE_SENDER)
+                        .type(MessageType.STATUS)
+                        .content("Human rejected the proposed action via oversight gate")
+                        .actorType(ActorType.AGENT)
+                        .build());
+                log.infof("Gate rejected: gateId=%s caseId=%s", gateId, caseId);
+            }
+        } catch (Exception e) {
+            log.errorf("OversightGateService.fulfill() failed for gateId=%s: %s", gateId, e.getMessage());
         }
     }
 

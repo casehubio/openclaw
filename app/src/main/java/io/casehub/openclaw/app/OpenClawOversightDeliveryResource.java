@@ -44,8 +44,12 @@ public class OpenClawOversightDeliveryResource {
         }
 
         String rawOutput = payload != null ? payload.output() : null;
-        oversightGateService.fulfill(gateId, rawOutput);
-
+        try {
+            oversightGateService.fulfill(gateId, rawOutput);
+        } catch (Exception e) {
+            log.errorf("Unexpected error in fulfill() for gateId=%s: %s", gateId, e.getMessage());
+            // Fall through — return 200 so OpenClaw does not retry
+        }
         return Response.ok().build();
     }
 }

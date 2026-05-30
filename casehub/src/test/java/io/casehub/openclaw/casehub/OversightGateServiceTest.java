@@ -76,7 +76,7 @@ class OversightGateServiceTest {
         when(channelService.findByName("case-" + caseId + "/work"))
                 .thenReturn(Optional.of(workChannel));
 
-        when(speechActClassifier.classify(any())).thenReturn(MessageType.STATUS);
+        when(speechActClassifier.classify(any())).thenReturn(MessageType.DONE);
         when(actionRiskClassifier.classify(any())).thenReturn(new RiskDecision.Autonomous());
 
         // Default dispatch result for the COMMAND sent to oversight channel
