@@ -10,7 +10,7 @@ class CaseChannelNames {
     private CaseChannelNames() {}
 
     static UUID extractCaseId(String channelName) {
-        if (!channelName.startsWith(CaseChannel.CASE_CHANNEL_PREFIX)) return null;
+        if (channelName == null || !channelName.startsWith(CaseChannel.CASE_CHANNEL_PREFIX)) return null;
         String withoutPrefix = channelName.substring(CaseChannel.CASE_CHANNEL_PREFIX.length());
         int slash = withoutPrefix.indexOf('/');
         String uuidStr = slash >= 0 ? withoutPrefix.substring(0, slash) : withoutPrefix;

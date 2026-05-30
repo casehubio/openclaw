@@ -29,6 +29,11 @@ class CaseChannelNamesTest {
     }
 
     @Test
+    void extractCaseId_nullInput_returnsNull() {
+        assertThat(CaseChannelNames.extractCaseId(null)).isNull();
+    }
+
+    @Test
     void workChannelName_roundTrip() {
         UUID id = UUID.randomUUID();
         assertThat(CaseChannelNames.extractCaseId(CaseChannelNames.workChannelName(id))).isEqualTo(id);
