@@ -3,7 +3,6 @@ package io.casehub.openclaw.casehub;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -13,12 +12,12 @@ import org.jboss.logging.Logger;
 import io.casehub.openclaw.client.OpenClawClientConfig;
 import io.casehub.openclaw.client.OpenClawHookClient;
 import io.casehub.platform.api.identity.ActorType;
-import io.casehub.qhorus.api.message.DispatchResult;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.channel.Channel;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.message.Commitment;
+import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
 
@@ -56,19 +55,6 @@ public class OversightGateService {
     private final OpenClawCasehubConfig casehubConfig;
     private final SpeechActClassifier speechActClassifier;
     private final ActionRiskClassifier actionRiskClassifier;
-
-    /**
-     * Tracks gateId → COMMAND messageId so that fulfill() can set inReplyTo when
-     * dispatching RESPONSE or DECLINE to the oversight channel. The builder contract
-     * requires inReplyTo for RESPONSE and DECLINE. Entries are removed once
-     * fulfill() completes.
-     *
-     * <p>In-memory only — gate state is lost on restart. This is acceptable because
-     * ChannelContextWindow is best-effort intelligence, and the Commitment store
-     * (Qhorus-side) provides durability. A restart mid-gate means the oversight
-     * agent's response is dropped and the case step hangs until Watchdog recovery.
-     */
-    private final ConcurrentHashMap<UUID, Long> gateCommandMessageIds = new ConcurrentHashMap<>();
 
     @Inject
     public OversightGateService(ChannelService channelService,
@@ -149,7 +135,8 @@ public class OversightGateService {
 
         // COMMAND content = original agent output (machine-retrievable); prompt goes to
         // OpenClaw invoke() as the message parameter separately.
-        DispatchResult commandResult = messageService.dispatch(MessageDispatch.builder()
+        // inReplyTo for RESPONSE/DECLINE is resolved durably in fulfill() via findAllByCorrelationId.
+        messageService.dispatch(MessageDispatch.builder()
                 .channelId(oversightChannel.id)
                 .sender(agentId)
                 .type(MessageType.COMMAND)
@@ -157,12 +144,6 @@ public class OversightGateService {
                 .correlationId(gateId.toString())
                 .actorType(ActorType.AGENT)
                 .build());
-
-        // Store the COMMAND's messageId so fulfill() can satisfy the inReplyTo requirement
-        // on RESPONSE and DECLINE dispatches (enforced by MessageDispatch builder).
-        if (commandResult != null && commandResult.messageId() != null) {
-            gateCommandMessageIds.put(gateId, commandResult.messageId());
-        }
 
         String oversightDeliveryUrl =
                 clientConfig.delivery().baseUrl() + "/openclaw/delivery/oversight/" + gateId;
@@ -201,9 +182,14 @@ public class OversightGateService {
      * <p>Fail-open on all error conditions: unknown gateId, missing channels, etc.
      */
     public void fulfill(UUID gateId, String rawOutput) {
-        Long commandMessageId = gateCommandMessageIds.remove(gateId);
-        if (commandMessageId == null) {
-            log.warnf("fulfill() called for gateId=%s with no stored COMMAND messageId — " +
+        // Look up the original COMMAND message (dispatched in openGate) to get its Long ID for inReplyTo
+        Long commandMessageId = messageService.findAllByCorrelationId(gateId.toString()).stream()
+                .filter(m -> m.messageType == MessageType.COMMAND)
+                .mapToLong(m -> m.id)
+                .findFirst()
+                .orElse(-1L);
+        if (commandMessageId == -1L) {
+            log.warnf("fulfill() called for gateId=%s — no COMMAND message found via correlationId; " +
                     "possible restart or duplicate delivery; failing open", gateId);
             return;
         }

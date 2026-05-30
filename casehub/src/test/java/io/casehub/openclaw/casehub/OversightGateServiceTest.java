@@ -1,5 +1,6 @@
 package io.casehub.openclaw.casehub;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,6 +17,7 @@ import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.channel.Channel;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.message.Commitment;
+import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
 
@@ -190,9 +192,18 @@ class OversightGateServiceTest {
         return c;
     }
 
+    private Message commandMessage(UUID gateId, long messageId) {
+        Message m = new Message();
+        m.id = messageId;
+        m.messageType = MessageType.COMMAND;
+        m.correlationId = gateId.toString();
+        return m;
+    }
+
     /**
-     * Helper: opens a gate via evaluate() so that fulfill() can find the stored
-     * COMMAND messageId. Returns the gateId extracted from the dispatched COMMAND.
+     * Helper: opens a gate via evaluate() and stubs the durable COMMAND lookup so
+     * that fulfill() can resolve the inReplyTo value. Returns the gateId extracted
+     * from the dispatched COMMAND.
      */
     private UUID openGateAndCaptureGateId() {
         when(actionRiskClassifier.classify(any()))
@@ -203,7 +214,13 @@ class OversightGateServiceTest {
         ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
         verify(messageService).dispatch(captor.capture());
         String correlationId = captor.getValue().correlationId();
-        return UUID.fromString(correlationId);
+        UUID gateId = UUID.fromString(correlationId);
+
+        // Stub the durable lookup that fulfill() uses to resolve inReplyTo
+        when(messageService.findAllByCorrelationId(gateId.toString()))
+                .thenReturn(List.of(commandMessage(gateId, 42L)));
+
+        return gateId;
     }
 
     @Test
@@ -320,21 +337,25 @@ class OversightGateServiceTest {
     }
 
     @Test
-    void fulfill_unknownGateId_failsOpen() {
-        when(commitmentStore.findByCorrelationId(anyString())).thenReturn(Optional.empty());
+    void fulfill_noCommandMessageFound_failsOpen() {
+        // fulfill() called for a gateId with no COMMAND message in the durable store
+        UUID unknownGateId = UUID.randomUUID();
+        when(messageService.findAllByCorrelationId(unknownGateId.toString()))
+                .thenReturn(List.of());
 
-        assertThatCode(() -> service.fulfill(UUID.randomUUID(), "approved")).doesNotThrowAnyException();
+        assertThatCode(() -> service.fulfill(unknownGateId, "approved")).doesNotThrowAnyException();
         verify(messageService, never()).dispatch(any());
     }
 
     @Test
-    void fulfill_gateIdNotInInternalStore_failsOpen() {
-        // fulfill() called for a gateId that was never opened via evaluate()
-        UUID unknownGateId = UUID.randomUUID();
-        when(commitmentStore.findByCorrelationId(unknownGateId.toString()))
-                .thenReturn(Optional.of(commitment(unknownGateId)));
+    void fulfill_commandFoundButNoCommitment_failsOpen() {
+        // COMMAND message exists in durable store but the commitment was already resolved or is missing
+        UUID gateId = UUID.randomUUID();
+        when(messageService.findAllByCorrelationId(gateId.toString()))
+                .thenReturn(List.of(commandMessage(gateId, 42L)));
+        when(commitmentStore.findByCorrelationId(gateId.toString())).thenReturn(Optional.empty());
 
-        assertThatCode(() -> service.fulfill(unknownGateId, "approved")).doesNotThrowAnyException();
+        assertThatCode(() -> service.fulfill(gateId, "approved")).doesNotThrowAnyException();
         verify(messageService, never()).dispatch(any());
     }
 
