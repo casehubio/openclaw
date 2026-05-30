@@ -95,16 +95,20 @@ public class OversightGateService {
                 return;
             }
 
+            MessageType messageType = speechActClassifier.classify(
+                    new SpeechActContext(agentId, output, null));
+
             RiskDecision decision = actionRiskClassifier.classify(
                     new PlannedAction(agentId, caseId, output, null, Map.of()));
 
             if (decision instanceof RiskDecision.Autonomous) {
-                // STATUS: DONE requires inReplyTo + correlationId per MessageDispatch builder;
-                // there is no prior COMMAND to reply to on the autonomous path.
+                // DONE/DECLINE/FAILURE/RESPONSE require inReplyTo — not available on autonomous path.
+                // Fall back to STATUS; tracked in openclaw#16.
+                MessageType dispatchType = requiresReplyFields(messageType) ? MessageType.STATUS : messageType;
                 messageService.dispatch(MessageDispatch.builder()
                         .channelId(workChannelId)
                         .sender(agentId)
-                        .type(MessageType.STATUS)
+                        .type(dispatchType)
                         .content(output != null ? output : "")
                         .actorType(ActorType.AGENT)
                         .build());
@@ -167,7 +171,7 @@ public class OversightGateService {
         sb.append(output != null ? output : "(no output)").append("\n\n");
         sb.append("Reason for oversight: ").append(gate.reason()).append("\n");
         if (!gate.reversible()) {
-            sb.append("WARNING: This action cannot be undone once approved.\n");
+            sb.append("⚠️ This action cannot be undone once approved.\n");
         }
         sb.append("\nReply with \"approved\" to proceed or \"rejected\" to decline.");
         return sb.toString();
@@ -260,6 +264,13 @@ public class OversightGateService {
                     .build());
             log.infof("Gate rejected: gateId=%s caseId=%s", gateId, caseId);
         }
+    }
+
+    private static boolean requiresReplyFields(MessageType type) {
+        return switch (type) {
+            case DONE, DECLINE, FAILURE, RESPONSE -> true;
+            default -> false;
+        };
     }
 
     private boolean parseApproval(UUID gateId, String rawOutput) {
