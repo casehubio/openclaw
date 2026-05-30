@@ -69,10 +69,25 @@ public class ChannelContextWindowService {
 
     /**
      * Removes the agent's case association. Called by OpenClawWorkerStatusListener.onWorkerCompleted().
-     * The caseChannels entry is retained — the buffer continues accepting writes until TTL eviction.
+     * The caseChannels entry is retained briefly — call closeCase() when the case is fully closed.
      */
     public void unbindAgent(String agentId) {
         agentToCase.remove(agentId);
+    }
+
+    /**
+     * Removes all channel associations and ring buffers for a closed case.
+     * Called by OpenClawWorkerStatusListener.onWorkerCompleted() after unbindAgent().
+     *
+     * <p>Any late messages arriving after closeCase() silently no-op in add() — the buffer
+     * is gone, add() guards on null and returns immediately. This is the correct behaviour:
+     * messages arriving after case close are unobservable and should be discarded.
+     */
+    public void closeCase(UUID caseId) {
+        Set<UUID> channelIds = caseChannels.remove(caseId);
+        if (channelIds != null) {
+            channelIds.forEach(buffers::remove);
+        }
     }
 
     /**

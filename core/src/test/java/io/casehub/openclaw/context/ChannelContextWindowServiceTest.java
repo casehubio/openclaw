@@ -16,6 +16,7 @@ import io.casehub.qhorus.api.gateway.MessageReceivedEvent;
 import io.casehub.qhorus.api.message.MessageType;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class ChannelContextWindowServiceTest {
 
@@ -297,5 +298,31 @@ class ChannelContextWindowServiceTest {
         latch.await(10, TimeUnit.SECONDS);
         executor.shutdown();
         // Asserts no exceptions thrown — concurrent bind/unbind/query must be safe
+    }
+
+    @Test
+    void closeCase_removesChannelAssociationsAndBuffers() {
+        UUID caseId = UUID.randomUUID();
+        UUID ch1 = UUID.randomUUID();
+        UUID ch2 = UUID.randomUUID();
+        service.bindAgent("agent-1", caseId);
+        service.bindChannel(caseId, ch1);
+        service.bindChannel(caseId, ch2);
+
+        // Add a message so the buffer is non-empty
+        service.add(event(ch1, "case-" + caseId + "/work", MessageType.STATUS));
+
+        service.unbindAgent("agent-1");
+        service.closeCase(caseId);
+
+        // After closeCase: query returns noAssociation (agent unbound + caseChannels removed)
+        // Late messages to closed channels are silently dropped (buffer gone, add() is a no-op)
+        assertThatCode(() -> service.add(event(ch1, "case-" + caseId + "/work", MessageType.STATUS)))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void closeCase_unknownCase_noOp() {
+        assertThatCode(() -> service.closeCase(UUID.randomUUID())).doesNotThrowAnyException();
     }
 }

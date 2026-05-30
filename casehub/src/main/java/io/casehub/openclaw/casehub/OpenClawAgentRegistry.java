@@ -49,6 +49,10 @@ public class OpenClawAgentRegistry {
         return Optional.ofNullable(caseToAgent.get(caseId));
     }
 
+    public Optional<UUID> findCaseId(String agentId) {
+        return Optional.ofNullable(agentToCase.get(agentId));
+    }
+
     public Optional<String> findSessionKey(String agentId) {
         return Optional.ofNullable(agentToSessionKey.get(agentId));
     }
