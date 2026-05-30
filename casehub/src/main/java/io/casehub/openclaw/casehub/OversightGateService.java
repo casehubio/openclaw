@@ -151,10 +151,9 @@ public class OversightGateService {
 
         String oversightDeliveryUrl =
                 clientConfig.delivery().baseUrl() + "/openclaw/delivery/oversight/" + gateId;
-        String oversightAgentId = casehubConfig.oversight().agentId();
-        if (oversightAgentId == null || oversightAgentId.isBlank()) {
-            oversightAgentId = agentId;
-        }
+        String oversightAgentId = casehubConfig.oversight().agentId()
+                .filter(s -> !s.isBlank())
+                .orElse(agentId);
 
         hookClient.invoke(oversightAgentId, oversightPrompt,
                 clientConfig.agent().defaultModel(),

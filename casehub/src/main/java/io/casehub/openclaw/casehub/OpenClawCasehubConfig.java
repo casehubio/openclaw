@@ -2,9 +2,9 @@ package io.casehub.openclaw.casehub;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import io.smallrye.config.ConfigMapping;
-import io.smallrye.config.WithDefault;
 
 /**
  * Agent capability configuration for CaseHub SPI implementations.
@@ -42,12 +42,12 @@ public interface OpenClawCasehubConfig {
     interface Oversight {
         /**
          * Agent used to deliver oversight gate questions to humans via messaging.
-         * Defaults to the work agent if blank — acceptable for Phase 1 since gate never fires.
+         * Empty means fall back to the triggering agent — acceptable for Phase 1 since gate never fires.
          * Phase 2: configure a dedicated messaging agent (e.g. "home-messaging-agent").
          *
          * Property: casehub.openclaw.oversight.agent-id
+         * Optional — omit or leave unset to use the default fallback.
          */
-        @WithDefault("")
-        String agentId();
+        Optional<String> agentId();
     }
 }

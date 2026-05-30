@@ -2,6 +2,7 @@ package io.casehub.openclaw.casehub;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -100,7 +101,7 @@ class OpenClawWorkerProvisionerTest {
     private OpenClawCasehubConfig buildConfig(Map<String, OpenClawCasehubConfig.AgentEntry> agents) {
         return new OpenClawCasehubConfig() {
             @Override public Map<String, AgentEntry> agents() { return agents; }
-            @Override public Oversight oversight() { return () -> ""; }
+            @Override public Oversight oversight() { return Optional::empty; }
         };
     }
 

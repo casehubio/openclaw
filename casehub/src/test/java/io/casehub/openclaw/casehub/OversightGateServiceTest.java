@@ -92,7 +92,7 @@ class OversightGateServiceTest {
         when(clientConfig.agent()).thenReturn(agent);
 
         OpenClawCasehubConfig.Oversight oversight = mock(OpenClawCasehubConfig.Oversight.class);
-        when(oversight.agentId()).thenReturn("");
+        when(oversight.agentId()).thenReturn(Optional.empty());
         when(casehubConfig.oversight()).thenReturn(oversight);
 
         service = new OversightGateService(channelService, messageService, commitmentStore,

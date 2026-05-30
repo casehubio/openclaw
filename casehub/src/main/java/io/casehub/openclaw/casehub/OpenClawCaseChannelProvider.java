@@ -41,10 +41,15 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
     // Source of truth: Claudony's NormativeChannelLayout (casehub/src/main/.../NormativeChannelLayout.java).
     // The spec §7.1 table differs (observe=EVENT+QUERY+STATUS, oversight=COMMAND+RESPONSE) — Claudony's
     // actual implementation is used here as the platform ground truth. Consolidation: parent#93.
+    // oversight allowedTypes: null (unrestricted). Minimum types used by the gate mechanism:
+    // COMMAND (gate request, opens Commitment), RESPONSE (approved, closes Commitment),
+    // DECLINE (rejected, closes Commitment). Null used because the oversight conversation
+    // may also need QUERY (human asks for context), STATUS (agent clarifies), and EVENT (telemetry).
+    // Pending casehubio/claudony#142 — update to explicit list if Claudony's design resolution constrains it.
     private static final Map<String, String[]> LAYOUT = Map.of(
             "work",     new String[]{"Primary coordination — all obligation-carrying message types", null},
             "observe",  new String[]{"Telemetry — EVENT only, no obligations created", "EVENT"},
-            "oversight",new String[]{"Human governance — agent QUERY and human COMMAND", "COMMAND,QUERY"}
+            "oversight",new String[]{"Human governance — agent actions pending human approval", null}
     );
 
     private final ChannelService channelService;
