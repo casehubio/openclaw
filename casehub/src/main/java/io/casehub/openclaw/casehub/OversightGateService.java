@@ -32,13 +32,14 @@ import io.casehub.qhorus.runtime.store.CommitmentStore;
  *
  * <p>Message type semantics:
  * <ul>
- *   <li>Autonomous path dispatches STATUS — no commitment to resolve, so DONE
- *       (which requires inReplyTo + correlationId) is not appropriate.</li>
+ *   <li>Autonomous path dispatches STATUS — DONE requires inReplyTo and correlationId
+ *       per the MessageDispatch builder contract; there is no prior COMMAND to reply to
+ *       on the autonomous path.</li>
  *   <li>Gate path dispatches COMMAND to oversight channel — creates a Commitment
  *       via Qhorus that fulfill() later resolves.</li>
  *   <li>Fulfill dispatches RESPONSE or DECLINE to oversight (resolving the
- *       Commitment) and STATUS to the work channel (notification, not commitment
- *       resolution).</li>
+ *       Commitment via inReplyTo + correlationId) and STATUS to the work channel
+ *       (notification only — no COMMAND to resolve on the work channel).</li>
  * </ul>
  */
 @ApplicationScoped
@@ -58,8 +59,9 @@ public class OversightGateService {
 
     /**
      * Tracks gateId → COMMAND messageId so that fulfill() can set inReplyTo when
-     * dispatching RESPONSE or DECLINE to the oversight channel. Entries are removed
-     * once fulfill() completes (or if the gateId is not found, they are never added).
+     * dispatching RESPONSE or DECLINE to the oversight channel. The builder contract
+     * requires inReplyTo for RESPONSE and DECLINE. Entries are removed once
+     * fulfill() completes.
      *
      * <p>In-memory only — gate state is lost on restart. This is acceptable because
      * ChannelContextWindow is best-effort intelligence, and the Commitment store
@@ -111,8 +113,8 @@ public class OversightGateService {
                     new PlannedAction(agentId, caseId, output, null, Map.of()));
 
             if (decision instanceof RiskDecision.Autonomous) {
-                // STATUS because there is no commitment to resolve — the agent is reporting
-                // its result, not discharging a COMMAND obligation via this service.
+                // STATUS: DONE requires inReplyTo + correlationId per MessageDispatch builder;
+                // there is no prior COMMAND to reply to on the autonomous path.
                 messageService.dispatch(MessageDispatch.builder()
                         .channelId(workChannelId)
                         .sender(agentId)
@@ -156,7 +158,8 @@ public class OversightGateService {
                 .actorType(ActorType.AGENT)
                 .build());
 
-        // Store the COMMAND's messageId so fulfill() can set inReplyTo
+        // Store the COMMAND's messageId so fulfill() can satisfy the inReplyTo requirement
+        // on RESPONSE and DECLINE dispatches (enforced by MessageDispatch builder).
         if (commandResult != null && commandResult.messageId() != null) {
             gateCommandMessageIds.put(gateId, commandResult.messageId());
         }
@@ -191,8 +194,9 @@ public class OversightGateService {
 
     /**
      * Processes the oversight agent's response to a gate. Dispatches RESPONSE or
-     * DECLINE to the oversight channel (resolving the Commitment) and STATUS to
-     * the work channel (notification).
+     * DECLINE to the oversight channel (resolving the Commitment via inReplyTo +
+     * correlationId) and STATUS to the work channel (notification — no COMMAND
+     * to resolve on the work channel side).
      *
      * <p>Fail-open on all error conditions: unknown gateId, missing channels, etc.
      */
