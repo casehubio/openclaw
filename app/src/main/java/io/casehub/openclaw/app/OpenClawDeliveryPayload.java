@@ -1,13 +1,15 @@
 package io.casehub.openclaw.app;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+
 /**
  * Webhook payload received from OpenClaw when an agent completes via deliver:webhook.
  *
- * WARNING: Field names assumed camelCase based on other OpenClaw API fields (agentId, timeoutSeconds).
- * Verify against live OpenClaw API before production use — see openclaw#11.
- * If OpenClaw uses snake_case, add @JsonProperty("agent_id") and @JsonProperty("output").
+ * <p>Accepts both camelCase and snake_case field names via {@code @JsonAlias} — defensive
+ * until field names are verified against a live OpenClaw instance (openclaw#11).
+ * Other likely aliases for {@code output}: {@code result}, {@code content}.
  */
 public record OpenClawDeliveryPayload(
-    String agentId,
-    String output
+    @JsonAlias("agent_id") String agentId,
+    @JsonAlias({"result", "content"}) String output
 ) {}

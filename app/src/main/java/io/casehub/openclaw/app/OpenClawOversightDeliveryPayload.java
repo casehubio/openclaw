@@ -1,5 +1,7 @@
 package io.casehub.openclaw.app;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+
 /**
  * Webhook payload received from OpenClaw when a human responds to an oversight gate
  * question via messaging platform (WhatsApp, Telegram, etc.).
@@ -9,9 +11,10 @@ package io.casehub.openclaw.app;
  * decision) and are expected to diverge as oversight responses gain delivery platform
  * metadata (channel, responder identity, timestamp).
  *
- * <p>WARNING: Field names assumed camelCase — verify against live OpenClaw API. See openclaw#11.
+ * <p>Accepts both camelCase and snake_case field names via {@code @JsonAlias} — defensive
+ * until field names are verified against a live OpenClaw instance (openclaw#11).
  */
 public record OpenClawOversightDeliveryPayload(
-        String agentId,
-        String output
+        @JsonAlias("agent_id") String agentId,
+        @JsonAlias({"result", "content"}) String output
 ) {}
