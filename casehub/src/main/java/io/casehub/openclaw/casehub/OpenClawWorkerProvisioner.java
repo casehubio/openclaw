@@ -11,9 +11,8 @@ import jakarta.inject.Inject;
 
 import org.jboss.logging.Logger;
 
-import io.casehub.api.model.Capability;
 import io.casehub.api.model.ProvisionContext;
-import io.casehub.api.model.Worker;
+import io.casehub.api.spi.ProvisionResult;
 import io.casehub.api.spi.ProvisioningException;
 import io.casehub.api.spi.WorkerProvisioner;
 import io.casehub.openclaw.context.ChannelContextWindowService;
@@ -47,7 +46,7 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
     }
 
     @Override
-    public Worker provision(Set<String> capabilities, ProvisionContext context) {
+    public ProvisionResult provision(Set<String> capabilities, ProvisionContext context) {
         String agentId = resolveAgentId(capabilities);
         String sessionKey = config.agents().get(agentId).sessionKey();
         UUID caseId = context.caseId();
@@ -58,10 +57,7 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
         log.infof("Provisioned OpenClaw agent: agentId=%s caseId=%s capabilities=%s",
                 agentId, caseId, capabilities);
 
-        List<Capability> capList = capabilities.stream()
-                .map(c -> new Capability(c, null, null))
-                .toList();
-        return new Worker(agentId, capList, ctx -> Map.of());
+        return ProvisionResult.empty();
     }
 
     @Override

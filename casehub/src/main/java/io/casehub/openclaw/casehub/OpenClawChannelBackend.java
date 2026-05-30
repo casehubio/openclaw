@@ -119,14 +119,6 @@ public class OpenClawChannelBackend implements ChannelBackend {
 
     /** Parses "case-{caseId}/{purpose}" → UUID, or returns null if format doesn't match. */
     UUID extractCaseId(String channelName) {
-        if (!channelName.startsWith(CaseChannel.CASE_CHANNEL_PREFIX)) return null;
-        String withoutPrefix = channelName.substring(CaseChannel.CASE_CHANNEL_PREFIX.length());
-        int slash = withoutPrefix.indexOf('/');
-        String uuidStr = slash >= 0 ? withoutPrefix.substring(0, slash) : withoutPrefix;
-        try {
-            return UUID.fromString(uuidStr);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
+        return CaseChannelNames.extractCaseId(channelName);
     }
 }

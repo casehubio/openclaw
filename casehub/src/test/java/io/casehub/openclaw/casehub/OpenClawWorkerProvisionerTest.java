@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.casehub.api.model.ProvisionContext;
+import io.casehub.api.spi.ProvisionResult;
 import io.casehub.api.spi.ProvisioningException;
 import io.casehub.openclaw.context.ChannelContextWindowService;
 
@@ -71,9 +72,9 @@ class OpenClawWorkerProvisionerTest {
     }
 
     @Test
-    void provision_returnsWorkerWithAgentIdAsName() {
-        var worker = provisioner.provision(Set.of("finance"), ctx(UUID.randomUUID()));
-        assertThat(worker.getName()).isEqualTo("finance-agent");
+    void provision_returnsEmptyProvisionResult() {
+        ProvisionResult result = provisioner.provision(Set.of("finance"), ctx(UUID.randomUUID()));
+        assertThat(result).isEqualTo(ProvisionResult.empty());
     }
 
     @Test
