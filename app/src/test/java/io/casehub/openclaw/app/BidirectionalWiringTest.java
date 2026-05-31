@@ -110,7 +110,7 @@ class BidirectionalWiringTest {
         registry.register("test-agent", caseId, "test-session-key");
 
         // Fire CDI event to register the backend for the work channel (simulates startup)
-        channelInitEvent.fire(new ChannelInitialisedEvent(workChannelId, workChannelName));
+        channelInitEvent.fire(new ChannelInitialisedEvent(workChannelId, workChannelName, false));
 
         // Default: autonomous — no oversight gate
         when(actionRiskClassifier.classify(any())).thenReturn(new RiskDecision.Autonomous());

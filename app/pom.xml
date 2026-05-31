@@ -41,6 +41,13 @@
       <artifactId>casehub-platform-expression</artifactId>
     </dependency>
 
+    <!-- Quarkus MCP server (mcp4j) — exposes CaseHub commitment tools via MCP protocol -->
+    <dependency>
+      <groupId>io.quarkiverse.mcp</groupId>
+      <artifactId>quarkus-mcp-server-http</artifactId>
+      <version>1.11.1</version>
+    </dependency>
+
     <!-- Quarkus application -->
     <dependency>
       <groupId>io.quarkus</groupId>
