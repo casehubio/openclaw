@@ -1,5 +1,6 @@
 // plugin/src/index.ts
 import { ChannelClient } from "./channel-client.js";
+import { CommitmentManager } from "./commitment-manager.js";
 import { formatMessages, formatIdle } from "./formatters.js";
 import type {
   HookResult,
@@ -88,8 +89,14 @@ export class ChannelContextPlugin {
 
 export function register(api: OpenClawPluginApi): void {
   const cfg = api.config ?? {};
-  new ChannelContextPlugin(
-    cfg.baseUrl ?? "http://localhost:8080",
-    cfg.timeoutMs ?? 3000,
-  ).register(api);
+  const baseUrl = cfg.baseUrl ?? "http://localhost:8080";
+  const timeoutMs = cfg.timeoutMs ?? 3000;
+  const autoCommit = cfg.casehub?.autoCommit ?? false;
+
+  new ChannelContextPlugin(baseUrl, timeoutMs).register(api);
+
+  const commitmentMgr = new CommitmentManager(baseUrl, timeoutMs, autoCommit);
+  api.on("before_tool_call", (event) => commitmentMgr.onBeforeToolCall(event));
+  api.on("agent_end", (event) => commitmentMgr.onAgentEnd(event));
+  api.on("session_start", (event) => commitmentMgr.onSessionStart(event));
 }

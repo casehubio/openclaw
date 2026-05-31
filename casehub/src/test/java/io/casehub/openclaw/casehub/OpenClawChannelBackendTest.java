@@ -52,13 +52,13 @@ class OpenClawChannelBackendTest {
 
     @Test
     void onChannelInitialised_caseChannel_registersBackend() {
-        backend.onChannelInitialised(new ChannelInitialisedEvent(channelId, "case-" + caseId + "/work"));
+        backend.onChannelInitialised(new ChannelInitialisedEvent(channelId, "case-" + caseId + "/work", false));
         verify(gateway).registerBackend(eq(channelId), eq(backend), eq("agent"));
     }
 
     @Test
     void onChannelInitialised_nonCaseChannel_doesNotRegister() {
-        backend.onChannelInitialised(new ChannelInitialisedEvent(channelId, "some-other-channel"));
+        backend.onChannelInitialised(new ChannelInitialisedEvent(channelId, "some-other-channel", false));
         verify(gateway, never()).registerBackend(any(), any(), any());
     }
 
