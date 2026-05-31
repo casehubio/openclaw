@@ -161,8 +161,10 @@ Three Maven modules plus an independent Python component:
 ```
 core/       — OpenClaw hook API client; ChannelContextWindow ring buffer + REST service
 casehub/    — CaseHub SPI implementations (WorkerProvisioner, ChannelBackend, etc.)
-app/        — Quarkus deployment (delivery webhook endpoint, ChannelContextWindow REST API)
+app/        — Quarkus deployment (MCP endpoint, delivery webhook, ChannelContextWindow REST API, plugin REST API)
 python/     — before_prompt_build hook + channel client (NOT a Maven module)
+plugin/     — TypeScript OpenClaw plugin (before_prompt_build, commitment lifecycle hooks)
+skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, casehub-case, casehub-queue, casehub-status)
 ```
 
 ### Module Detail
@@ -187,11 +189,32 @@ python/     — before_prompt_build hook + channel client (NOT a Maven module)
 - `POST /openclaw/delivery/oversight/{gateId}` — receives human oversight responses from OpenClaw; delegates to `OversightGateService.fulfill()` (always 200)
 - `GET /channel-context/{agentId}?since={windowSeq}` — ChannelContextWindow REST API (always 200; `since` defaults to 0)
 - `EvictionScheduler` — `@Scheduled` bean that calls `service.evictExpired()` at the TTL interval
+- `POST /mcp` — Quarkus MCP endpoint (`quarkus-mcp-server-http:1.11.1`); exposes commitment tools and resources via MCPorter streamable-HTTP transport
+  - Tools: `casehub_commit`, `casehub_done`, `casehub_reject`, `casehub_checkpoint`, `casehub_escalate`, `casehub_create_workitem`, `casehub_queue`, `casehub_status`
+  - Resources: `casehub://agent/{agentId}/commitments`, `casehub://channel/{agentId}/recent`
+- `POST /openclaw/plugin/commit` — plugin auto-commit REST endpoint (called by TypeScript plugin `before_tool_call` hook; not for LLM use)
+- `POST /openclaw/plugin/done` — plugin auto-done REST endpoint (called by `agent_end` hook)
+- `GET /openclaw/plugin/commitments/{agentId}` — open commitment query for `session_start` injection
 
 **`python/`** owns:
 - `before_prompt_build` hook implementation
 - HTTP client to `GET /channel-context/{agentId}`
 - Published to PyPI independently of the Maven build
+
+**`plugin/`** owns (TypeScript — not a Maven module):
+- `before_prompt_build` hook — channel context injection via `ChannelClient`
+- `before_tool_call` hook — auto-commit for agent turns (when `casehub.autoCommit: true`)
+- `agent_end` hook — auto-close commitment at turn end; fails open on Quarkus unavailability
+- `session_start` hook — inject open commitments from prior sessions into agent context
+- `commitment-manager.ts` — commitment lifecycle management (auto-commit flag, per-turn commitment flag, crash recovery via session_start)
+
+**`skills/`** owns (OpenClaw SKILL.md files — not a Maven module):
+- `casehub-global/SKILL.md` — always-active (`always: true`) CaseHub protocol awareness
+- `casehub-workitem/SKILL.md` — create tracked work items via `casehub_create_workitem` MCP tool
+- `casehub-case/SKILL.md` — open governed multi-step workflows via `casehub_open_case`
+- `casehub-queue/SKILL.md` — route tasks to named queues via `casehub_queue`
+- `casehub-status/SKILL.md` — query commitment state via `casehub_status`
+- `README.md` — ClawHub listing document
 
 ---
 
@@ -272,7 +295,7 @@ Read these **before designing**, not after.
 | Designing a new CaseHub SPI implementation | `../parent/docs/PLATFORM.md` — capability ownership, boundary rules |
 | Placing code in `core/` vs `casehub/` vs `app/` | Module detail section above; `PP-20260524-a8f597` for test/runtime scope rule |
 | Designing a new REST endpoint | `docs/specs/openclaw-integration.md` — existing API contract; check for duplication first |
-| Adding a new Python hook | `docs/specs/openclaw-skill-pack.md` — skill composition model |
+| Adding a new OpenClaw skill or plugin hook | `docs/specs/2026-05-31-epic7-skill-pack-design.md` — four-layer architecture; `docs/specs/openclaw-skill-pack.md` — original research reference |
 
 ### Foundation integration
 
@@ -427,5 +450,6 @@ Paths that are project content (not workspace noise). Skills use this to avoid f
 | Path | What it is |
 |------|------------|
 | `CLAUDE.md` | Project conventions |
-| `docs/specs/` | Integration specs (openclaw-integration.md, openclaw-skill-pack.md) |
-| `docs/adr/` | Architecture decision records |
+| `docs/specs/` | Integration specs and design records (`openclaw-integration.md`, `openclaw-skill-pack.md`, `2026-05-31-epic7-skill-pack-design.md`) |
+| `docs/adr/` | Architecture decision records (ADR-0001: hook language; ADR-0002: MCP host process) |
+| `skills/` | OpenClaw SKILL.md files (casehub-global, workitem, case, queue, status) |
