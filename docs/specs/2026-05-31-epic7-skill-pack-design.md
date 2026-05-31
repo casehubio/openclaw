@@ -5,6 +5,7 @@
 **Date:** 2026-05-31
 **Supersedes:** `openclaw-skill-pack.md` (original direction, pre-research)
 **Critique:** `openclaw-skill-pack-critique.md`
+**ADR:** `adr/0002-mcp-server-host-process.md` (Quarkus-embedded MCP, not TypeScript process)
 **Tracked risk:** casehubio/openclaw#18 (`after_tool_call` embedded run bug)
 
 ---
@@ -20,9 +21,9 @@ provisioning OpenClaw workers.
 state machines. Session resets lose commitment IDs. Instruction blocks are followed
 inconsistently. See `openclaw-skill-pack-critique.md` for the full analysis.
 
-**The revised approach:** move state management to infrastructure — an MCP server and plugin
-hooks — and reserve SKILL.md files for stateless, single-call operations where the LLM is
-the right actor.
+**The revised approach:** move state management to infrastructure — the Quarkus app's
+embedded MCP endpoint and plugin hooks — and reserve SKILL.md files for stateless,
+single-call operations where the LLM is the right actor.
 
 **What OpenClaw provides (confirmed by research):**
 
@@ -38,45 +39,58 @@ the right actor.
 
 ---
 
-## 2. Architecture — Four Layers
+## 2. Architecture — Three Active Layers + One Deferred
 
 ```
-Layer 0  MCP Server          casehub commitment tools + resources (HTTP/SSE)
-Layer 1  Plugin extension    auto-commitment via hooks (no LLM involvement)
-Layer 2  Global skill        always-in-context CaseHub behaviour protocol
-Layer 3  Stateless skills    explicit user-initiated REST calls (SKILL.md)
+Layer 0  Quarkus MCP endpoint   CaseHub commitment tools + resources (embedded in app/)
+Layer 1  Plugin extension       auto-commitment via hooks; calls Quarkus REST directly
+Layer 2  Global skill           always-in-context CaseHub protocol awareness (no commit initiation)
+Layer 3  Stateless skills       explicit user-initiated REST calls (SKILL.md)
+Layer 4  Patch skills           deferred to Epic 8 — pattern documented in §7
 ```
 
 Layers 0 and 1 handle everything stateful. Layers 2 and 3 handle everything the user
-explicitly requests. No SKILL.md file manages state.
+explicitly requests. No SKILL.md file manages state. Layer 4 is documented but not
+implemented in Epic 7.
+
+**Key architectural decisions (see ADR-0002):**
+- MCP server is embedded in the Quarkus `app/` module, not a separate TypeScript process
+- Plugin calls Quarkus REST directly for commitment operations — same pattern as
+  `channel-client.ts` for channel context; no `mcp-client.ts`
+- Single port (8080) for both REST and MCP; single base URL in OpenClaw config
 
 ---
 
-## 3. Layer 0 — MCP Server (`mcp/`)
+## 3. Layer 0 — Quarkus MCP Endpoint (`app/`)
 
-A new TypeScript package at `mcp/` in the project root. Runs as a standalone HTTP/SSE
-process. Calls the existing CaseHub REST APIs (casehub-engine, casehub-work, casehub-qhorus)
-via the Quarkus app.
+The `app/` module gains an MCP endpoint using the `quarkus-mcp-server` extension (mcp4j),
+served at `POST /mcp` (streamable-HTTP transport). Tool implementations are CDI method
+calls — no network hop, same service beans used by existing REST resources.
 
-### 3.1 Configured in OpenClaw
+### 3.1 OpenClaw Configuration
 
 ```json
-// openclaw.json — mcp.servers block
 {
   "mcp": {
     "servers": {
       "casehub": {
         "transport": "streamable-http",
-        "url": "http://localhost:8090/mcp",
-        "env": { "CASEHUB_API_KEY": "${CASEHUB_API_KEY}" }
+        "url": "http://localhost:8080/mcp"
       }
+    }
+  },
+  "plugins": {
+    "casehub-openclaw": {
+      "baseUrl": "http://localhost:8080",
+      "timeoutMs": 3000,
+      "casehub": { "autoCommit": false }
     }
   }
 }
 ```
 
 `codex.agents` omitted → available to all agents globally. Operators who want to scope it
-to specific agents add `"codex": { "agents": ["finance-agent", "home-agent"] }`.
+to specific agents add `"codex": { "agents": ["finance-agent"] }`.
 
 ### 3.2 Tools
 
@@ -84,163 +98,218 @@ All tools return structured JSON. No text parsing. The LLM receives typed result
 
 #### `casehub_commit`
 
-```typescript
+```
 input:  { task: string; deadline?: string; channelId?: string }
 output: { commitmentId: string; watchdogDeadline: string }
 ```
 
-Registers a Commitment in CaseHub for the named task. Arms the Watchdog. Returns the
-`commitmentId` as a typed field — no parsing, no hallucination. The LLM stores it in
-tool_result context; the plugin caches it in memory for automatic close via `agent_end`.
+Registers a Commitment in CaseHub for the named task. Arms the Watchdog. Returns
+`commitmentId` as a typed field — no parsing, no hallucination.
+
+`channelId` behaviour: when provided, the tool sends a RESPONSE speech act to that Qhorus
+channel acknowledging the COMMAND. This closes the COMMAND→RESPONSE loop in Qhorus. The
+`channelId` is also stored on the Commitment for reference at `casehub_done` time.
 
 #### `casehub_done`
 
-```typescript
-input:  { commitmentId: string; outcome?: string }
+```
+input:  { commitmentId: string; outcome?: string; channelId?: string }
 output: { closed: true; ledgerSeq: number }
 ```
 
-Closes the Commitment. Disarms the Watchdog. Records in the ledger.
+Closes the Commitment. Disarms the Watchdog. Records in the ledger. When `channelId`
+is provided (or recoverable from the stored Commitment), posts a DONE speech act to
+that channel completing the COMMAND→RESPONSE→DONE loop.
 
 #### `casehub_reject`
 
-```typescript
+```
 input:  { commitmentId: string; reason: string }
 output: { declined: true }
 ```
 
-DECLINE speech act. Closes the Commitment without completing the task. Reason is recorded
-in the ledger.
+DECLINE speech act. Closes the Commitment without completing the task. Reason is
+recorded in the ledger. Posts DECLINE to the originating channel if channelId is stored.
 
 #### `casehub_checkpoint`
 
-```typescript
+```
 input:  { commitmentId: string; note: string }
 output: { watchdogReset: true; newDeadline: string }
 ```
 
-Mid-task progress update. Resets the Watchdog TTL. Prevents false escalation on long-running
-tasks.
+Mid-task progress update. Resets the Watchdog TTL. Prevents false escalation on
+long-running tasks.
 
 #### `casehub_escalate`
 
-```typescript
+```
 input:  { commitmentId: string; reason: string; toAgent?: string }
 output: { escalated: true; escalationId: string }
 ```
 
-Explicitly routes to a human or named agent. Does not close the Commitment — escalation
-is a state transition, not a terminal state.
+Transitions the Commitment to ESCALATED state in CaseHub. Does not close it. The
+escalation target (human or named agent) is responsible for eventual close.
+
+Plugin behaviour on this call: the `before_tool_call` hook intercepts `casehub_escalate`
+calls and clears the turn's open commitment flag so `agent_end` does not attempt to
+auto-close the escalated commitment. See §4.3.
 
 #### `casehub_create_workitem`
 
-```typescript
-input:  { description: string; deadline: string; assignee?: string; channelId?: string }
+```
+input:  { description: string; deadline: string; assignee?: string; queueName?: string }
 output: { workitemId: string; deadline: string; watchdogArmed: boolean }
 ```
 
-Creates a WorkItem in casehub-work with SLA enforcement. The agent does not need to
-manage the resulting obligation — CaseHub owns it from creation.
+Creates a WorkItem in casehub-work with SLA enforcement. `assignee` and `queueName`
+are mutually exclusive — providing both is an error returned to the LLM.
 
 #### `casehub_open_case`
 
-```typescript
-input:  { planId: string; params?: Record<string, unknown>; description?: string }
-output: { caseId: string; stage: string }
+```
+input:  { description: string; planId?: string }
+output: { caseId: string; stage: string; planName: string }
 ```
 
-Starts a CasePlanModel. Returns the case ID. CaseHub orchestrates subsequent steps
-via Direction 1 (direct calls back to OpenClaw). The agent need not do anything further
-unless called back.
+Starts a CasePlanModel. When `planId` is omitted, calls `GET /engine/plans?q={description}`
+to find the best-match plan. If zero plans match, returns an error with the list of
+available plan names so the LLM can present them to the user. Returns case ID and
+confirms CaseHub now orchestrates subsequent steps.
 
 #### `casehub_status`
 
-```typescript
+```
 input:  { id: string; kind?: "workitem" | "case" | "commitment" }
 output: { id: string; kind: string; state: string; assignee?: string; deadline?: string; pendingActions: string[] }
 ```
 
-Queries a WorkItem, case, or Commitment by ID. `kind` defaults to auto-detect.
+`kind` defaults to auto-detect via parallel lookup. When `id` is a name rather than an
+opaque ID, uses search endpoints (`GET /work/items?q={id}` and `GET /engine/cases?q={id}`).
 
 #### `casehub_queue`
 
-```typescript
+```
 input:  { description: string; queueName: string; priority?: "normal" | "high" }
 output: { routed: true; workitemId: string; queueName: string }
 ```
 
-Routes a WorkItem to a named Qhorus queue without specifying an assignee.
+Routes a WorkItem to a named Qhorus channel queue without specifying an assignee.
 
 ### 3.3 Resources
-
-Resources are real-time state the LLM can read at any point in context assembly.
 
 #### `casehub://agent/{agentId}/commitments`
 
 Open Commitments for the agent. Injected by `session_start` hook automatically; also
-readable on demand. Prevents the agent from forgetting open obligations across session resets.
+readable on demand. Prevents the agent from forgetting open obligations across session
+resets.
 
 ```json
 {
   "open": [
-    { "commitmentId": "c-abc123", "task": "confirm boiler service", "deadline": "2026-06-03T17:00:00Z", "watchdogArmed": true }
+    {
+      "commitmentId": "c-abc123",
+      "task": "confirm boiler service",
+      "deadline": "2026-06-03T17:00:00Z",
+      "watchdogArmed": true,
+      "state": "OPEN"
+    }
   ],
   "count": 1
 }
 ```
 
+States returned: `OPEN`, `ESCALATED`. Closed commitments are not included.
+
 #### `casehub://agent/{agentId}/cases`
 
-Active CasePlanModel cases involving the agent as a worker. Gives the agent visibility
-into what CaseHub may call it to do next.
+Active CasePlanModel cases where the agent is a CaseHub worker. Requires resolving
+OpenClaw `agentId` to a CaseHub `workerId` via `GET /engine/workers?agentId={agentId}`.
+If no mapping exists (agent not yet provisioned as a CaseHub worker), returns
+`{ "active": [], "count": 0 }` — not an error.
 
 #### `casehub://channel/{channelId}/recent`
 
-Recent channel messages for the named channel. Complements the `before_prompt_build`
-hook injection — provides on-demand retrieval for agents that want to reason explicitly
-about channel history.
+Recent channel messages for the named Qhorus channel. Backed by the existing
+`ChannelContextWindowService`. Complements the `before_prompt_build` plugin hook —
+provides on-demand retrieval. Replaces the `casehub-context` standalone skill from the
+original design.
 
-### 3.4 Implementation
+### 3.4 Implementation Structure
 
 ```
-mcp/
-├── package.json            ← standalone npm package
-├── tsconfig.json
-├── src/
-│   ├── index.ts            ← MCP server entry point (HTTP/SSE via @modelcontextprotocol/sdk)
-│   ├── tools.ts            ← tool handler implementations
-│   ├── resources.ts        ← resource handler implementations
-│   ├── casehub-client.ts   ← HTTP client to Quarkus app REST APIs
-│   └── config.ts           ← CASEHUB_BASE_URL, CASEHUB_API_KEY from env
-└── tests/
-    └── tools.test.ts
+app/src/main/java/.../
+├── OpenClawDeliveryResource.java       ← existing
+├── ChannelContextWindowResource.java   ← existing
+├── EvictionScheduler.java              ← existing
+└── mcp/
+    ├── CasehubMcpServer.java           ← mcp4j entry point / server registration
+    ├── CommitmentTools.java            ← casehub_commit, casehub_done, casehub_reject,
+    │                                      casehub_checkpoint, casehub_escalate
+    ├── WorkitemTools.java              ← casehub_create_workitem, casehub_queue
+    ├── CaseTools.java                  ← casehub_open_case
+    ├── QueryTools.java                 ← casehub_status
+    └── resources/
+        ├── CommitmentsResource.java    ← casehub://agent/{id}/commitments
+        ├── CasesResource.java          ← casehub://agent/{id}/cases
+        └── ChannelRecentResource.java  ← casehub://channel/{id}/recent
 ```
 
-The MCP server calls the Quarkus app (`app/`) REST endpoints — same APIs used by the
-SKILL.md skills' `casehub_rest_client`. No direct casehub-engine/casehub-work dependencies;
-the Quarkus app is the single entry point.
+`pom.xml` addition: `io.quarkiverse.mcp:quarkus-mcp-server` dependency.
+
+### 3.5 Error Handling
+
+All tools return structured errors to the LLM — never unhandled exceptions. Standard
+error shape:
+
+```json
+{ "error": "PLAN_NOT_FOUND", "message": "No plan matched 'travel booking'. Available: [contractor-cycle, appointment-booking, travel-planning]" }
+```
+
+Error codes per tool:
+- `casehub_commit`: `CASEHUB_UNAVAILABLE`, `INVALID_DEADLINE`
+- `casehub_done` / `casehub_reject`: `COMMITMENT_NOT_FOUND`, `COMMITMENT_ALREADY_CLOSED`
+- `casehub_open_case`: `PLAN_NOT_FOUND` (includes available plan list), `CASEHUB_UNAVAILABLE`
+- `casehub_create_workitem`: `INVALID_DEADLINE`, `ASSIGNEE_AND_QUEUE_CONFLICT`, `CASEHUB_UNAVAILABLE`
+- `casehub_status`: `NOT_FOUND`
 
 ---
 
 ## 4. Layer 1 — Plugin Extension (`plugin/`)
 
-Extends the existing TypeScript plugin with three additional hooks. The plugin already
-handles `before_prompt_build` for channel context injection; these hooks add the
-commitment lifecycle.
+Extends the existing TypeScript plugin with four additional hooks. The plugin calls
+Quarkus REST directly for all commitment operations — same HTTP client pattern as the
+existing `ChannelClient`. No `mcp-client.ts`.
 
-### 4.1 `before_tool_call` — Auto-Commit
+### 4.1 Commitment Granularity — Per Turn
 
-Fires before any tool executes. The plugin inspects `event.toolKind` to decide whether
-to arm a commitment.
+One commitment per agent turn, not per tool call. With `autoCommit: true`:
+- First `before_tool_call` in a turn: open a commitment, store the `commitmentId` as
+  `turnCommitmentId` on the agent context
+- Subsequent `before_tool_call` calls in the same turn: `turnCommitmentId` already set —
+  skip
+- `agent_end`: close `turnCommitmentId` if set and not escalated; clear it
 
-**When to commit:** when the tool is a CaseHub skill tool (`casehub_*`) that represents
-a substantive task, OR when the agent config has `casehub.autoCommit: true` and the tool
-is not read-only (`casehub_status`, `casehub_queue` excluded).
+This represents one user-visible unit of work, not internal tool dispatch. The ledger
+records one commitment per turn. The Watchdog fires once per turn, not once per tool.
 
-**Auto-commit is off by default.** Operators enable it per-agent:
+### 4.2 `before_tool_call` — Auto-Commit and Escalation Interception
+
+Two responsibilities:
+
+**Auto-commit** (when `autoCommit: true` and `turnCommitmentId` not yet set):
+- Skip read-only tools: `casehub_status`, `casehub_queue` (routing only, no obligation)
+- Call `POST /commitments` on Quarkus REST API with turn description (derived from
+  the tool input or current session message)
+- Store returned `commitmentId` as `turnCommitmentId`
+
+**Escalation interception** (when tool is `casehub_escalate`):
+- Clear `turnCommitmentId` so `agent_end` does not auto-close the escalated commitment
+- The Commitment remains open in CaseHub in ESCALATED state
+
+`autoCommit` is `false` by default. Operators enable per-agent:
 
 ```json
-// openclaw.json
 {
   "agents": {
     "list": [{ "id": "home-agent", "casehub": { "autoCommit": true } }]
@@ -248,83 +317,92 @@ is not read-only (`casehub_status`, `casehub_queue` excluded).
 }
 ```
 
-When enabled, the plugin calls `casehub_commit` against the MCP server before the tool
-runs. It stores the returned `commitmentId` in `Map<agentId, Stack<commitmentId>>` —
-a stack because one turn may involve multiple tool calls.
+### 4.3 `agent_end` — Auto-Done
 
-### 4.2 `agent_end` — Auto-Done
+If `turnCommitmentId` is set (commitment was auto-opened this turn and not escalated),
+call `POST /commitments/{id}/done` on Quarkus REST. Clear `turnCommitmentId`.
 
-Fires after the agent turn completes. If the plugin's commitment stack for this agent is
-non-empty, it calls `casehub_done` for each open commitment in LIFO order.
+If `turnCommitmentId` is unset (no auto-commit, or escalated), do nothing.
 
-This is the fallback for `after_tool_call` (which has a known embedded-run bug —
-casehubio/openclaw#18). When that bug is fixed upstream, the plugin will be updated to
-use `after_tool_call` for per-tool granularity. `agent_end` continues as backstop.
+This is the fallback for `after_tool_call` (embedded-run bug — casehubio/openclaw#18).
+When that bug is fixed upstream, the plugin can be updated to use `after_tool_call` for
+per-tool granularity if desired. For Epic 7, `agent_end` is the close point.
 
-```typescript
-api.on("agent_end", async (ctx) => {
-  const stack = commitmentStack.get(ctx.agentId) ?? [];
-  for (const id of stack.reverse()) {
-    await mcpClient.callTool("casehub_done", { commitmentId: id });
-  }
-  commitmentStack.delete(ctx.agentId);
-});
-```
+**Crash recovery:** on plugin startup, the plugin calls
+`GET /channel-context/{agentId}` (existing endpoint) and, if `autoCommit` is enabled,
+reads `casehub://agent/{agentId}/commitments` to check for any OPEN commitments from
+before the crash. These are logged and injected into the next `session_start` context
+rather than auto-closed — the agent decides what to do with orphaned commitments. Auto-
+closing orphaned commitments without knowing task outcome is unsafe.
 
-### 4.3 `session_start` — Open Commitment Injection
+### 4.4 `session_start` — Open Commitment Injection
 
-On every session start, the plugin reads
-`casehub://agent/{agentId}/commitments` from the MCP server and injects any open
-commitments into the agent's initial context:
+Reads `casehub://agent/{agentId}/commitments` and injects any open commitments:
 
 ```
 ## Open CaseHub Commitments
 
 You have 1 open commitment from a previous session:
-- c-abc123: "confirm boiler service" — due 2026-06-03T17:00:00Z (Watchdog armed)
+- c-abc123: "confirm boiler service" — due 2026-06-03T17:00:00Z (Watchdog armed, state: OPEN)
 
-If this task is complete, call casehub_done("c-abc123"). If blocked, call casehub_checkpoint.
+Address this before beginning new work: call casehub_done if complete, casehub_checkpoint
+if still in progress, or casehub_reject if it cannot be completed.
 ```
 
-This solves the session boundary problem: the agent always knows its open obligations
-regardless of session resets.
+If `count: 0`, no injection. Solves the session-boundary problem: the agent always knows
+its open obligations regardless of session resets.
 
-### 4.4 `heartbeat_prompt_contribution`
+### 4.5 `heartbeat_prompt_contribution`
 
-For heartbeat agents (background monitors), injects a compact CaseHub status summary:
+For heartbeat agents (background monitors), injects a compact summary:
 
 ```
-CaseHub: 2 open commitments. casehub_status available for details.
+CaseHub: 1 open commitment. Use casehub_status for details.
 ```
 
-Heartbeat turns are context-constrained; this gives the agent awareness without the full
-session_start injection.
+Heartbeat turns are context-constrained; this gives awareness without the full
+`session_start` injection.
 
-### 4.5 Plugin File Changes
+### 4.6 Plugin File Changes
 
 ```
 plugin/src/
-├── index.ts              ← add hook registrations (before_tool_call, agent_end, session_start, heartbeat_prompt_contribution)
-├── channel-client.ts     ← unchanged
-├── formatters.ts         ← unchanged
-├── types.ts              ← extend with CommitmentEntry, AgentConfig
-├── commitment-manager.ts ← NEW: commitment stack, auto-commit/done logic
-└── mcp-client.ts         ← NEW: thin client to casehub MCP server for plugin-side calls
+├── index.ts                ← add hook registrations
+├── channel-client.ts       ← unchanged
+├── formatters.ts           ← unchanged
+├── types.ts                ← extend with CommitmentEntry, TurnState, AgentConfig
+└── commitment-manager.ts   ← NEW: per-turn commitment flag, auto-commit/done logic,
+                               Quarkus REST calls for commitment operations,
+                               escalation interception, crash recovery
 ```
+
+`CasehubClient` (extracted from `channel-client.ts` or added to it) handles:
+- `POST /commitments` → open commitment
+- `POST /commitments/{id}/done` → close commitment
+- `GET /commitments?agentId={id}&state=OPEN` → crash recovery and session_start
+
+**API key:** `CASEHUB_API_KEY` is read from environment in one place (`commitment-manager.ts`)
+and passed to `CasehubClient`. The same key is used by `casehub_rest_client.sh` (Layer 3
+skills). Key rotation requires updating one env var; both clients pick it up automatically.
 
 ---
 
 ## 5. Layer 2 — Global Skill (`skills/casehub-global/SKILL.md`)
 
-A single skill installed globally (`openclaw skills install --global`) with `always: true`
-in frontmatter. Its full content is injected into every agent's system prompt on every turn.
+Installed globally (`openclaw skills install --global`) with `always: true`. Its content is
+injected into every agent's system prompt on every turn.
+
+**Scope:** protocol awareness and available tools. NOT commitment initiation. The global
+skill never instructs the LLM to call `casehub_commit` — that is handled by auto-commit
+(Layer 1) or explicit LLM tool calls (Layer 0). This eliminates the double-commitment risk
+when `autoCommit: true`.
 
 ### 5.1 Frontmatter
 
 ```yaml
 ---
 name: casehub-global
-description: CaseHub accountability layer — always-active commitment protocol for all agents
+description: CaseHub accountability protocol awareness — available tools and when to use them
 version: 1.0.0
 always: true
 tools:
@@ -338,67 +416,41 @@ permissions: []
 ---
 ```
 
-`always: true` ensures full content injection, not just name+description. No intent
-matching — this skill is always active.
-
-### 5.2 Instruction Block
+### 5.2 Instruction Block (~280 tokens)
 
 ```markdown
-## CaseHub Accountability — Active
+## CaseHub — Active
 
-CaseHub is running alongside you. Every substantive task you commit to is tracked with a
-deadline and a Watchdog. If DONE does not arrive before the deadline, CaseHub escalates.
+CaseHub provides commitment tracking, SLA enforcement, and audit trails for your work.
+Every commitment you register has a Watchdog: if DONE does not arrive before the deadline,
+CaseHub escalates automatically.
 
-### When to register a commitment
+**Available tools:**
+- `casehub_commit(task, deadline?, channelId?)` — register a commitment and arm the Watchdog
+- `casehub_done(commitmentId, outcome?)` — close a commitment; disarms Watchdog; ledgered
+- `casehub_reject(commitmentId, reason)` — decline a task you cannot complete
+- `casehub_checkpoint(commitmentId, note)` — report progress; resets the Watchdog TTL
+- `casehub_escalate(commitmentId, reason, toAgent?)` — route to human or named agent
 
-Register a commitment (casehub_commit) when:
-- You receive a COMMAND via a Qhorus channel and are taking responsibility for it
-- You are beginning a task with a deadline that has consequences if missed
-- You are told "I'll handle this" or equivalent
+**When to call these explicitly:**
+Call `casehub_commit` when you receive a COMMAND and are personally taking responsibility
+for it — not for read-only queries or tasks already tracked by casehub_create_workitem.
+Call `casehub_done` when the task is genuinely complete. Call `casehub_reject` if you
+cannot proceed. Call `casehub_checkpoint` for long-running tasks to prevent false escalation.
 
-Do NOT register a commitment for:
-- Status queries or read-only operations
-- Tasks you are not confident you can complete (use casehub_reject with a reason instead)
-- Tasks already covered by casehub_create_workitem in the same turn
-
-### The protocol
-
-1. Receive task → call casehub_commit → store the returned commitmentId
-2. Execute the task
-3. On completion → call casehub_done(commitmentId)
-4. If blocked → call casehub_checkpoint(commitmentId, note) to reset the Watchdog
-5. If you cannot proceed → call casehub_reject(commitmentId, reason)
-
-### Your open commitments
-
-Open commitments are injected at session start and available via
-casehub://agent/{agentId}/commitments. If you see open commitments from a prior session,
-address them before beginning new work.
+**Open commitments** from prior sessions are injected at session start. Address them
+before starting new work.
 ```
-
-### 5.3 Supporting Resources
-
-```
-skills/casehub-global/
-├── SKILL.md
-└── casehub_rest_client.sh   ← shared utility called by stateless skills (Layer 3)
-```
-
-`casehub_rest_client.sh` is a thin Bash wrapper over `curl` that reads `CASEHUB_BASE_URL`
-and `CASEHUB_API_KEY` from environment. All Layer 3 skills reference it as a supporting
-resource so the REST client is defined once.
 
 ---
 
 ## 6. Layer 3 — Stateless SKILL.md Skills
 
 Four skills for explicit user-initiated actions. Each is a single REST call — no state
-management, no commitment IDs to track. The LLM is the right actor for these.
+management. `casehub-commit` and `casehub-done` are **not** Layer 3 skills; they are
+handled by Layer 0 (explicit LLM tool calls) and Layer 1 (auto-commit hooks).
 
-`casehub-commit` and `casehub-done` are **not** Layer 3 skills. They are handled by
-Layer 0 (MCP tools, explicit LLM calls) and Layer 1 (plugin hooks, automatic). A SKILL.md
-for commit/done would re-introduce the LLM state management problems identified in the
-critique.
+All four skills use `casehub_rest_client.sh` as a shared supporting resource.
 
 ### 6.1 `casehub-workitem`
 
@@ -412,13 +464,16 @@ triggers:
   - "create a work item for"
   - "make this a task with a deadline"
   - "add a deadline to this"
-tools:
-  - casehub_rest_client
+tools: [casehub_rest_client]
 ```
 
-Instruction block: extract task description, deadline (parse natural language date to ISO
-8601), optional assignee. Call `POST /work/items`. Return workitem ID and confirmed deadline.
-On API error: report failure, do not silently continue.
+**Instruction block:** extract task description, parse deadline to ISO 8601 (ask user if
+ambiguous). Call `POST /work/items`. Return workitem ID and confirmed deadline.
+
+**Error handling:**
+- Unparseable deadline → ask user to clarify before calling the API
+- `INVALID_DEADLINE` (past date) → report and ask for a new deadline
+- `CASEHUB_UNAVAILABLE` → report failure; do not silently continue or retry
 
 ### 6.2 `casehub-case`
 
@@ -432,15 +487,17 @@ triggers:
   - "I need to manage this workflow"
   - "create a case plan for"
   - "open a governed workflow"
-tools:
-  - casehub_rest_client
+tools: [casehub_rest_client]
 ```
 
-Instruction block: identify the appropriate CasePlanModel from user intent — call
-`GET /engine/plans?q={description}` via `casehub_rest_client` to find the best-match
-plan ID. Call `POST /engine/cases` with the resolved plan ID. Return case ID. Inform
-the user that CaseHub now orchestrates subsequent steps and the agent will be called
-when action is required.
+**Instruction block:** call `GET /engine/plans?q={user intent description}`. If zero
+results, present the full list of available plan names to the user and ask them to select
+or describe their intent differently. Do not guess. On match, call `POST /engine/cases`.
+Return case ID. Inform the user that CaseHub now orchestrates subsequent steps.
+
+**Error handling:**
+- Zero plan matches → list available plans; ask user to select
+- `CASEHUB_UNAVAILABLE` → report failure
 
 ### 6.3 `casehub-queue`
 
@@ -454,13 +511,15 @@ triggers:
   - "send to finance"
   - "put this in the home queue"
   - "route this to whoever handles [domain]"
-tools:
-  - casehub_rest_client
+tools: [casehub_rest_client]
 ```
 
-Instruction block: extract task description and queue name. Call
-`POST /work/items` with queue routing parameter. Return confirmation with queue name
-and workitem ID.
+**Instruction block:** extract task description and queue name. Call `POST /work/items`
+with queue routing parameter. Return confirmation with queue name and workitem ID.
+
+**Error handling:**
+- Unknown queue name → call `GET /work/queues` to list valid queues; present to user
+- `CASEHUB_UNAVAILABLE` → report failure
 
 ### 6.4 `casehub-status`
 
@@ -474,20 +533,26 @@ triggers:
   - "update on the [name] case"
   - "where are we with"
   - "what's happening with"
-tools:
-  - casehub_rest_client
+tools: [casehub_rest_client]
 ```
 
-Instruction block: resolve the case or workitem from context (ID if available, name
-search via `GET /work/items?q={name}` or `GET /engine/cases?q={name}` otherwise).
-Format state, assignee, deadline, and pending actions as a human-readable summary.
+**Instruction block:** if the user provides an ID, call the appropriate endpoint directly.
+If a name is provided, search `GET /work/items?q={name}` and `GET /engine/cases?q={name}`
+in parallel. If zero results, tell the user nothing was found. If multiple results, list
+them and ask which one. Format state, assignee, deadline, and pending actions as a
+human-readable summary.
+
+**Error handling:**
+- Zero search results → report nothing found
+- Multiple results → list and ask
+- `CASEHUB_UNAVAILABLE` → report failure
 
 ---
 
 ## 7. Layer 4 — Patch Skill Pattern (documented, not implemented in Epic 7)
 
 A patch skill wraps an existing OpenClaw skill with CaseHub commitment logic without
-modifying the original. Pattern documented here; implementation deferred to Epic 8+.
+modifying the original. Pattern documented here; implementation is Epic 8.
 
 ```yaml
 # skills/casehub-patch-calendar/SKILL.md
@@ -495,23 +560,18 @@ name: casehub-patch-calendar
 description: Calendar skill with CaseHub commitment tracking
 version: 1.0.0
 triggers:
-  - "add to my calendar with tracking"
-  - "schedule this and track it"
-  # original calendar triggers are retained in the base skill
-tools:
-  - casehub_commit
-  - casehub_done
-  - calendar          ← delegates to the original skill's tool
+  - "schedule this and track the commitment"
+  - "add to my calendar with CaseHub tracking"
+tools: [casehub_commit, casehub_done, calendar]
 ```
 
 Instruction block:
 1. Call `casehub_commit` — store commitmentId
-2. Execute the calendar operation (same as the base calendar skill's instruction block)
+2. Execute the calendar operation
 3. Call `casehub_done(commitmentId)` on success; `casehub_reject(commitmentId, reason)` on failure
 
-Priority skills to patch in Epic 8: calendar, banking (Open Banking), messaging
-(WhatsApp/Telegram), Home Assistant, social monitoring. These cover the five use cases
-in the README.
+Priority skills to patch in Epic 8: calendar, banking, messaging, Home Assistant, social
+monitoring — the skills that appear in the README use cases.
 
 ---
 
@@ -521,48 +581,39 @@ in the README.
 casehub-openclaw/
 ├── core/               ← unchanged
 ├── casehub/            ← unchanged
-├── app/                ← unchanged (Quarkus REST APIs consumed by MCP server)
+├── app/                ← EXTENDED: add mcp/ package (Quarkus MCP endpoint)
+│   └── src/main/java/.../mcp/
+│       ├── CasehubMcpServer.java
+│       ├── CommitmentTools.java
+│       ├── WorkitemTools.java
+│       ├── CaseTools.java
+│       ├── QueryTools.java
+│       └── resources/
+│           ├── CommitmentsResource.java
+│           ├── CasesResource.java
+│           └── ChannelRecentResource.java
 ├── python/             ← unchanged
-├── plugin/             ← EXTENDED: add commitment hooks, mcp-client.ts, commitment-manager.ts
-│   ├── src/
-│   │   ├── index.ts
-│   │   ├── channel-client.ts
-│   │   ├── formatters.ts
-│   │   ├── types.ts
-│   │   ├── commitment-manager.ts   ← NEW
-│   │   └── mcp-client.ts           ← NEW
-│   └── tests/
-├── mcp/                ← NEW: MCP server package
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── src/
-│   │   ├── index.ts
-│   │   ├── tools.ts
-│   │   ├── resources.ts
-│   │   ├── casehub-client.ts
-│   │   └── config.ts
-│   └── tests/
+├── plugin/             ← EXTENDED: commitment hooks + CasehubClient
+│   └── src/
+│       ├── index.ts
+│       ├── channel-client.ts
+│       ├── formatters.ts
+│       ├── types.ts
+│       └── commitment-manager.ts   ← NEW
 └── skills/             ← NEW: skill pack
     ├── casehub-global/
     │   ├── SKILL.md
-    │   └── casehub_rest_client.sh
-    ├── casehub-workitem/
-    │   └── SKILL.md
-    ├── casehub-case/
-    │   ├── SKILL.md
-    │   └── casehub_plan_selector.sh
-    ├── casehub-queue/
-    │   └── SKILL.md
-    ├── casehub-status/
-    │   └── SKILL.md
-    └── README.md                   ← ClawHub listing document
+    │   └── casehub_rest_client.sh  ← shared by all Layer 3 skills
+    ├── casehub-workitem/SKILL.md
+    ├── casehub-case/SKILL.md
+    ├── casehub-queue/SKILL.md
+    ├── casehub-status/SKILL.md
+    └── README.md                   ← ClawHub listing (pre-drafted)
 ```
 
 ---
 
-## 9. OpenClaw Configuration — End-to-End Setup
-
-A user installing the full stack configures OpenClaw as follows:
+## 9. OpenClaw End-to-End Configuration
 
 ```json
 {
@@ -570,7 +621,7 @@ A user installing the full stack configures OpenClaw as follows:
     "servers": {
       "casehub": {
         "transport": "streamable-http",
-        "url": "http://localhost:8090/mcp"
+        "url": "http://localhost:8080/mcp"
       }
     }
   },
@@ -578,16 +629,13 @@ A user installing the full stack configures OpenClaw as follows:
     "casehub-openclaw": {
       "baseUrl": "http://localhost:8080",
       "timeoutMs": 3000,
-      "casehub": {
-        "mcpUrl": "http://localhost:8090/mcp",
-        "autoCommit": false
-      }
+      "casehub": { "autoCommit": false }
     }
   }
 }
 ```
 
-Environment:
+Environment (one location, both plugin and skills pick it up):
 ```bash
 CASEHUB_API_KEY=<key>
 CASEHUB_BASE_URL=http://localhost:8080
@@ -599,59 +647,61 @@ openclaw skills install --global casehub-global
 openclaw skills install casehub-workitem casehub-case casehub-queue casehub-status
 ```
 
-MCP server startup (separate process):
-```bash
-npx casehub-openclaw-mcp
-# or: docker run casehubio/casehub-openclaw-mcp
-```
+**API key appears in two places** — `CASEHUB_API_KEY` env var (plugin + MCP server) and
+`casehub_rest_client.sh` (Layer 3 skills, also reads the env var). Key rotation is one
+env var change; both paths pick it up automatically.
 
 ---
 
 ## 10. Testing
 
-### MCP Server (`mcp/tests/`)
+### Quarkus MCP Endpoint (`app/` — `@QuarkusTest`)
 
-- **Tool contract tests:** each tool called with valid input returns correctly typed output;
-  each tool called with missing required fields returns structured error
-- **Resource tests:** each resource returns correct JSON shape against a stubbed Quarkus
-  app
-- **Auth tests:** missing or invalid `CASEHUB_API_KEY` returns 401 from MCP server, not
-  an unhandled error
-- **Casehub client tests:** verify correct REST endpoint called per tool, correct HTTP
-  method and body shape
-
-### Plugin Extension (`plugin/tests/`)
-
-- **`before_tool_call`** with `autoCommit: true` → `casehub_commit` called; commitmentId
-  stored in stack
-- **`before_tool_call`** with `autoCommit: false` → no commit call
-- **`before_tool_call`** for read-only tool (`casehub_status`) → no commit even when
-  autoCommit is true
-- **`agent_end`** with non-empty stack → `casehub_done` called for each stacked commitmentId
-  in LIFO order; stack cleared
-- **`agent_end`** with empty stack → no calls
-- **`session_start`** with open commitments → open commitment notice injected into context
-- **`session_start`** with no open commitments → no injection
-- **Fail-open:** MCP server unreachable during `before_tool_call` → log warning, allow tool
-  to proceed without commitment; do not block agent turn
-
-### Skills (`skills/tests/` — pytest against stub Quarkus app)
-
-- `casehub-workitem`: natural language deadline parsed to ISO 8601; POST /work/items called
-  with correct body; workitem ID returned to user
-- `casehub-case`: plan selector query matches intent; POST /engine/cases called; case ID
-  returned; user informed CaseHub now orchestrates
-- `casehub-queue`: queue name extracted; POST /work/items with queue param; confirmation
+- Each tool called with valid input → correct Quarkus service method invoked; typed output
   returned
-- `casehub-status`: ID-based lookup calls correct endpoint; name-based lookup uses search
-  endpoint; output formatted correctly
+- `casehub_commit` with `channelId` → RESPONSE speech act dispatched to Qhorus channel
+- `casehub_open_case` with zero-match plan → error includes available plan list
+- `casehub_create_workitem` with both `assignee` and `queueName` → `ASSIGNEE_AND_QUEUE_CONFLICT`
+- `casehub_escalate` → Commitment transitions to ESCALATED; not closed
+- `casehub://agent/{id}/cases` with unprovisioned agentId → `{ "active": [], "count": 0 }`
+- MCP endpoint responds on `POST /mcp` (streamable-HTTP); correct MCPorter negotiation
+
+### Plugin (`plugin/tests/`)
+
+- `before_tool_call` with `autoCommit: true`, no `turnCommitmentId` → commit called;
+  `turnCommitmentId` set
+- `before_tool_call` with `autoCommit: true`, `turnCommitmentId` already set → no second
+  commit
+- `before_tool_call` for read-only tool (`casehub_status`) → no commit even with
+  `autoCommit: true`
+- `before_tool_call` for `casehub_escalate` → `turnCommitmentId` cleared
+- `agent_end` with `turnCommitmentId` set → `casehub_done` called; `turnCommitmentId`
+  cleared
+- `agent_end` with no `turnCommitmentId` → no calls made
+- `agent_end` after escalation → no `casehub_done` called (turnCommitmentId was cleared)
+- `session_start` with open commitments → injection formatted correctly
+- `session_start` with no open commitments → no injection
+- Quarkus unavailable during `before_tool_call` → log warning; `turnCommitmentId` NOT set;
+  agent turn proceeds; `agent_end` correctly handles empty `turnCommitmentId`
+- Plugin restart with OPEN commitments in CaseHub → logged and injected at next
+  `session_start`; not auto-closed
+
+### Layer 3 Skills
+
+- `casehub-workitem`: natural language deadline parsed to ISO 8601; correct POST body;
+  workitem ID returned
+- `casehub-workitem`: past deadline → ask user before calling API
+- `casehub-case`: zero-match plan → list of available plans presented to user
+- `casehub-queue`: unknown queue → valid queue list presented
+- `casehub-status`: name search with zero results → "nothing found" reported
+- `casehub-status`: name search with multiple results → list presented, user asked to select
 
 ### Global Skill
 
-- `always: true` respected by OpenClaw skill loader (integration test with local OpenClaw
-  instance)
-- Instruction block present in system prompt on every turn (verify via `llm_input` hook
-  in test plugin)
+- `always: true` respected: full instruction block present in every agent's system prompt
+- No commitment initiation instructions in the instruction block (double-commit prevention)
+- Instruction block ≤ 300 tokens measured against formatted SKILL.md content before
+  publishing
 
 ---
 
@@ -659,36 +709,32 @@ npx casehub-openclaw-mcp
 
 | Risk | Severity | Mitigation | Tracking |
 |---|---|---|---|
-| `after_tool_call` does not fire in embedded runs | Medium | Use `agent_end` as fallback; per-turn granularity deferred | openclaw/openclaw#60209 + casehubio/openclaw#18 |
-| `always: true` token cost at scale | Low | Instruction block kept under 300 tokens; monitor at 10+ skills installed | — |
-| MCP server as single point of failure | Medium | Plugin fails open — tool calls proceed without commitment if MCP is down | — |
-| CaseHub API changes break MCP tools | Medium | Pin CaseHub API version in MCP server; integration tests against stub | — |
-| `autoCommit` creates spurious commitments on short-lived tool calls | Low | Off by default; operators enable per-agent with awareness of implications | — |
+| `after_tool_call` does not fire in embedded runs | Medium | Use `agent_end` as fallback | openclaw#60209 + casehubio/openclaw#18 |
+| `quarkus-mcp-server` (mcp4j) maturity | Medium | Fallback: standalone TypeScript MCP process (see ADR-0002) | — |
+| `always: true` token cost | Low | Instruction block ≤ 300 tokens; measure before publishing | — |
+| Plugin fails open leaves commitment orphaned | Low | Logged; visible at next `session_start`; Watchdog catches it | — |
+| agentId → workerId mapping requires engine API | Low | `casehub://agent/{id}/cases` returns empty if no mapping; not an error | — |
 
 ---
 
 ## 12. Out of Scope — Epic 7
 
-These are captured in the roadmap and will be sequenced in future epics:
-
-- Patch skills (`casehub-patch-*`) — pattern documented in §7; implementation is Epic 8
-- Phase 2 lifecycle skills: `casehub-reject`, `casehub-block`, `casehub-delegate`,
-  `casehub-checkpoint` as standalone SKILL.md files
-- Phase 3 multi-agent coordination: `casehub-broadcast`, `casehub-vote`, `casehub-handoff`
+- Patch skills (`casehub-patch-*`) — pattern in §7; implementation is Epic 8
+- `casehub-context` as SKILL.md — superseded by `casehub://channel/{id}/recent` resource
+- `casehub-commit` and `casehub-done` as SKILL.md — handled by Layer 0 and Layer 1
+- Phase 2 lifecycle: `casehub-reject`, `casehub-block`, `casehub-delegate` as SKILL.md
+- Phase 3 multi-agent: `casehub-broadcast`, `casehub-vote`, `casehub-handoff`
 - Phase 4 governance: `casehub-gate`, `casehub-policy`, `casehub-review`
-- Phase 5 intelligence: `casehub-remember`, `casehub-recall` (CaseMemoryStore)
+- Phase 5 intelligence: `casehub-remember`, `casehub-recall`
 - Phase 6 economic: `casehub-budget`, `casehub-quote`, `casehub-contract`
-- `casehub-context` skill — superseded by `casehub://channel/{id}/recent` MCP resource
-- `casehub-commit` and `casehub-done` as standalone SKILL.md skills — handled by Layer 0
-  and Layer 1; SKILL.md equivalents would re-introduce LLM state management
+- Opportunity C (new Commitment for escalation target) — correct architecture; requires
+  new casehub-engine API surface; deferred to Phase 2
 
 ---
 
 ## 13. README
 
 The ClawHub listing document (`skills/README.md`) is pre-drafted. It covers: the
-accountability value proposition, the Git analogy, installation steps, the seven
-capabilities (MCP tools + global skill + stateless skills), five worked use cases, the
-cross-agent awareness section, and the roadmap table.
-
-Draft: produced during brainstorming session 2026-05-31.
+accountability value proposition, the Git analogy, installation steps, the four-layer
+architecture, five worked use cases, the cross-agent awareness section, and the roadmap
+table. Commit alongside the skill files at implementation time.
