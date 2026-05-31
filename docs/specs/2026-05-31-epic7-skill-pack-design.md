@@ -30,7 +30,7 @@ single-call operations where the LLM is the right actor.
 | Capability | Status |
 |---|---|
 | MCP server support via MCPorter (HTTP/SSE/streamable-HTTP) | Shipped Feb 2026 |
-| `before_tool_call` plugin hook | Confirmed, working |
+| `before_tool_call` plugin hook — `event.toolName` confirmed | Confirmed, working |
 | `after_tool_call` plugin hook | Confirmed, bug in embedded runs (tracked: openclaw#18) |
 | `agent_end` plugin hook | Confirmed, working — fallback for commitment close |
 | `session_start` plugin hook | Confirmed, working |
@@ -107,8 +107,27 @@ Registers a Commitment in CaseHub for the named task. Arms the Watchdog. Returns
 `commitmentId` as a typed field — no parsing, no hallucination.
 
 `channelId` behaviour: when provided, the tool sends a RESPONSE speech act to that Qhorus
-channel acknowledging the COMMAND. This closes the COMMAND→RESPONSE loop in Qhorus. The
-`channelId` is also stored on the Commitment for reference at `casehub_done` time.
+channel acknowledging the COMMAND. This closes the COMMAND→RESPONSE loop in Qhorus.
+
+**channelId storage:** the Quarkus MCP handler maintains an in-memory map of
+`commitmentId → channelId`. When `casehub_done` fires, it looks up the channelId from
+this map and posts a DONE speech act to the originating channel. The map is keyed only
+by commitmentId; it is cleared when the commitment closes.
+
+**Crash gap:** if the Quarkus app restarts between `casehub_commit` and `casehub_done`,
+the in-memory map is lost. The commitment remains open in CaseHub (the Watchdog fires
+if unresolved), but the DONE speech act will not be posted to Qhorus. The Commitment is
+still closeable via `casehub_done` — only the Qhorus notification is lost. This is
+acceptable for Epic 7; storing channelId in the casehub-engine commitment entity
+(requiring a schema change) is deferred to a future epic.
+
+**Auto-commit limitation:** when `autoCommit: true`, the plugin opens a commitment via
+`before_tool_call` without a `channelId` — the plugin does not have access to the
+originating Qhorus channel at hook time. Therefore: **auto-committed turns do not post
+RESPONSE or DONE speech acts to Qhorus.** COMMAND→RESPONSE→DONE channel loop is only
+closed when the LLM explicitly calls `casehub_commit` with a `channelId`. This is a
+stated design boundary, not a bug. The commitment is tracked and ledgered either way;
+only the Qhorus notification is absent for auto-committed turns.
 
 #### `casehub_done`
 
@@ -117,9 +136,11 @@ input:  { commitmentId: string; outcome?: string; channelId?: string }
 output: { closed: true; ledgerSeq: number }
 ```
 
-Closes the Commitment. Disarms the Watchdog. Records in the ledger. When `channelId`
-is provided (or recoverable from the stored Commitment), posts a DONE speech act to
-that channel completing the COMMAND→RESPONSE→DONE loop.
+Closes the Commitment. Disarms the Watchdog. Records in the ledger. Posts a DONE speech
+act to the originating Qhorus channel if `channelId` is in the MCP handler's in-memory
+map for this `commitmentId` (stored at `casehub_commit` time). If the map entry is
+absent (Quarkus restarted since commit), DONE is recorded in CaseHub but the Qhorus
+notification is not sent — see channelId storage note in `casehub_commit`.
 
 #### `casehub_reject`
 
@@ -152,8 +173,16 @@ Transitions the Commitment to ESCALATED state in CaseHub. Does not close it. The
 escalation target (human or named agent) is responsible for eventual close.
 
 Plugin behaviour on this call: the `before_tool_call` hook intercepts `casehub_escalate`
-calls and clears the turn's open commitment flag so `agent_end` does not attempt to
-auto-close the escalated commitment. See §4.3.
+by matching `event.toolName === "casehub_escalate"` and clears the turn's
+`turnCommitmentId` so `agent_end` does not attempt to auto-close the escalated
+commitment. See §4.3.
+
+**Watchdog on escalated commitments — design decision:** the Watchdog continues to run
+on commitments in ESCALATED state. This is intentional: if the escalation target (human
+or named agent) does not resolve the commitment before the deadline, CaseHub escalates
+again. Deadline enforcement applies to escalations. The escalation target is responsible
+for closing the commitment (via `casehub_done`) or requesting an extension. This is not
+a gap — it is the correct behaviour for SLA-governed escalations.
 
 #### `casehub_create_workitem`
 
@@ -581,7 +610,8 @@ monitoring — the skills that appear in the README use cases.
 casehub-openclaw/
 ├── core/               ← unchanged
 ├── casehub/            ← unchanged
-├── app/                ← EXTENDED: add mcp/ package (Quarkus MCP endpoint)
+├── app/                ← EXTENDED: add mcp/ package + quarkus-mcp-server dependency
+│   ├── pom.xml         ← add io.quarkiverse.mcp:quarkus-mcp-server
 │   └── src/main/java/.../mcp/
 │       ├── CasehubMcpServer.java
 │       ├── CommitmentTools.java
