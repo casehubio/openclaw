@@ -450,6 +450,8 @@ Paths that are project content (not workspace noise). Skills use this to avoid f
 | Path | What it is |
 |------|------------|
 | `CLAUDE.md` | Project conventions |
+| `ARC42STORIES.MD` | Permanent architecture record (§1–§13); supersedes `LAYER-LOG.md` as canonical record |
+| `LAYER-LOG.md` | Historical Epic log (superseded by ARC42STORIES.MD; retained as reference) |
 | `docs/specs/` | Integration specs and design records (`openclaw-integration.md`, `openclaw-skill-pack.md`, `2026-05-31-epic7-skill-pack-design.md`) |
 | `docs/adr/` | Architecture decision records (ADR-0001: hook language; ADR-0002: MCP host process) |
 | `skills/` | OpenClaw SKILL.md files (casehub-global, workitem, case, queue, status) |
