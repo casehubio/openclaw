@@ -14,11 +14,13 @@ Cross-references:
 - Skill pack spec: `docs/specs/openclaw-skill-pack.md`
 - Platform deep-dives: `../parent/docs/repos/casehub-openclaw.md`
 
+**Migrated to ARC42STORIES.MD:** this file is retained for historical reference. The canonical architecture record is `ARC42STORIES.MD` (§9.2 Chapter Index, §9.3 Chapter Entries, §9.4 Layer Entries). Epic statuses below have been updated to match GitHub reality.
+
 ---
 
 ## Epic 1 — Scaffold
 
-**Status:** In progress
+**Status:** Complete (scaffold, 2026-05-25)
 **Issue:** casehubio/openclaw#1
 **What it establishes:**
 - Maven multi-module project: core/, casehub/, app/, python/
@@ -71,8 +73,8 @@ Tests: 12 pure unit tests (Mockito, no CDI) + 5 `@QuarkusTest` WireMock integrat
 
 ## Epic 3 — ChannelContextWindow Service
 
-**Status:** Pending
-**Issue:** casehubio/openclaw#3 (to be created)
+**Status:** Complete (code complete 2026-05-28; GitHub issue #3 left open — close after review)
+**Issue:** casehubio/openclaw#3
 **Planned scope:**
 - `MessageObserver` SPI implementation — passive ring buffer population
 - Per-channel ring buffer (configurable size + TTL)
@@ -85,8 +87,8 @@ Tests: 12 pure unit tests (Mockito, no CDI) + 5 `@QuarkusTest` WireMock integrat
 
 ## Epic 4 — CaseHub SPI Implementations
 
-**Status:** Pending
-**Issue:** casehubio/openclaw#4 (to be created)
+**Status:** Complete (2026-05-29)
+**Issue:** casehubio/openclaw#4
 **Planned scope:**
 - `WorkerProvisioner` — provisions OpenClaw instances via /hooks/agent on demand
 - `ChannelBackend` — bidirectional bridge: Qhorus→OpenClaw and OpenClaw→Qhorus
@@ -99,8 +101,8 @@ Tests: 12 pure unit tests (Mockito, no CDI) + 5 `@QuarkusTest` WireMock integrat
 
 ## Epic 5 — Python SDK Component
 
-**Status:** Pending
-**Issue:** casehubio/openclaw#5 (to be created)
+**Status:** Complete (2026-05-29)
+**Issue:** casehubio/openclaw#5
 **Planned scope:**
 - `python/src/casehub_openclaw/context_hook.py` — before_prompt_build hook
 - `python/src/casehub_openclaw/channel_client.py` — ChannelContextWindow REST client
@@ -113,8 +115,8 @@ Tests: 12 pure unit tests (Mockito, no CDI) + 5 `@QuarkusTest` WireMock integrat
 
 ## Epic 6 — Bidirectional Wiring
 
-**Status:** Pending
-**Issue:** casehubio/openclaw#6 (to be created)
+**Status:** Complete (2026-05-30)
+**Issue:** casehubio/openclaw#6
 **Planned scope:**
 - End-to-end: COMMAND on Qhorus work channel → ChannelBackend.post() → /hooks/agent → LLM → DONE/DECLINE delivered back via deliver:webhook
 - Speech act classification: skill instruction prefix approach (Phase 1)
@@ -125,8 +127,8 @@ Tests: 12 pure unit tests (Mockito, no CDI) + 5 `@QuarkusTest` WireMock integrat
 
 ## Epic 7 — casehub Skill Pack
 
-**Status:** Pending
-**Issue:** casehubio/openclaw#7 (to be created)
+**Status:** Complete (2026-05-31)
+**Issue:** casehubio/openclaw#7
 **Planned scope:**
 - Seven OpenClaw skills published to ClawHub registry
 - casehub-workitem, casehub-case, casehub-queue, casehub-status, casehub-commit, casehub-done, casehub-context
@@ -138,7 +140,7 @@ Tests: 12 pure unit tests (Mockito, no CDI) + 5 `@QuarkusTest` WireMock integrat
 ## Epic 8 — Speech Act Classification
 
 **Status:** Pending
-**Issue:** casehubio/openclaw#8 (to be created)
+**Issue:** casehubio/openclaw#8
 **Planned scope:**
 - Skill instruction prefix discipline (Phase 1: [STATUS], [DONE], [EVENT] etc.)
 - Structured JSON output format (Phase 2: {"type": "STATUS", "content": "..."})
