@@ -59,7 +59,7 @@ public class OpenClawHookClient {
             throw new OpenClawInvocationException(
                     "No session registered for agentId: " + agentId);
         }
-        invoke(agentId, message, model, timeoutSeconds, session.webhookUrl());
+        invokeInternal(agentId, message, model, timeoutSeconds, session.webhookUrl(), session.sessionKey());
     }
 
     /**
@@ -81,7 +81,11 @@ public class OpenClawHookClient {
             throw new OpenClawInvocationException(
                     "No session registered for agentId: " + agentId);
         }
+        invokeInternal(agentId, message, model, timeoutSeconds, deliveryUrl, session.sessionKey());
+    }
 
+    private void invokeInternal(String agentId, String message, String model, int timeoutSeconds,
+                                String deliveryUrl, String sessionKey) {
         String effectiveModel = (model == null || model.isBlank())
                 ? config.agent().defaultModel()
                 : model;
@@ -92,7 +96,7 @@ public class OpenClawHookClient {
 
         AgentInvocationRequest request = AgentInvocationRequest.forWebhook(
                 message, agentId, deliveryUrl,
-                effectiveModel, effectiveTimeout, session.sessionKey(), null /* wakeMode: null = OpenClaw default */);
+                effectiveModel, effectiveTimeout, sessionKey, null /* wakeMode: null = OpenClaw default */);
 
         // Quarkus Reactive REST client throws WebApplicationException (specifically
         // ClientWebApplicationException) for non-2xx responses when return type is Response.

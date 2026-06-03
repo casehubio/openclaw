@@ -205,7 +205,7 @@ class BidirectionalWiringTest {
                 .toList();
         assertThat(commands).hasSize(1);
         assertThat(commands.get(0).correlationId).isNotNull();
-        assertThat(commands.get(0).sender).isEqualTo("test-agent");
+        assertThat(commands.get(0).sender).isEqualTo("openclaw-gate");
     }
 
     // ── 4. Gate required invokes OpenClaw with oversight URL ─────────────────

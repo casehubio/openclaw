@@ -26,9 +26,9 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,6 +42,7 @@ class OversightGateServiceTest {
     OpenClawCasehubConfig casehubConfig;
     SpeechActClassifier speechActClassifier;
     ActionRiskClassifier actionRiskClassifier;
+    OversightGateDispatcher gateDispatcher;
     OversightGateService service;
 
     UUID caseId = UUID.randomUUID();
@@ -76,6 +77,13 @@ class OversightGateServiceTest {
         when(channelService.findByName("case-" + caseId + "/work"))
                 .thenReturn(Optional.of(workChannel));
 
+        gateDispatcher = mock(OversightGateDispatcher.class);
+        doNothing().when(gateDispatcher).dispatch(
+                org.mockito.ArgumentMatchers.anyBoolean(),
+                any(), any(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                any(), org.mockito.ArgumentMatchers.any());
+
         when(speechActClassifier.classify(any())).thenReturn(MessageType.DONE);
         when(actionRiskClassifier.classify(any())).thenReturn(new RiskDecision.Autonomous());
 
@@ -96,7 +104,8 @@ class OversightGateServiceTest {
         when(casehubConfig.oversight()).thenReturn(oversight);
 
         service = new OversightGateService(channelService, messageService, commitmentStore,
-                hookClient, clientConfig, casehubConfig, speechActClassifier, actionRiskClassifier);
+                hookClient, clientConfig, casehubConfig, speechActClassifier, actionRiskClassifier,
+                gateDispatcher);
     }
 
     // ── evaluate() — autonomous path ──────────────────────────────────────────
@@ -135,7 +144,7 @@ class OversightGateServiceTest {
         MessageDispatch dispatched = captor.getValue();
         assertThat(dispatched.channelId()).isEqualTo(oversightChannelId);
         assertThat(dispatched.type()).isEqualTo(MessageType.COMMAND);
-        assertThat(dispatched.sender()).isEqualTo("finance-agent");
+        assertThat(dispatched.sender()).isEqualTo(OversightGateService.GATE_SENDER);
         assertThat(dispatched.correlationId()).isNotNull();
         assertThat(dispatched.content()).contains("Cancel Netflix subscription.");
     }
@@ -204,6 +213,11 @@ class OversightGateServiceTest {
      * Helper: opens a gate via evaluate() and stubs the durable COMMAND lookup so
      * that fulfill() can resolve the inReplyTo value. Returns the gateId extracted
      * from the dispatched COMMAND.
+     *
+     * <p>Side effect: consumes one verify(messageService).dispatch() interaction inside
+     * the helper. Callers that need to verify further messageService.dispatch() calls
+     * after this (e.g. integration tests that don't mock gateDispatcher) should call
+     * clearInvocations(messageService) before their own verify calls.
      */
     private UUID openGateAndCaptureGateId() {
         when(actionRiskClassifier.classify(any()))
@@ -224,52 +238,42 @@ class OversightGateServiceTest {
     }
 
     @Test
-    void fulfill_approved_dispatchesResponseToOversightAndStatusToWork() {
+    void fulfill_approved_callsGateDispatcherWithApprovedTrue() {
         UUID gateId = openGateAndCaptureGateId();
         when(commitmentStore.findByCorrelationId(gateId.toString()))
                 .thenReturn(Optional.of(commitment(gateId)));
-
-        // Reset mock to capture only fulfill dispatches
-        org.mockito.Mockito.clearInvocations(messageService);
-        when(messageService.dispatch(any())).thenReturn(dispatchResult(100L));
 
         service.fulfill(gateId, "approved");
 
-        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
-        verify(messageService, times(2)).dispatch(captor.capture());
-
-        MessageDispatch oversight = captor.getAllValues().get(0);
-        assertThat(oversight.channelId()).isEqualTo(oversightChannelId);
-        assertThat(oversight.type()).isEqualTo(MessageType.RESPONSE);
-        assertThat(oversight.correlationId()).isEqualTo(gateId.toString());
-        assertThat(oversight.inReplyTo()).isEqualTo(42L);
-        assertThat(oversight.sender()).isEqualTo("openclaw-gate");
-
-        MessageDispatch work = captor.getAllValues().get(1);
-        assertThat(work.channelId()).isEqualTo(workChannelId);
-        assertThat(work.type()).isEqualTo(MessageType.STATUS);
-        assertThat(work.sender()).isEqualTo("openclaw-gate");
+        ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
+        ArgumentCaptor<UUID> oversightCaptor = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<UUID> workCaptor = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<Long> inReplyToCaptor = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<UUID> gateIdCaptor = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<String> outputCaptor = ArgumentCaptor.forClass(String.class);
+        verify(gateDispatcher).dispatch(
+                approvedCaptor.capture(), oversightCaptor.capture(), workCaptor.capture(),
+                inReplyToCaptor.capture(), gateIdCaptor.capture(), outputCaptor.capture());
+        assertThat(approvedCaptor.getValue()).isTrue();
+        assertThat(oversightCaptor.getValue()).isEqualTo(oversightChannelId);
+        assertThat(workCaptor.getValue()).isEqualTo(workChannelId);
+        assertThat(inReplyToCaptor.getValue()).isEqualTo(42L);
+        assertThat(gateIdCaptor.getValue()).isEqualTo(gateId);
+        assertThat(outputCaptor.getValue()).isEqualTo("approved");
     }
 
     @Test
-    void fulfill_rejected_dispatchesDeclineToOversightAndStatusToWork() {
+    void fulfill_rejected_callsGateDispatcherWithApprovedFalse() {
         UUID gateId = openGateAndCaptureGateId();
         when(commitmentStore.findByCorrelationId(gateId.toString()))
                 .thenReturn(Optional.of(commitment(gateId)));
 
-        org.mockito.Mockito.clearInvocations(messageService);
-        when(messageService.dispatch(any())).thenReturn(dispatchResult(101L));
-
         service.fulfill(gateId, "rejected");
 
-        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
-        verify(messageService, times(2)).dispatch(captor.capture());
-
-        assertThat(captor.getAllValues().get(0).type()).isEqualTo(MessageType.DECLINE);
-        assertThat(captor.getAllValues().get(0).correlationId()).isEqualTo(gateId.toString());
-        assertThat(captor.getAllValues().get(0).inReplyTo()).isEqualTo(42L);
-        assertThat(captor.getAllValues().get(1).type()).isEqualTo(MessageType.STATUS);
-        assertThat(captor.getAllValues().get(1).channelId()).isEqualTo(workChannelId);
+        ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
+        verify(gateDispatcher).dispatch(
+                approvedCaptor.capture(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
+        assertThat(approvedCaptor.getValue()).isFalse();
     }
 
     @Test
@@ -278,14 +282,12 @@ class OversightGateServiceTest {
         when(commitmentStore.findByCorrelationId(gateId.toString()))
                 .thenReturn(Optional.of(commitment(gateId)));
 
-        org.mockito.Mockito.clearInvocations(messageService);
-        when(messageService.dispatch(any())).thenReturn(dispatchResult(102L));
-
         service.fulfill(gateId, null);
 
-        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
-        verify(messageService, times(2)).dispatch(captor.capture());
-        assertThat(captor.getAllValues().get(0).type()).isEqualTo(MessageType.DECLINE);
+        ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
+        verify(gateDispatcher).dispatch(
+                approvedCaptor.capture(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
+        assertThat(approvedCaptor.getValue()).isFalse();
     }
 
     @Test
@@ -294,14 +296,12 @@ class OversightGateServiceTest {
         when(commitmentStore.findByCorrelationId(gateId.toString()))
                 .thenReturn(Optional.of(commitment(gateId)));
 
-        org.mockito.Mockito.clearInvocations(messageService);
-        when(messageService.dispatch(any())).thenReturn(dispatchResult(103L));
-
         service.fulfill(gateId, "   ");
 
-        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
-        verify(messageService, times(2)).dispatch(captor.capture());
-        assertThat(captor.getAllValues().get(0).type()).isEqualTo(MessageType.DECLINE);
+        ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
+        verify(gateDispatcher).dispatch(
+                approvedCaptor.capture(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
+        assertThat(approvedCaptor.getValue()).isFalse();
     }
 
     @Test
@@ -310,14 +310,12 @@ class OversightGateServiceTest {
         when(commitmentStore.findByCorrelationId(gateId.toString()))
                 .thenReturn(Optional.of(commitment(gateId)));
 
-        org.mockito.Mockito.clearInvocations(messageService);
-        when(messageService.dispatch(any())).thenReturn(dispatchResult(104L));
-
         service.fulfill(gateId, "approved, please go ahead");
 
-        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
-        verify(messageService, times(2)).dispatch(captor.capture());
-        assertThat(captor.getAllValues().get(0).type()).isEqualTo(MessageType.RESPONSE);
+        ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
+        verify(gateDispatcher).dispatch(
+                approvedCaptor.capture(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
+        assertThat(approvedCaptor.getValue()).isTrue();
     }
 
     @Test
@@ -326,14 +324,43 @@ class OversightGateServiceTest {
         when(commitmentStore.findByCorrelationId(gateId.toString()))
                 .thenReturn(Optional.of(commitment(gateId)));
 
-        org.mockito.Mockito.clearInvocations(messageService);
-        when(messageService.dispatch(any())).thenReturn(dispatchResult(105L));
-
         service.fulfill(gateId, "not approved");
 
+        ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
+        verify(gateDispatcher).dispatch(
+                approvedCaptor.capture(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
+        assertThat(approvedCaptor.getValue()).isFalse();
+    }
+
+    // ── evaluate() — PlannedAction field population (#17 finding #3) ─────────
+
+    @Test
+    void evaluate_autonomous_passesCorrectPlannedActionToRiskClassifier() {
+        service.evaluate(workChannelId, "finance-agent", "Run payroll.");
+
+        ArgumentCaptor<PlannedAction> captor = ArgumentCaptor.forClass(PlannedAction.class);
+        verify(actionRiskClassifier).classify(captor.capture());
+        PlannedAction action = captor.getValue();
+        assertThat(action.workerId()).isEqualTo("finance-agent");
+        assertThat(action.caseId()).isEqualTo(caseId);
+        assertThat(action.description()).isEqualTo("Run payroll.");
+        assertThat(action.actionType()).isNull();
+        assertThat(action.context()).isEmpty();
+    }
+
+    // ── evaluate() — openGate() COMMAND sender (#17 finding #2) ──────────────
+
+    @Test
+    void evaluate_gateRequired_commandSenderIsGateSenderNotAgent() {
+        when(actionRiskClassifier.classify(any()))
+                .thenReturn(new RiskDecision.GateRequired("risk", false));
+
+        service.evaluate(workChannelId, "finance-agent", "Do risky thing.");
+
         ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
-        verify(messageService, times(2)).dispatch(captor.capture());
-        assertThat(captor.getAllValues().get(0).type()).isEqualTo(MessageType.DECLINE);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(MessageType.COMMAND);
+        assertThat(captor.getValue().sender()).isEqualTo(OversightGateService.GATE_SENDER);
     }
 
     @Test

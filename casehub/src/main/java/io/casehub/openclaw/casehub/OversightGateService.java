@@ -55,6 +55,7 @@ public class OversightGateService {
     private final OpenClawCasehubConfig casehubConfig;
     private final SpeechActClassifier speechActClassifier;
     private final ActionRiskClassifier actionRiskClassifier;
+    private final OversightGateDispatcher gateDispatcher;
 
     @Inject
     public OversightGateService(ChannelService channelService,
@@ -64,7 +65,8 @@ public class OversightGateService {
                                  OpenClawClientConfig clientConfig,
                                  OpenClawCasehubConfig casehubConfig,
                                  SpeechActClassifier speechActClassifier,
-                                 ActionRiskClassifier actionRiskClassifier) {
+                                 ActionRiskClassifier actionRiskClassifier,
+                                 OversightGateDispatcher gateDispatcher) {
         this.channelService = channelService;
         this.messageService = messageService;
         this.commitmentStore = commitmentStore;
@@ -73,6 +75,7 @@ public class OversightGateService {
         this.casehubConfig = casehubConfig;
         this.speechActClassifier = speechActClassifier;
         this.actionRiskClassifier = actionRiskClassifier;
+        this.gateDispatcher = gateDispatcher;
     }
 
     /**
@@ -139,10 +142,12 @@ public class OversightGateService {
 
         // COMMAND content = original agent output (machine-retrievable); prompt goes to
         // OpenClaw invoke() as the message parameter separately.
+        // Sender is GATE_SENDER: this is the gate acting on the agent's behalf, not the
+        // agent itself — the audit trail should reflect the gate as author, not the agent.
         // inReplyTo for RESPONSE/DECLINE is resolved durably in fulfill() via findAllByCorrelationId.
         messageService.dispatch(MessageDispatch.builder()
                 .channelId(oversightChannel.id)
-                .sender(agentId)
+                .sender(GATE_SENDER)
                 .type(MessageType.COMMAND)
                 .content(output != null ? output : "")
                 .correlationId(gateId.toString())
@@ -227,43 +232,11 @@ public class OversightGateService {
                 return;
             }
 
-            if (approved) {
-                messageService.dispatch(MessageDispatch.builder()
-                        .channelId(oversightChannel.id)
-                        .sender(GATE_SENDER)
-                        .type(MessageType.RESPONSE)
-                        .content(rawOutput != null ? rawOutput : "approved")
-                        .correlationId(gateId.toString())
-                        .inReplyTo(commandMessageId)
-                        .actorType(ActorType.AGENT)
-                        .build());
-                messageService.dispatch(MessageDispatch.builder()
-                        .channelId(workChannel.id)
-                        .sender(GATE_SENDER)
-                        .type(MessageType.STATUS)
-                        .content("Gate approved")
-                        .actorType(ActorType.AGENT)
-                        .build());
-                log.infof("Gate approved: gateId=%s caseId=%s", gateId, caseId);
-            } else {
-                messageService.dispatch(MessageDispatch.builder()
-                        .channelId(oversightChannel.id)
-                        .sender(GATE_SENDER)
-                        .type(MessageType.DECLINE)
-                        .content(rawOutput != null ? rawOutput : "rejected")
-                        .correlationId(gateId.toString())
-                        .inReplyTo(commandMessageId)
-                        .actorType(ActorType.AGENT)
-                        .build());
-                messageService.dispatch(MessageDispatch.builder()
-                        .channelId(workChannel.id)
-                        .sender(GATE_SENDER)
-                        .type(MessageType.STATUS)
-                        .content("Human rejected the proposed action via oversight gate")
-                        .actorType(ActorType.AGENT)
-                        .build());
-                log.infof("Gate rejected: gateId=%s caseId=%s", gateId, caseId);
-            }
+            // Extract UUID primitives before crossing the @Transactional boundary in gateDispatcher —
+            // no JPA entities may cross it (no-jpa-entities-across-requires-new protocol).
+            gateDispatcher.dispatch(approved, oversightChannel.id, workChannel.id,
+                    commandMessageId, gateId, rawOutput);
+            log.infof("Gate %s: gateId=%s caseId=%s", approved ? "approved" : "rejected", gateId, caseId);
         } catch (Exception e) {
             log.errorf("OversightGateService.fulfill() failed for gateId=%s: %s", gateId, e.getMessage());
         }
