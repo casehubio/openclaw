@@ -73,7 +73,7 @@ openclaw plugin install casehub-openclaw
 openclaw skills install --global casehub-global
 
 # Stateless skills — explicit user-initiated actions
-openclaw skills install casehub-workitem casehub-case casehub-queue casehub-status
+openclaw skills install casehub-workitem casehub-case casehub-queue casehub-status casehub-reject casehub-block casehub-delegate
 ```
 
 ### 3. Configure OpenClaw
@@ -112,7 +112,7 @@ export CASEHUB_API_KEY="your-api-key"
 
 ---
 
-## The Five Skills
+## The Eight Skills
 
 ### `casehub-global` (global, always active)
 
@@ -155,6 +155,43 @@ Queries the current state of an open commitment, case, or work item.
 
 **Triggers:** "what's the status of", "has [task] been done", "where are we with",
 "check the status", "what commitments do I have open"
+
+### `casehub-reject` — Decline a commitment you cannot complete
+
+Records a tracked rejection with a required reason. Disarms the Watchdog and closes
+the obligation cleanly rather than letting it silently expire.
+
+**Triggers:** "reject this task", "I can't complete this", "decline this commitment",
+"this isn't possible", "I won't be able to do this"
+
+**Use it when:** you have a tracked commitment and you know you cannot fulfil it.
+Always provide a reason — the ledger records it.
+
+### `casehub-block` — Extend the Watchdog deadline while waiting on a dependency
+
+Temporarily halts progress on a commitment and extends the Watchdog deadline by a
+specified amount. Prevents premature escalation when a blocker has a known resolution
+window. When the blocker resolves, call `casehub_checkpoint("UNBLOCKED: ...")` to
+resume normal monitoring.
+
+**Triggers:** "I'm blocked on X", "waiting for X to resolve", "can't proceed until Y",
+"on hold pending Z", "blocked by X"
+
+**Use it when:** an external dependency prevents progress and you know (or can
+reasonably estimate) when it will resolve. If the blocker is indefinite, use
+`casehub_escalate` instead.
+
+### `casehub-delegate` — Transfer a commitment to a named agent or person
+
+Intentionally hands off a tracked commitment to a specific target. Your obligation is
+discharged; the recipient's Watchdog starts. Use for deliberate transfers — not for
+authority or capability limits (use `casehub_escalate` for those).
+
+**Triggers:** "delegate this to X", "hand this off to X", "give this to [agent/person]",
+"transfer this to X", "this should go to X"
+
+**Use it when:** you are intentionally reassigning responsibility to a known party and
+want the handoff recorded in the ledger.
 
 ---
 
@@ -224,7 +261,7 @@ the budget warning is in context and the agent switches to essentials-only.
 | Phase | What it adds |
 |---|---|
 | This pack | Commitment primitives — workitems, cases, queues, status |
-| Phase 2 | Lifecycle robustness — reject, block, delegate, checkpoint skills |
+| Phase 2 | Lifecycle robustness — reject, block, delegate skills (shipped) |
 | Phase 3 | Multi-agent coordination — broadcast, vote, handoff between agents |
 | Phase 4 | Self-governance — policy checks, second-agent review, oversight gates |
 | Phase 5 | Persistent intelligence — CaseMemoryStore recall across sessions |
