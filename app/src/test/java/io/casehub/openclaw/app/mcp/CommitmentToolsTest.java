@@ -23,6 +23,7 @@ import io.casehub.qhorus.runtime.store.CommitmentStore;
 import io.quarkiverse.mcp.server.ToolResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -333,6 +334,269 @@ class CommitmentToolsTest {
         when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.empty());
         ToolResponse doneAfter = tools.done(agentId, correlationId, null);
         assertThat(doneAfter.isError()).isTrue();
+    }
+
+    // ---- casehub_block ----
+
+    @Test
+    void block_channelBacked_updatesExpiresAtAndDispatchesBlockedStatus() {
+        UUID channelId = UUID.randomUUID();
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+        Instant originalDeadline = Instant.now().plus(1, ChronoUnit.HOURS);
+        Instant blockedUntil = Instant.now().plus(24, ChronoUnit.HOURS);
+
+        // Populate channelMap via commit()
+        when(commitmentStore.findOpenByObligor(agentId, channelId))
+                .thenReturn(List.of(commitment(correlationId, channelId, agentId, originalDeadline)));
+        when(messageService.dispatch(any()))
+                .thenReturn(dispatchResult(10L, channelId, agentId, MessageType.STATUS, correlationId));
+        tools.commit(agentId, "Audit books", null, channelId.toString());
+        clearInvocations(messageService, commitmentStore);
+
+        // block() setup
+        Commitment c = commitment(correlationId, channelId, agentId, originalDeadline);
+        when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
+        when(commitmentStore.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageService.dispatch(any()))
+                .thenReturn(dispatchResult(11L, channelId, agentId, MessageType.STATUS, correlationId));
+
+        ToolResponse response = tools.block(agentId, correlationId, "Waiting for CFO sign-off", blockedUntil.toString());
+
+        // save() called with updated expiresAt
+        ArgumentCaptor<Commitment> saveCaptor = ArgumentCaptor.forClass(Commitment.class);
+        verify(commitmentStore).save(saveCaptor.capture());
+        assertThat(saveCaptor.getValue().expiresAt).isEqualTo(blockedUntil);
+        assertThat(saveCaptor.getValue().expiresAt).isNotEqualTo(originalDeadline);
+
+        // STATUS dispatched with "BLOCKED: " prefix
+        ArgumentCaptor<MessageDispatch> dispatchCaptor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(dispatchCaptor.capture());
+        MessageDispatch dispatched = dispatchCaptor.getValue();
+        assertThat(dispatched.type()).isEqualTo(MessageType.STATUS);
+        assertThat(dispatched.channelId()).isEqualTo(channelId);
+        assertThat(dispatched.content()).startsWith("BLOCKED: ");
+        assertThat(dispatched.content()).contains("CFO sign-off");
+
+        assertThat(response.isError()).isFalse();
+        assertThat(text(response)).contains("blocked");
+        assertThat(text(response)).contains("newWatchdogDeadline");
+    }
+
+    @Test
+    void block_selfCommit_updatesExpiresAtWithoutDispatch() {
+        String agentId = "home-agent";
+        String correlationId = UUID.randomUUID().toString();
+        Instant blockedUntil = Instant.now().plus(4, ChronoUnit.HOURS);
+
+        // No channelMap entry — self-commit scenario
+        Commitment c = commitment(correlationId, null, agentId, Instant.now().plus(1, ChronoUnit.HOURS));
+        when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
+        when(commitmentStore.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ToolResponse response = tools.block(agentId, correlationId, "Waiting for delivery", blockedUntil.toString());
+
+        ArgumentCaptor<Commitment> saveCaptor = ArgumentCaptor.forClass(Commitment.class);
+        verify(commitmentStore).save(saveCaptor.capture());
+        assertThat(saveCaptor.getValue().expiresAt).isEqualTo(blockedUntil);
+        verify(messageService, never()).dispatch(any());
+        assertThat(response.isError()).isFalse();
+    }
+
+    @Test
+    void block_unknownCommitmentId_returnsNotFound() {
+        when(commitmentStore.findByCorrelationId("unknown")).thenReturn(Optional.empty());
+
+        ToolResponse response = tools.block("agent", "unknown", "reason",
+                Instant.now().plus(1, ChronoUnit.HOURS).toString());
+
+        assertThat(response.isError()).isTrue();
+        assertThat(text(response)).contains("COMMITMENT_NOT_FOUND");
+        verify(commitmentStore, never()).save(any());
+    }
+
+    @Test
+    void block_terminalCommitment_returnsAlreadyClosed() {
+        String agentId = "agent";
+        String correlationId = UUID.randomUUID().toString();
+        Commitment c = commitment(correlationId, null, agentId, Instant.now().plus(1, ChronoUnit.HOURS));
+        c.state = CommitmentState.FULFILLED;
+        when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
+
+        ToolResponse response = tools.block(agentId, correlationId, "reason",
+                Instant.now().plus(1, ChronoUnit.HOURS).toString());
+
+        assertThat(response.isError()).isTrue();
+        assertThat(text(response)).contains("COMMITMENT_ALREADY_CLOSED");
+        verify(commitmentStore, never()).save(any());
+    }
+
+    @Test
+    void block_wrongObligor_returnsUnauthorized() {
+        String realObligor = "finance-agent";
+        String wrongAgent = "intruder-agent";
+        String correlationId = UUID.randomUUID().toString();
+        Commitment c = commitment(correlationId, null, realObligor, Instant.now().plus(1, ChronoUnit.HOURS));
+        when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
+
+        ToolResponse response = tools.block(wrongAgent, correlationId, "reason",
+                Instant.now().plus(1, ChronoUnit.HOURS).toString());
+
+        assertThat(response.isError()).isTrue();
+        assertThat(text(response)).contains("COMMITMENT_UNAUTHORIZED");
+        verify(commitmentStore, never()).save(any());
+    }
+
+    @Test
+    void block_invalidDeadlineFormat_returnsInvalidDeadline() {
+        ToolResponse response = tools.block("agent", "any-id", "reason", "not-a-timestamp");
+
+        assertThat(response.isError()).isTrue();
+        assertThat(text(response)).contains("INVALID_DEADLINE");
+    }
+
+    @Test
+    void block_deadlineInPast_returnsDeadlineInPast() {
+        String pastTimestamp = Instant.now().minus(1, ChronoUnit.HOURS).toString();
+        ToolResponse response = tools.block("agent", "any-id", "reason", pastTimestamp);
+
+        assertThat(response.isError()).isTrue();
+        assertThat(text(response)).contains("DEADLINE_IN_PAST");
+        verify(commitmentStore, never()).findByCorrelationId(any());
+        verify(commitmentStore, never()).save(any());
+    }
+
+    @Test
+    void block_dispatchThrowsAfterSave_propagatesException() {
+        UUID channelId = UUID.randomUUID();
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+
+        when(commitmentStore.findOpenByObligor(agentId, channelId))
+                .thenReturn(List.of(commitment(correlationId, channelId, agentId,
+                        Instant.now().plus(1, ChronoUnit.HOURS))));
+        when(messageService.dispatch(any()))
+                .thenReturn(dispatchResult(10L, channelId, agentId, MessageType.STATUS, correlationId));
+        tools.commit(agentId, "task", null, channelId.toString());
+        clearInvocations(messageService, commitmentStore);
+
+        Commitment c = commitment(correlationId, channelId, agentId, Instant.now().plus(1, ChronoUnit.HOURS));
+        when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
+        when(commitmentStore.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(messageService.dispatch(any())).thenThrow(new RuntimeException("channel unavailable"));
+
+        // Propagation (not silent swallow) is the correct policy: @Transactional on block()
+        // means the JTA container rolls back the save() when the exception unwinds.
+        // Unit tests can't verify JTA rollback; this confirms the exception is not caught and swallowed.
+        assertThatThrownBy(() -> tools.block(agentId, correlationId, "blocked",
+                Instant.now().plus(2, ChronoUnit.HOURS).toString()))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("channel unavailable");
+    }
+
+    // ---- casehub_delegate ----
+
+    @Test
+    void delegate_dispatchesHandoffWithReasonAsContentAndRequiredToAgent() {
+        UUID channelId = UUID.randomUUID();
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+
+        // Populate channelMap via commit()
+        when(commitmentStore.findOpenByObligor(agentId, channelId))
+                .thenReturn(List.of(commitment(correlationId, channelId, agentId,
+                        Instant.now().plus(1, ChronoUnit.HOURS))));
+        when(messageService.dispatch(any()))
+                .thenReturn(dispatchResult(10L, channelId, agentId, MessageType.STATUS, correlationId));
+        tools.commit(agentId, "Audit", null, channelId.toString());
+        clearInvocations(messageService);
+
+        // delegate() looks up COMMAND message for inReplyTo
+        when(messageService.findAllByCorrelationId(correlationId))
+                .thenReturn(List.of(message(5L, channelId, MessageType.COMMAND, correlationId)));
+        when(messageService.dispatch(any()))
+                .thenReturn(dispatchResult(11L, channelId, agentId, MessageType.HANDOFF, correlationId));
+
+        ToolResponse response = tools.delegate(agentId, correlationId,
+                "Delegating to specialist", "tax-specialist-agent");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        MessageDispatch dispatched = captor.getValue();
+        assertThat(dispatched.type()).isEqualTo(MessageType.HANDOFF);
+        assertThat(dispatched.channelId()).isEqualTo(channelId);
+        assertThat(dispatched.correlationId()).isEqualTo(correlationId);
+        assertThat(dispatched.inReplyTo()).isEqualTo(5L);
+        assertThat(dispatched.target()).isEqualTo("tax-specialist-agent");
+        assertThat(dispatched.content()).isEqualTo("Delegating to specialist");
+
+        assertThat(response.isError()).isFalse();
+        assertThat(text(response)).contains("delegated");
+        assertThat(text(response)).contains("tax-specialist-agent");
+    }
+
+    @Test
+    void delegate_noChannelMapEntry_returnsNotFound() {
+        // No prior commit() — not in channelMap
+        ToolResponse response = tools.delegate("agent", "unknown-id",
+                "reason", "target-agent");
+
+        assertThat(response.isError()).isTrue();
+        assertThat(text(response)).contains("COMMITMENT_NOT_FOUND");
+        verify(messageService, never()).dispatch(any());
+    }
+
+    @Test
+    void delegate_commandMessageNotFound_returnsCommandNotFound() {
+        UUID channelId = UUID.randomUUID();
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+
+        // Populate channelMap
+        when(commitmentStore.findOpenByObligor(agentId, channelId))
+                .thenReturn(List.of(commitment(correlationId, channelId, agentId,
+                        Instant.now().plus(1, ChronoUnit.HOURS))));
+        when(messageService.dispatch(any()))
+                .thenReturn(dispatchResult(10L, channelId, agentId, MessageType.STATUS, correlationId));
+        tools.commit(agentId, "Audit", null, channelId.toString());
+        clearInvocations(messageService);
+
+        // No COMMAND in history
+        when(messageService.findAllByCorrelationId(correlationId)).thenReturn(List.of());
+
+        ToolResponse response = tools.delegate(agentId, correlationId,
+                "Delegating to specialist", "tax-specialist-agent");
+
+        assertThat(response.isError()).isTrue();
+        assertThat(text(response)).contains("COMMAND_NOT_FOUND");
+        verify(messageService, never()).dispatch(any());
+    }
+
+    @Test
+    void delegate_removesFromChannelMapAfterDispatch() {
+        UUID channelId = UUID.randomUUID();
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+
+        // Populate channelMap
+        when(commitmentStore.findOpenByObligor(agentId, channelId))
+                .thenReturn(List.of(commitment(correlationId, channelId, agentId,
+                        Instant.now().plus(1, ChronoUnit.HOURS))));
+        when(messageService.dispatch(any()))
+                .thenReturn(dispatchResult(10L, channelId, agentId, MessageType.STATUS, correlationId));
+        tools.commit(agentId, "Audit", null, channelId.toString());
+        clearInvocations(messageService);
+
+        when(messageService.findAllByCorrelationId(correlationId))
+                .thenReturn(List.of(message(5L, channelId, MessageType.COMMAND, correlationId)));
+        when(messageService.dispatch(any()))
+                .thenReturn(dispatchResult(11L, channelId, agentId, MessageType.HANDOFF, correlationId));
+        tools.delegate(agentId, correlationId, "Delegating", "other-agent");
+
+        // After delegate, commitment is no longer in channelMap
+        when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.empty());
+        ToolResponse doneAfter = tools.done(agentId, correlationId, null);
+        assertThat(doneAfter.isError()).isTrue(); // COMMITMENT_NOT_FOUND from selfCommit_done
     }
 
     // ---- helpers ----
