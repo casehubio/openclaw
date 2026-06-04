@@ -111,7 +111,7 @@ C4Context
 
 **Foundation owns:** case lifecycle (casehub-engine); agent communication mesh and Qhorus channels (casehub-qhorus); Merkle audit chain and trust scoring (casehub-ledger); human task lifecycle (casehub-work).
 
-**Not owned here:** ActionRiskClassifier SPI in casehub-engine-api (casehubio/engine#402 — local placeholder only); oversight channel `allowedTypes` final decision (casehubio/claudony#142); DONE dispatch with Long messageId (casehubio/openclaw#16).
+**Not owned here:** ActionRiskClassifier SPI in casehub-engine-api (casehubio/engine#402 — local placeholder only); oversight channel `allowedTypes` final decision (casehubio/claudony#142).
 
 See `../parent/docs/PLATFORM.md` Capability Ownership table and `../parent/docs/repos/casehub-openclaw.md`.
 
@@ -304,7 +304,25 @@ Single base URL: http://localhost:8080
 - **STATUS dispatched instead of DONE (Phase 1 workaround)**
   - **Symptom:** Case step receives STATUS from the agent delivery webhook, not DONE; Commitment remains open; Watchdog handles eventual resolution.
   - **Cause:** `MessageDispatch.Builder.build()` requires a Long `inReplyTo` (the database primary key of the original COMMAND message) for DONE/DECLINE. The `OutboundMessage` passed to `ChannelBackend.post()` does not expose that ID.
-  - **Fix:** Tracked in casehubio/openclaw#16. Phase 1 workaround is intentional — STATUS is semantically incorrect but the Commitment stays open and Watchdog recovers. Do not change to DONE without resolving the `inReplyTo` tracking.
+  - **Fix:** Resolved in casehubio/openclaw#16 (2026-06-04) — `OversightGateService.evaluate()` now uses `commitmentStore.findOpenByObligor(agentId, workChannelId)` to recover the correlationId from the durable store and dispatch DONE with correct `inReplyTo`. Restart-resilient; no in-memory state.
+
+### Epic 8 Phase 2 — MCP Tool Surface Extension
+
+`casehub_block` and `casehub_delegate` extend the Layer 0 MCP endpoint (`CommitmentTools`):
+
+- **`casehub_block`** uses `@Transactional` directly on the tool method (unlike other tool methods that delegate to already-`@Transactional` service methods). This is safe because `block()` contains no try/catch — exceptions propagate normally, so there is no rollback-only problem. `commitmentStore.save()` and `messageService.dispatch()` participate in the same JPA/JTA transaction.
+
+- **`casehub_delegate`** requires `toAgent` (non-optional, unlike `casehub_escalate`). This makes intentional delegation machine-readable vs authority-exceeded escalation in the Qhorus ledger — HANDOFF records are structurally distinguishable by which tool was called.
+
+- The direct `expiresAt` mutation in `casehub_block` bypasses `CommitmentService` (no `extendDeadline()` method exists). Documented as a workaround pending `CommitmentService.extendDeadline()` in casehub-qhorus.
+
+### DONE Dispatch — Qhorus-native correlationId Recovery
+
+`OversightGateService.evaluate()` previously dispatched STATUS (workaround) because it lacked the COMMAND's Long `messageId` for `inReplyTo`. Fixed in openclaw#16 via `commitmentStore.findOpenByObligor(agentId, workChannelId)` — the Commitment's `correlationId` is recovered from the durable store rather than an in-memory map.
+
+Two STATUS fallback paths:
+- `hadCommitment=false` — Watchdog expired the Commitment while the agent was in-flight. Expected, log WARN.
+- `hadCommitment=true`, COMMAND message missing — data inconsistency. Log ERROR, requires operator attention.
 
 ---
 
@@ -521,6 +539,26 @@ After C7, OpenClaw agents are accountable, not just capable. The Quarkus MCP end
 
 ---
 
+#### Chapter: Epic 8 Phase 2 — Layer 3 Lifecycle Skills + DONE Dispatch Fix
+
+**Date:** 2026-06-04
+**Issues:** openclaw#23 (Phase 2 skills), openclaw#24 (ActionRiskClassifier), openclaw#16 (DONE dispatch)
+**Epic:** openclaw#8 (Speech act classification)
+
+**What was built:**
+
+Layer 3 skill pack extension — three new SKILL.md files (casehub-reject, casehub-block, casehub-delegate) backed by two new MCP tools (`casehub_block`, `casehub_delegate`) in `CommitmentTools`.
+
+`casehub_block` extends the Watchdog deadline via direct `expiresAt` mutation with `@Transactional` boundary on the tool method. `casehub_delegate` makes HANDOFF delegation machine-readable by requiring `toAgent` (vs `casehub_escalate` where it is optional).
+
+`OversightGateService.evaluate()` now dispatches the correct speech act type (DONE, STATUS, etc.) with `inReplyTo` populated via `commitmentStore.findOpenByObligor()` — restart-resilient, no in-memory state.
+
+`ActionRiskClassifier` local placeholder verified identical to casehubio/engine#402 proposed SPI — import-swap ready.
+
+**Deferred:** `CommitmentService.extendDeadline()` filed on casehub-qhorus to remove the direct `expiresAt` mutation workaround.
+
+---
+
 ### §9.4 Layer Entries
 
 ---
@@ -640,7 +678,7 @@ What this layer adds:
 - **Passive ring buffer population** — `ChannelContextWindowObserver` receives every Qhorus dispatch; must never throw to Qhorus; EVENT messages excluded (not agent-visible)
 - **Durable oversight gate** — `OversightGateService.openGate()` dispatches COMMAND to the oversight channel with `correlationId=gateId`; `fulfill()` looks up the Commitment by correlationId — survives Quarkus restart without in-memory state
 
-Not closed here: REST endpoints for delivery webhooks (L3), proper DONE dispatch (casehubio/openclaw#16), ActionRiskClassifier SPI in engine-api (casehubio/engine#402).
+Not closed here: REST endpoints for delivery webhooks (L3), ActionRiskClassifier SPI in engine-api (casehubio/engine#402). *(#16 DONE dispatch resolved in Epic 8 Phase 2, 2026-06-04.)*
 
 #### Accountability gaps closed
 
@@ -740,7 +778,7 @@ What this layer adds:
 - **Plugin REST endpoints** — `PluginCommitResource` exposes `/openclaw/plugin/{commit,done,commitments}` for TypeScript plugin hooks to call directly; plugin hooks bypass MCP entirely
 - **TTL eviction** — `EvictionScheduler @Scheduled` calls `ChannelContextWindowService.evictExpired()` at the configured TTL interval
 
-Not closed here: proper DONE dispatch with Long messageId (casehubio/openclaw#16), atomicity in `OversightGateService.fulfill()` (casehubio/openclaw#15).
+Not closed here: *(all known gaps closed — #15 atomicity and #16 DONE dispatch resolved in Epic 7/8 cleanup.)*
 
 #### Accountability gaps closed
 
@@ -1076,8 +1114,8 @@ To add SKILL.md files to a CaseHub integration tier:
 
 | Item | Description | Issue | Priority |
 |---|---|---|---|
-| STATUS instead of DONE | `OpenClawDeliveryResource` dispatches STATUS (not DONE) because `inReplyTo` Long is unavailable at delivery time; Commitment stays open; Watchdog handles recovery | casehubio/openclaw#16 | M |
-| `fulfill()` atomicity gap | `OversightGateService.fulfill()` dispatches RESPONSE and DONE in two sequential calls; a crash between them leaves the case step hanging | casehubio/openclaw#15 | XS — wrap in `@Transactional` |
+| ~~STATUS instead of DONE~~ | ~~`OpenClawDeliveryResource` dispatches STATUS (not DONE) because `inReplyTo` Long is unavailable at delivery time~~ | casehubio/openclaw#16 **CLOSED** | **Fixed 2026-06-04** — `evaluate()` uses `findOpenByObligor()` to recover correlationId and dispatch DONE with correct `inReplyTo` |
+| ~~`fulfill()` atomicity gap~~ | ~~`OversightGateService.fulfill()` dispatches RESPONSE and DONE in two sequential calls~~ | casehubio/openclaw#15 **CLOSED** | **Fixed 2026-06-03** — `OversightGateDispatcher @ApplicationScoped` wraps both dispatches atomically |
 | Oversight channel `allowedTypes` | Set to null (all types allowed); final decision (null vs. tiered model vs. new MessageTypes) deferred to casehubio/claudony#142 | casehubio/openclaw (no tracking issue) | Low |
 | Webhook payload `@JsonAlias` unverified | Field names in `OpenClawDeliveryPayload` may differ from live OpenClaw API; assumed camelCase, unconfirmed | casehubio/openclaw#11 | XS |
 | `channelId` not stored on Commitment | `OversightGateService` must reconstruct `channelId` from Qhorus queries after restart; storing it would simplify `fulfill()` | casehubio/openclaw#20 | S |
@@ -1096,7 +1134,7 @@ To add SKILL.md files to a CaseHub integration tier:
 | COMMAND | Qhorus message type representing a formal obligation dispatched to a worker (agent or human) |
 | DONE | Qhorus message type resolving a COMMAND commitment with a successful outcome |
 | DECLINE | Qhorus message type resolving a COMMAND commitment with a refusal |
-| STATUS | Qhorus message type acknowledging an obligation without resolving it; used as a Phase 1 DONE workaround (casehubio/openclaw#16) |
+| STATUS | Qhorus message type acknowledging an obligation without resolving it |
 | Commitment | A tracked obligation in the Qhorus system; created by `MessageService.dispatch(COMMAND)`; resolved by DONE or DECLINE; escalated by Watchdog if unresolved |
 | ChannelContextWindow | Per-agent in-memory TTL ring buffer of Qhorus channel activity; best-effort intelligence layer only; not a correctness mechanism |
 | windowSeq | Internal global `AtomicLong` counter assigned by `ChannelContextWindowService` to each ingested message; used as cross-channel cursor; not the same as Qhorus per-channel `sequenceNumber` |
