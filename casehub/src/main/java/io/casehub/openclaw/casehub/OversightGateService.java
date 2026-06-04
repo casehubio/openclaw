@@ -1,5 +1,6 @@
 package io.casehub.openclaw.casehub;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -105,16 +106,39 @@ public class OversightGateService {
                     new PlannedAction(agentId, caseId, output, null, Map.of()));
 
             if (decision instanceof RiskDecision.Autonomous) {
-                // DONE/DECLINE/FAILURE/RESPONSE require inReplyTo — not available on autonomous path.
-                // Fall back to STATUS; tracked in openclaw#16.
-                MessageType dispatchType = requiresReplyFields(messageType) ? MessageType.STATUS : messageType;
-                messageService.dispatch(MessageDispatch.builder()
+                List<Commitment> open =
+                        commitmentStore.findOpenByObligor(agentId, workChannelId);
+                boolean hadCommitment = !open.isEmpty();
+                String correlationId = open.stream()
+                        .filter(c -> c.messageType == MessageType.COMMAND)
+                        .map(c -> c.correlationId)
+                        .findFirst()
+                        .orElse(null);
+
+                Long commandMessageId = resolveCommandMessageId(correlationId);
+
+                MessageDispatch.Builder builder = MessageDispatch.builder()
                         .channelId(workChannelId)
                         .sender(agentId)
-                        .type(dispatchType)
                         .content(output != null ? output : "")
-                        .actorType(ActorType.AGENT)
-                        .build());
+                        .actorType(ActorType.AGENT);
+
+                if (commandMessageId != null && correlationId != null) {
+                    builder.type(messageType).inReplyTo(commandMessageId).correlationId(correlationId);
+                } else {
+                    builder.type(MessageType.STATUS);
+                    if (hadCommitment) {
+                        log.errorf("Open COMMAND commitment found for agentId=%s on channel=%s but "
+                                + "COMMAND message lookup failed — Commitment will not be fulfilled; "
+                                + "Watchdog will escalate. Operator attention required.",
+                                agentId, workChannelId);
+                    } else {
+                        log.warnf("No open COMMAND commitment for agentId=%s on channel=%s — "
+                                + "Watchdog may have expired it during agent execution. Dispatching STATUS.",
+                                agentId, workChannelId);
+                    }
+                }
+                messageService.dispatch(builder.build());
                 return;
             }
 
@@ -242,11 +266,11 @@ public class OversightGateService {
         }
     }
 
-    private static boolean requiresReplyFields(MessageType type) {
-        return switch (type) {
-            case DONE, DECLINE, FAILURE, RESPONSE -> true;
-            default -> false;
-        };
+    private Long resolveCommandMessageId(String correlationId) {
+        if (correlationId == null) return null;
+        return messageService.findAllByCorrelationId(correlationId).stream()
+                .filter(m -> m.messageType == MessageType.COMMAND)
+                .mapToLong(m -> m.id).boxed().findFirst().orElse(null);
     }
 
     private boolean parseApproval(UUID gateId, String rawOutput) {

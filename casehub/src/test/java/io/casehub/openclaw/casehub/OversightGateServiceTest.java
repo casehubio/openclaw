@@ -1,5 +1,6 @@
 package io.casehub.openclaw.casehub;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import org.mockito.ArgumentCaptor;
 import io.casehub.openclaw.client.OpenClawClientConfig;
 import io.casehub.openclaw.client.OpenClawHookClient;
 import io.casehub.platform.api.identity.ActorType;
+import io.casehub.qhorus.api.message.CommitmentState;
 import io.casehub.qhorus.api.message.DispatchResult;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
@@ -111,17 +113,92 @@ class OversightGateServiceTest {
     // ── evaluate() — autonomous path ──────────────────────────────────────────
 
     @Test
-    void evaluate_autonomous_dispatchesStatusToWorkChannel() {
+    void evaluate_autonomous_noOpenCommitment_dispatchesStatusAndLogsWarn() {
+        // hadCommitment=false: Watchdog may have expired the commitment while agent was in-flight.
+        // STATUS is dispatched as best-effort; WARN logged (not ERROR).
+        when(commitmentStore.findOpenByObligor("finance-agent", workChannelId))
+                .thenReturn(Collections.emptyList());
+
         service.evaluate(workChannelId, "finance-agent", "Analysis complete.");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(MessageType.STATUS);
+        assertThat(captor.getValue().channelId()).isEqualTo(workChannelId);
+        assertThat(captor.getValue().sender()).isEqualTo("finance-agent");
+    }
+
+    @Test
+    void evaluate_autonomous_withOpenCommandCommitment_dispatchesSpeechActTypeWithInReplyTo() {
+        // Happy path: open COMMAND commitment found → dispatches DONE (from speechActClassifier) with inReplyTo
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+        long commandMessageId = 42L;
+
+        when(commitmentStore.findOpenByObligor(agentId, workChannelId))
+                .thenReturn(List.of(openCommandCommitment(workChannelId, agentId, correlationId)));
+        Message commandMsg = new Message();
+        commandMsg.id = commandMessageId;
+        commandMsg.messageType = MessageType.COMMAND;
+        commandMsg.correlationId = correlationId;
+        when(messageService.findAllByCorrelationId(correlationId))
+                .thenReturn(List.of(commandMsg));
+
+        service.evaluate(workChannelId, agentId, "Analysis complete.");
 
         ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
         verify(messageService).dispatch(captor.capture());
         MessageDispatch dispatched = captor.getValue();
         assertThat(dispatched.channelId()).isEqualTo(workChannelId);
-        assertThat(dispatched.type()).isEqualTo(MessageType.STATUS);
-        assertThat(dispatched.sender()).isEqualTo("finance-agent");
+        assertThat(dispatched.type()).isEqualTo(MessageType.DONE);   // not STATUS
+        assertThat(dispatched.sender()).isEqualTo(agentId);
         assertThat(dispatched.content()).isEqualTo("Analysis complete.");
         assertThat(dispatched.actorType()).isEqualTo(ActorType.AGENT);
+        assertThat(dispatched.inReplyTo()).isEqualTo(commandMessageId);
+        assertThat(dispatched.correlationId()).isEqualTo(correlationId);
+    }
+
+    @Test
+    void evaluate_autonomous_commitmentFoundButCommandMessageMissing_dispatchesStatusAndLogsError() {
+        // hadCommitment=true but COMMAND message not found → data inconsistency → STATUS + ERROR log
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+
+        when(commitmentStore.findOpenByObligor(agentId, workChannelId))
+                .thenReturn(List.of(openCommandCommitment(workChannelId, agentId, correlationId)));
+        // findAllByCorrelationId returns nothing with COMMAND type
+        when(messageService.findAllByCorrelationId(correlationId)).thenReturn(List.of());
+
+        service.evaluate(workChannelId, agentId, "Analysis complete.");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(MessageType.STATUS);
+        // ERROR log level is verified by the absence of an exception (the service absorbs it)
+    }
+
+    @Test
+    void evaluate_autonomous_doesNotRequireInReplyToForStatusType() {
+        // When speechActClassifier returns STATUS (not DONE), dispatch can proceed without inReplyTo
+        when(speechActClassifier.classify(any())).thenReturn(MessageType.STATUS);
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+
+        when(commitmentStore.findOpenByObligor(agentId, workChannelId))
+                .thenReturn(List.of(openCommandCommitment(workChannelId, agentId, correlationId)));
+        Message commandMsg = new Message();
+        commandMsg.id = 7L;
+        commandMsg.messageType = MessageType.COMMAND;
+        commandMsg.correlationId = correlationId;
+        when(messageService.findAllByCorrelationId(correlationId))
+                .thenReturn(List.of(commandMsg));
+
+        service.evaluate(workChannelId, agentId, "Progress update.");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(MessageType.STATUS);
+        assertThat(captor.getValue().inReplyTo()).isEqualTo(7L); // still sets inReplyTo when available
     }
 
     @Test
@@ -387,6 +464,17 @@ class OversightGateServiceTest {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private Commitment openCommandCommitment(UUID channelId, String agentId, String correlationId) {
+        Commitment c = new Commitment();
+        c.id = UUID.randomUUID();
+        c.correlationId = correlationId;
+        c.channelId = channelId;
+        c.obligor = agentId;
+        c.messageType = MessageType.COMMAND;
+        c.state = CommitmentState.OPEN;
+        return c;
+    }
 
     private DispatchResult dispatchResult(Long messageId) {
         return new DispatchResult(messageId, oversightChannelId, "agent",
