@@ -306,6 +306,24 @@ Single base URL: http://localhost:8080
   - **Cause:** `MessageDispatch.Builder.build()` requires a Long `inReplyTo` (the database primary key of the original COMMAND message) for DONE/DECLINE. The `OutboundMessage` passed to `ChannelBackend.post()` does not expose that ID.
   - **Fix:** Tracked in casehubio/openclaw#16. Phase 1 workaround is intentional — STATUS is semantically incorrect but the Commitment stays open and Watchdog recovers. Do not change to DONE without resolving the `inReplyTo` tracking.
 
+### Epic 8 Phase 2 — MCP Tool Surface Extension
+
+`casehub_block` and `casehub_delegate` extend the Layer 0 MCP endpoint (`CommitmentTools`):
+
+- **`casehub_block`** uses `@Transactional` directly on the tool method (unlike other tool methods that delegate to already-`@Transactional` service methods). This is safe because `block()` contains no try/catch — exceptions propagate normally, so there is no rollback-only problem. `commitmentStore.save()` and `messageService.dispatch()` participate in the same JPA/JTA transaction.
+
+- **`casehub_delegate`** requires `toAgent` (non-optional, unlike `casehub_escalate`). This makes intentional delegation machine-readable vs authority-exceeded escalation in the Qhorus ledger — HANDOFF records are structurally distinguishable by which tool was called.
+
+- The direct `expiresAt` mutation in `casehub_block` bypasses `CommitmentService` (no `extendDeadline()` method exists). Documented as a workaround pending `CommitmentService.extendDeadline()` in casehub-qhorus.
+
+### DONE Dispatch — Qhorus-native correlationId Recovery
+
+`OversightGateService.evaluate()` previously dispatched STATUS (workaround) because it lacked the COMMAND's Long `messageId` for `inReplyTo`. Fixed in openclaw#16 via `commitmentStore.findOpenByObligor(agentId, workChannelId)` — the Commitment's `correlationId` is recovered from the durable store rather than an in-memory map.
+
+Two STATUS fallback paths:
+- `hadCommitment=false` — Watchdog expired the Commitment while the agent was in-flight. Expected, log WARN.
+- `hadCommitment=true`, COMMAND message missing — data inconsistency. Log ERROR, requires operator attention.
+
 ---
 
 ## §9 Journeys and Chapters
@@ -518,6 +536,26 @@ After C7, OpenClaw agents are accountable, not just capable. The Quarkus MCP end
 | Layer | Delta |
 |---|---|
 | L2 casehub/ | High |
+
+---
+
+#### Chapter: Epic 8 Phase 2 — Layer 3 Lifecycle Skills + DONE Dispatch Fix
+
+**Date:** 2026-06-04
+**Issues:** openclaw#23 (Phase 2 skills), openclaw#24 (ActionRiskClassifier), openclaw#16 (DONE dispatch)
+**Epic:** openclaw#8 (Speech act classification)
+
+**What was built:**
+
+Layer 3 skill pack extension — three new SKILL.md files (casehub-reject, casehub-block, casehub-delegate) backed by two new MCP tools (`casehub_block`, `casehub_delegate`) in `CommitmentTools`.
+
+`casehub_block` extends the Watchdog deadline via direct `expiresAt` mutation with `@Transactional` boundary on the tool method. `casehub_delegate` makes HANDOFF delegation machine-readable by requiring `toAgent` (vs `casehub_escalate` where it is optional).
+
+`OversightGateService.evaluate()` now dispatches the correct speech act type (DONE, STATUS, etc.) with `inReplyTo` populated via `commitmentStore.findOpenByObligor()` — restart-resilient, no in-memory state.
+
+`ActionRiskClassifier` local placeholder verified identical to casehubio/engine#402 proposed SPI — import-swap ready.
+
+**Deferred:** `CommitmentService.extendDeadline()` filed on casehub-qhorus to remove the direct `expiresAt` mutation workaround.
 
 ---
 
