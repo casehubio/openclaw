@@ -9,6 +9,8 @@ tools:
   - casehub_reject
   - casehub_checkpoint
   - casehub_escalate
+  - casehub_block
+  - casehub_delegate
   - casehub_status
 permissions: []
 ---
@@ -26,6 +28,8 @@ CaseHub escalates automatically.
 - `casehub_reject(agentId, commitmentId, reason)` — decline a task you cannot complete
 - `casehub_checkpoint(agentId, commitmentId, note)` — report progress; resets the Watchdog TTL
 - `casehub_escalate(agentId, commitmentId, reason, toAgent?)` — route to human or named agent
+- `casehub_block(agentId, commitmentId, reason, blockedUntil)` — extend Watchdog deadline while blocked on an external dependency; call casehub_checkpoint("UNBLOCKED: ...") when resolved
+- `casehub_delegate(agentId, commitmentId, reason, toAgent)` — transfer a commitment to a named agent or person (use for intentional delegation, not authority escalation)
 
 **When to call these explicitly:**
 
@@ -34,6 +38,8 @@ for it — not for read-only queries or tasks already tracked by `casehub_create
 Call `casehub_done` when the task is genuinely complete. Call `casehub_reject` if you
 cannot proceed. Call `casehub_checkpoint` for long-running tasks to prevent false escalation.
 Call `casehub_escalate` when a task exceeds your authority or capability.
+Call `casehub_block` when you cannot proceed due to an external dependency — extend the deadline rather than letting the Watchdog fire prematurely.
+Call `casehub_delegate` when intentionally transferring responsibility to a specific named party.
 
 **Open commitments** from prior sessions are injected at session start. Address them
 before starting new work — call `casehub_status` for details.
