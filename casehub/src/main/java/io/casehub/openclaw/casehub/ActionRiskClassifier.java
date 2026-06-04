@@ -8,9 +8,10 @@ package io.casehub.openclaw.casehub;
  * No risk rules are configured — all actions proceed without oversight.
  *
  * <p>This is a local placeholder for the {@code ActionRiskClassifier} SPI proposed for
- * {@code casehub-engine-api} (casehubio/engine#402). When that SPI ships, replace this
- * interface and its implementations with the engine-api import — the contract is
- * identical by design.
+ * {@code casehub-engine-api} (casehubio/engine#402). The local contract has been verified
+ * identical to the engine#402 proposal as of 2026-06-04: same method signature, same type
+ * names, same {@code @Alternative @Priority(1)} override pattern. When engine#402 ships,
+ * migration is a pure import swap — no code changes beyond the import statement.
  *
  * <p>Override the default bean with {@code @Alternative @Priority(1)}.
  */

@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 
 import org.jboss.logging.Logger;
 
@@ -300,6 +301,108 @@ public class CommitmentTools {
 
         return ToolResponse.success("{\"escalated\": true, \"escalationId\": \"%s\"}"
                 .formatted(commitmentId));
+    }
+
+    // ---- casehub_block ----
+
+    @Transactional
+    @Tool(description = "Temporarily block a commitment when an external dependency prevents progress. "
+            + "Extends the Watchdog deadline (expiresAt) to prevent premature expiry. "
+            + "Call casehub_checkpoint with 'UNBLOCKED: <note>' when the blocker resolves. "
+            + "Only the obligor of the commitment may call this tool.")
+    public ToolResponse block(
+            @ToolArg(description = "Your OpenClaw agentId") String agentId,
+            @ToolArg(description = "commitmentId returned by casehub_commit") String commitmentId,
+            @ToolArg(description = "What is blocking progress") String reason,
+            @ToolArg(description = "Expected resolution time in ISO-8601 format; must be in the future") String blockedUntil) {
+
+        Instant newDeadline;
+        try {
+            newDeadline = Instant.parse(blockedUntil);
+        } catch (Exception e) {
+            return ToolResponse.error("INVALID_DEADLINE: " + blockedUntil);
+        }
+
+        if (!newDeadline.isAfter(Instant.now())) {
+            return ToolResponse.error("DEADLINE_IN_PAST: blockedUntil must be a future timestamp, got: " + blockedUntil);
+        }
+
+        UUID channelId = channelMap.get(commitmentId);
+
+        Optional<Commitment> cOpt = commitmentStore.findByCorrelationId(commitmentId);
+        if (cOpt.isEmpty()) {
+            return ToolResponse.error("COMMITMENT_NOT_FOUND: " + commitmentId);
+        }
+
+        Commitment commitment = cOpt.get();
+        if (commitment.state.isTerminal()) {
+            return ToolResponse.error("COMMITMENT_ALREADY_CLOSED: commitment " + commitmentId
+                    + " is already in terminal state " + commitment.state);
+        }
+        if (!agentId.equals(commitment.obligor)) {
+            return ToolResponse.error("COMMITMENT_UNAUTHORIZED: agentId '" + agentId
+                    + "' is not the obligor for commitment " + commitmentId);
+        }
+
+        commitment.expiresAt = newDeadline;
+        commitmentStore.save(commitment);
+
+        if (channelId != null) {
+            messageService.dispatch(MessageDispatch.builder()
+                    .channelId(channelId)
+                    .sender(agentId)
+                    .type(MessageType.STATUS)
+                    .content("BLOCKED: " + reason)
+                    .correlationId(commitmentId)
+                    .actorType(ActorType.AGENT)
+                    .build());
+        }
+
+        return ToolResponse.success("""
+                {"blocked": true, "newWatchdogDeadline": "%s"}
+                """.formatted(newDeadline).strip());
+    }
+
+    // ---- casehub_delegate ----
+
+    @Tool(description = "Intentionally transfer a commitment to a named agent or person. "
+            + "Dispatches HANDOFF to the originating channel. The Watchdog continues — "
+            + "the delegatee is now responsible for fulfilling the commitment. "
+            + "Use when delegating responsibility, NOT when escalating for authority or capability reasons "
+            + "(use casehub_escalate for that).")
+    public ToolResponse delegate(
+            @ToolArg(description = "Your OpenClaw agentId") String agentId,
+            @ToolArg(description = "commitmentId returned by casehub_commit") String commitmentId,
+            @ToolArg(description = "Reason for delegation — recorded in the Qhorus ledger") String reason,
+            @ToolArg(description = "Target agent ID or human identifier") String toAgent) {
+
+        UUID channelId = channelMap.get(commitmentId);
+        if (channelId == null) {
+            return ToolResponse.error("COMMITMENT_NOT_FOUND: " + commitmentId);
+        }
+
+        long commandMessageId = findCommandMessageId(commitmentId);
+        if (commandMessageId < 0) {
+            return ToolResponse.error("COMMAND_NOT_FOUND: no COMMAND message found for correlationId '"
+                    + commitmentId + "' — cannot dispatch HANDOFF (inReplyTo is required)");
+        }
+
+        messageService.dispatch(MessageDispatch.builder()
+                .channelId(channelId)
+                .sender(agentId)
+                .type(MessageType.HANDOFF)
+                .content(reason)
+                .correlationId(commitmentId)
+                .inReplyTo(commandMessageId)
+                .target(toAgent)
+                .actorType(ActorType.AGENT)
+                .build());
+
+        channelMap.remove(commitmentId);
+
+        return ToolResponse.success("""
+                {"delegated": true, "delegatedTo": "%s"}
+                """.formatted(toAgent).strip());
     }
 
     // ---- helpers ----
