@@ -164,7 +164,7 @@ casehub/    — CaseHub SPI implementations (WorkerProvisioner, ChannelBackend, 
 app/        — Quarkus deployment (MCP endpoint, delivery webhook, ChannelContextWindow REST API, plugin REST API)
 python/     — before_prompt_build hook + channel client (NOT a Maven module)
 plugin/     — TypeScript OpenClaw plugin (before_prompt_build, commitment lifecycle hooks)
-skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, casehub-case, casehub-queue, casehub-status)
+skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, casehub-case, casehub-queue, casehub-status, casehub-reject, casehub-block, casehub-delegate)
 ```
 
 ### Module Detail
@@ -190,7 +190,7 @@ skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, caseh
 - `GET /channel-context/{agentId}?since={windowSeq}` — ChannelContextWindow REST API (always 200; `since` defaults to 0)
 - `EvictionScheduler` — `@Scheduled` bean that calls `service.evictExpired()` at the TTL interval
 - `POST /mcp` — Quarkus MCP endpoint (`quarkus-mcp-server-http:1.11.1`); exposes commitment tools and resources via MCPorter streamable-HTTP transport
-  - Tools: `casehub_commit`, `casehub_done`, `casehub_reject`, `casehub_checkpoint`, `casehub_escalate`, `casehub_create_workitem`, `casehub_queue`, `casehub_status`
+  - Tools: `casehub_commit`, `casehub_done`, `casehub_reject`, `casehub_checkpoint`, `casehub_escalate`, `casehub_block`, `casehub_delegate`, `casehub_create_workitem`, `casehub_queue`, `casehub_status`
   - Resources: `casehub://agent/{agentId}/commitments`, `casehub://channel/{agentId}/recent`
 - `POST /openclaw/plugin/commit` — plugin auto-commit REST endpoint (called by TypeScript plugin `before_tool_call` hook; not for LLM use)
 - `POST /openclaw/plugin/done` — plugin auto-done REST endpoint (called by `agent_end` hook)
@@ -214,6 +214,9 @@ skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, caseh
 - `casehub-case/SKILL.md` — open governed multi-step workflows via `casehub_open_case`
 - `casehub-queue/SKILL.md` — route tasks to named queues via `casehub_queue`
 - `casehub-status/SKILL.md` — query commitment state via `casehub_status`
+- `casehub-reject/SKILL.md` — decline a tracked commitment via `casehub_reject`
+- `casehub-block/SKILL.md` — extend Watchdog deadline while blocked on an external dependency via `casehub_block`
+- `casehub-delegate/SKILL.md` — intentionally transfer a commitment to a named party via `casehub_delegate`
 - `README.md` — ClawHub listing document
 
 ---
@@ -454,4 +457,4 @@ Paths that are project content (not workspace noise). Skills use this to avoid f
 | `LAYER-LOG.md` | Historical Epic log (superseded by ARC42STORIES.MD; retained as reference) |
 | `docs/specs/` | Integration specs and design records (`openclaw-integration.md`, `openclaw-skill-pack.md`, `2026-05-31-epic7-skill-pack-design.md`) |
 | `docs/adr/` | Architecture decision records (ADR-0001: hook language; ADR-0002: MCP host process) |
-| `skills/` | OpenClaw SKILL.md files (casehub-global, workitem, case, queue, status) |
+| `skills/` | OpenClaw SKILL.md files (casehub-global, workitem, case, queue, status, reject, block, delegate) |
