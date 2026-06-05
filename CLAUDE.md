@@ -139,7 +139,9 @@ This is **not** an application layer and **not** a framework. It is the wiring b
 **Oversight gate (Java — `casehub/` module):**
 - `OversightGateService` — classifies agent output (speech act + risk), dispatches to work channel on AUTONOMOUS, or opens a human oversight gate on GATE_REQUIRED
 - `ActionRiskClassifier` — SPI interface (Phase 1: always AUTONOMOUS; local placeholder for casehubio/engine#402 SPI). Override via `@Alternative @Priority(1)`
-- `SpeechActClassifier` — SPI interface classifying agent output into a Qhorus MessageType (Phase 1: always DONE; groundwork for openclaw#10 Phase 2/3). Override via `@Alternative @Priority(1)`
+- `SpeechActClassifier` — SPI interface; `classify(SpeechActContext)` returns `SpeechActResult(type, content, tier)`. Three-tier detection: JSON envelope → bracket prefix → STATUS fallback (`DefaultSpeechActClassifier`). Future `NliSpeechActClassifier @Alternative @Priority(1)` in `casehub-openclaw-inference` (openclaw#27). Override via `@Alternative @Priority(1)`
+- `SpeechActDetection` — public utility; `detect(String output)` returns `Optional<SpeechActResult>`; strict JSON (`FAIL_ON_TRAILING_TOKENS`) + bracket-prefix `[TYPE]` detection; shared with future NLI classifier
+- `DetectionTier` — enum: JSON, PREFIX, FALLBACK (future: NEURAL)
 - `CaseChannelNames` — package-private utility for case channel name operations shared across the `casehub/` module
 
 **ChannelContextWindow service (`core/` module):**
@@ -181,7 +183,7 @@ skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, caseh
 - `ChannelContextWindowObserver` — implements `MessageObserver` SPI; synchronously receives every Qhorus dispatch and feeds the ring buffer; must never throw to Qhorus
 - `OversightGateService` — evaluate() classifies agent output and dispatches to work channel or opens gate; fulfill() processes human response and resolves the gate Commitment
 - `ActionRiskClassifier` / `DefaultActionRiskClassifier` — risk SPI (Phase 1: always AUTONOMOUS)
-- `SpeechActClassifier` / `DefaultSpeechActClassifier` — speech act SPI (Phase 1: always DONE)
+- `SpeechActClassifier` / `DefaultSpeechActClassifier` — speech act SPI; three-tier detection (JSON → prefix → STATUS fallback); `SpeechActDetection` utility; `DetectionTier` enum (JSON/PREFIX/FALLBACK)
 - `CaseChannelNames` — package-private channel name utility
 
 **`app/`** owns:
