@@ -101,10 +101,9 @@ public class OversightGateService {
 
             SpeechActResult speechAct = speechActClassifier.classify(
                     new SpeechActContext(agentId, output));
-            MessageType messageType = speechAct.type();
 
             RiskDecision decision = actionRiskClassifier.classify(
-                    new PlannedAction(agentId, caseId, output, null, Map.of()));
+                    new PlannedAction(agentId, caseId, speechAct.content(), null, Map.of()));
 
             if (decision instanceof RiskDecision.Autonomous) {
                 List<Commitment> open =
@@ -121,11 +120,11 @@ public class OversightGateService {
                 MessageDispatch.Builder builder = MessageDispatch.builder()
                         .channelId(workChannelId)
                         .sender(agentId)
-                        .content(output != null ? output : "")
+                        .content(speechAct.content())
                         .actorType(ActorType.AGENT);
 
                 if (commandMessageId != null && correlationId != null) {
-                    builder.type(messageType).inReplyTo(commandMessageId).correlationId(correlationId);
+                    builder.type(speechAct.type()).inReplyTo(commandMessageId).correlationId(correlationId);
                 } else {
                     builder.type(MessageType.STATUS);
                     if (hadCommitment) {
@@ -144,7 +143,7 @@ public class OversightGateService {
             }
 
             RiskDecision.GateRequired gate = (RiskDecision.GateRequired) decision;
-            openGate(caseId, workChannelId, agentId, output, gate);
+            openGate(caseId, workChannelId, agentId, output, speechAct, gate);
 
         } catch (Exception e) {
             log.errorf("OversightGateService.evaluate() failed for channel=%s agent=%s: %s",
@@ -153,7 +152,8 @@ public class OversightGateService {
     }
 
     private void openGate(UUID caseId, UUID workChannelId, String agentId,
-                          String output, RiskDecision.GateRequired gate) {
+                          String rawOutput, SpeechActResult speechAct,
+                          RiskDecision.GateRequired gate) {
         Channel oversightChannel = channelService.findByName(
                 CaseChannelNames.oversightChannelName(caseId)).orElse(null);
         if (oversightChannel == null) {
@@ -163,18 +163,15 @@ public class OversightGateService {
         }
 
         UUID gateId = UUID.randomUUID();
-        String oversightPrompt = buildOversightPrompt(agentId, output, gate);
+        String oversightPrompt = buildOversightPrompt(agentId, speechAct.content(), gate);
 
-        // COMMAND content = original agent output (machine-retrievable); prompt goes to
-        // OpenClaw invoke() as the message parameter separately.
-        // Sender is GATE_SENDER: this is the gate acting on the agent's behalf, not the
-        // agent itself — the audit trail should reflect the gate as author, not the agent.
-        // inReplyTo for RESPONSE/DECLINE is resolved durably in fulfill() via findAllByCorrelationId.
+        // COMMAND content = raw output for audit fidelity (machine-retrievable).
+        // The oversight prompt uses stripped content for human readability.
         messageService.dispatch(MessageDispatch.builder()
                 .channelId(oversightChannel.id)
                 .sender(GATE_SENDER)
                 .type(MessageType.COMMAND)
-                .content(output != null ? output : "")
+                .content(rawOutput != null ? rawOutput : "")
                 .correlationId(gateId.toString())
                 .actorType(ActorType.AGENT)
                 .build());

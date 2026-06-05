@@ -13,6 +13,13 @@ package io.casehub.openclaw.casehub;
  * names, same {@code @Alternative @Priority(1)} override pattern. When engine#402 ships,
  * migration is a pure import swap — no code changes beyond the import statement.
  *
+ * <p><b>Content semantics:</b> {@link PlannedAction#description()} receives the stripped
+ * agent output — any bracket prefix (e.g. {@code [DONE]}) or JSON envelope
+ * ({@code {"type":...}}) is removed before this SPI is called. The description reflects
+ * the agent's intended action, not the speech-act classification metadata. This applies
+ * to real implementations (casehubio/engine#402) — the Phase 1 default is
+ * always-AUTONOMOUS and ignores description content.
+ *
  * <p>Override the default bean with {@code @Alternative @Priority(1)}.
  */
 public interface ActionRiskClassifier {

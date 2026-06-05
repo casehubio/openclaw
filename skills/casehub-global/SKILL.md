@@ -43,3 +43,28 @@ Call `casehub_delegate` when intentionally transferring responsibility to a spec
 
 **Open commitments** from prior sessions are injected at session start. Address them
 before starting new work — call `casehub_status` for details.
+
+## Case step responses
+
+**When CaseHub invokes you as a case step (you received a COMMAND and are replying via
+the deliver:webhook path), you MUST prefix every response with the speech act type.**
+Omitting a prefix is treated as an in-progress update — CaseHub will leave the commitment
+open and the Watchdog will escalate, even if you intended to signal completion.
+
+Do not wrap responses in markdown code fences.
+
+**JSON format (preferred — machine-readable, bare JSON only):**
+
+{"type": "DONE", "content": "Your response here."}
+
+**Bracket prefix format (simpler alternative):**
+
+[DONE] Your response here.
+[STATUS]: colon after the bracket is also accepted.
+
+Valid types:
+- DONE — task complete; commitment resolved as fulfilled
+- STATUS — still in progress; Watchdog stays armed (you can send DONE later)
+- DECLINE — you cannot complete the task; commitment resolved as declined
+- FAILURE — task failed with an error; commitment resolved as failed
+- RESPONSE — only if you received a QUERY obligation (not a COMMAND); if in doubt, use DONE

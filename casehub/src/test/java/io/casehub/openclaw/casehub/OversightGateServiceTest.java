@@ -212,6 +212,205 @@ class OversightGateServiceTest {
         verify(hookClient, never()).invoke(anyString(), anyString(), anyString(), anyInt(), anyString());
     }
 
+    // ── New tests: Phase 2+3 content stripping and type routing ──────────────
+
+    @Test
+    void evaluate_prefixStatus_dispatchesStatusWithInReplyTo() {
+        // [STATUS] prefix → STATUS dispatched with inReplyTo + correlationId
+        // (ACKNOWLEDGED is the verified Qhorus consequence — see spec §Classifiable MessageTypes;
+        // this test asserts dispatch arguments only)
+        when(speechActClassifier.classify(any())).thenReturn(
+            new SpeechActResult(MessageType.STATUS, "Still processing.", DetectionTier.PREFIX));
+
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+        long commandMessageId = 55L;
+
+        when(commitmentStore.findOpenByObligor(agentId, workChannelId))
+                .thenReturn(List.of(openCommandCommitment(workChannelId, agentId, correlationId)));
+        Message commandMsg = new Message();
+        commandMsg.id = commandMessageId;
+        commandMsg.messageType = MessageType.COMMAND;
+        commandMsg.correlationId = correlationId;
+        when(messageService.findAllByCorrelationId(correlationId)).thenReturn(List.of(commandMsg));
+
+        service.evaluate(workChannelId, agentId, "[STATUS] Still processing.");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(MessageType.STATUS);
+        assertThat(captor.getValue().inReplyTo()).isEqualTo(commandMessageId);
+        assertThat(captor.getValue().correlationId()).isEqualTo(correlationId);
+    }
+
+    @Test
+    void evaluate_jsonDecline_dispatchesDeclineWithInReplyTo() {
+        when(speechActClassifier.classify(any())).thenReturn(
+            new SpeechActResult(MessageType.DECLINE, "can't do it", DetectionTier.JSON));
+
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+        long commandMessageId = 77L;
+
+        when(commitmentStore.findOpenByObligor(agentId, workChannelId))
+                .thenReturn(List.of(openCommandCommitment(workChannelId, agentId, correlationId)));
+        Message commandMsg = new Message();
+        commandMsg.id = commandMessageId;
+        commandMsg.messageType = MessageType.COMMAND;
+        commandMsg.correlationId = correlationId;
+        when(messageService.findAllByCorrelationId(correlationId)).thenReturn(List.of(commandMsg));
+
+        service.evaluate(workChannelId, agentId, "{\"type\":\"DECLINE\",\"content\":\"can't do it\"}");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(MessageType.DECLINE);
+        assertThat(captor.getValue().inReplyTo()).isEqualTo(commandMessageId);
+    }
+
+    @Test
+    void evaluate_jsonDecline_contentIsStrippedNotRawJson() {
+        when(speechActClassifier.classify(any())).thenReturn(
+            new SpeechActResult(MessageType.DECLINE, "can't do it", DetectionTier.JSON));
+
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+        when(commitmentStore.findOpenByObligor(agentId, workChannelId))
+                .thenReturn(List.of(openCommandCommitment(workChannelId, agentId, correlationId)));
+        Message commandMsg = new Message();
+        commandMsg.id = 1L;
+        commandMsg.messageType = MessageType.COMMAND;
+        commandMsg.correlationId = correlationId;
+        when(messageService.findAllByCorrelationId(correlationId)).thenReturn(List.of(commandMsg));
+
+        service.evaluate(workChannelId, agentId, "{\"type\":\"DECLINE\",\"content\":\"can't do it\"}");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().content()).isEqualTo("can't do it");
+        assertThat(captor.getValue().content()).doesNotContain("{\"type\":");
+    }
+
+    @Test
+    void evaluate_prefixDone_contentIsStrippedNotBracketed() {
+        when(speechActClassifier.classify(any())).thenReturn(
+            new SpeechActResult(MessageType.DONE, "task finished", DetectionTier.PREFIX));
+
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+        when(commitmentStore.findOpenByObligor(agentId, workChannelId))
+                .thenReturn(List.of(openCommandCommitment(workChannelId, agentId, correlationId)));
+        Message commandMsg = new Message();
+        commandMsg.id = 2L;
+        commandMsg.messageType = MessageType.COMMAND;
+        commandMsg.correlationId = correlationId;
+        when(messageService.findAllByCorrelationId(correlationId)).thenReturn(List.of(commandMsg));
+
+        service.evaluate(workChannelId, agentId, "[DONE] task finished");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().content()).isEqualTo("task finished");
+        assertThat(captor.getValue().content()).doesNotStartWith("[DONE]");
+    }
+
+    @Test
+    void evaluate_noPrefixFallback_withOpenCommitment_dispatchesStatusWithInReplyTo() {
+        // No explicit signal → STATUS fallback; commitment is present
+        // (ACKNOWLEDGED is the verified Qhorus consequence; this test asserts dispatch arguments only)
+        when(speechActClassifier.classify(any())).thenReturn(
+            new SpeechActResult(MessageType.STATUS, "I have analysed the data.", DetectionTier.FALLBACK));
+
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+        long commandMessageId = 99L;
+
+        when(commitmentStore.findOpenByObligor(agentId, workChannelId))
+                .thenReturn(List.of(openCommandCommitment(workChannelId, agentId, correlationId)));
+        Message commandMsg = new Message();
+        commandMsg.id = commandMessageId;
+        commandMsg.messageType = MessageType.COMMAND;
+        commandMsg.correlationId = correlationId;
+        when(messageService.findAllByCorrelationId(correlationId)).thenReturn(List.of(commandMsg));
+
+        service.evaluate(workChannelId, agentId, "I have analysed the data.");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(MessageType.STATUS);
+        assertThat(captor.getValue().inReplyTo()).isEqualTo(commandMessageId);
+        assertThat(captor.getValue().correlationId()).isEqualTo(correlationId);
+    }
+
+    @Test
+    void evaluate_noPrefixFallback_watchdogExpiredPath_dispatchesStatusWithoutInReplyTo() {
+        // No explicit signal + no open commitment (Watchdog expired)
+        when(speechActClassifier.classify(any())).thenReturn(
+            new SpeechActResult(MessageType.STATUS, "I have analysed the data.", DetectionTier.FALLBACK));
+        when(commitmentStore.findOpenByObligor("finance-agent", workChannelId))
+                .thenReturn(Collections.emptyList());
+
+        service.evaluate(workChannelId, "finance-agent", "I have analysed the data.");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(MessageType.STATUS);
+        assertThat(captor.getValue().inReplyTo()).isNull();
+    }
+
+    @Test
+    void evaluate_oversightGate_commandContentIsRawOutput() {
+        // openGate() COMMAND message content = raw output (audit fidelity), NOT stripped content
+        when(actionRiskClassifier.classify(any()))
+                .thenReturn(new RiskDecision.GateRequired("risk", false));
+        String rawOutput = "{\"type\":\"DONE\",\"content\":\"Cancel Netflix.\"}";
+        when(speechActClassifier.classify(any())).thenReturn(
+            new SpeechActResult(MessageType.DONE, "Cancel Netflix.", DetectionTier.JSON));
+
+        service.evaluate(workChannelId, "finance-agent", rawOutput);
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        // COMMAND content must be the RAW output, not the stripped content
+        assertThat(captor.getValue().content()).isEqualTo(rawOutput);
+    }
+
+    @Test
+    void evaluate_oversightGate_promptUsesStrippedContent() {
+        // buildOversightPrompt receives speechAct.content() (stripped), not raw JSON
+        when(actionRiskClassifier.classify(any()))
+                .thenReturn(new RiskDecision.GateRequired("risk", false));
+        String rawOutput = "{\"type\":\"DONE\",\"content\":\"Cancel Netflix subscription.\"}";
+        when(speechActClassifier.classify(any())).thenReturn(
+            new SpeechActResult(MessageType.DONE, "Cancel Netflix subscription.", DetectionTier.JSON));
+
+        service.evaluate(workChannelId, "finance-agent", rawOutput);
+
+        // The prompt passed to hookClient.invoke() must contain the stripped content
+        // and must NOT contain the raw JSON envelope
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(hookClient).invoke(anyString(), promptCaptor.capture(), anyString(), anyInt(), anyString());
+        String prompt = promptCaptor.getValue();
+        assertThat(prompt).contains("Cancel Netflix subscription.");
+        assertThat(prompt).doesNotContain("{\"type\":");
+    }
+
+    @Test
+    void evaluate_watchdogExpiredPath_contentIsStripped() {
+        // Watchdog-expired path (no correlationId): STATUS dispatched with speechAct.content()
+        when(speechActClassifier.classify(any())).thenReturn(
+            new SpeechActResult(MessageType.DONE, "stripped content", DetectionTier.PREFIX));
+        when(commitmentStore.findOpenByObligor("finance-agent", workChannelId))
+                .thenReturn(Collections.emptyList());
+
+        service.evaluate(workChannelId, "finance-agent", "[DONE] stripped content");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().content()).isEqualTo("stripped content");
+        assertThat(captor.getValue().content()).doesNotStartWith("[DONE]");
+    }
+
     // ── evaluate() — gate required path ───────────────────────────────────────
 
     @Test
