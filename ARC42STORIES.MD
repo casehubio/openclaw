@@ -332,7 +332,7 @@ Two STATUS fallback paths:
 
 | Journey | Description | Chapters | Status |
 |---|---|---|---|
-| OpenClaw-CaseHub Integration | A Claude Code agent session receives CaseHub skill injection, executes tools with full commitment tracking, and returns accountable DONE/DECLINE outcomes that CaseHub can audit and trust-weight. | 7 (C1–C7) | In progress (C8 pending) |
+| OpenClaw-CaseHub Integration | A Claude Code agent session receives CaseHub skill injection, executes tools with full commitment tracking, and returns accountable DONE/DECLINE outcomes that CaseHub can audit and trust-weight. | 8 (C1–C8) | ✅ Complete |
 
 ### §9.2 Chapter Index
 
@@ -353,7 +353,7 @@ flowchart LR
   style C5 fill:#90EE90,color:#000
   style C6 fill:#90EE90,color:#000
   style C7 fill:#90EE90,color:#000
-  style C8 fill:#D3D3D3,color:#000
+  style C8 fill:#90EE90,color:#000
 ```
 
 | # | Chapter | Layers touched | Status |
@@ -365,7 +365,7 @@ flowchart LR
 | C5 | Python SDK + Plugin (before_prompt_build) | L4 High, L5 High | ✅ |
 | C6 | Bidirectional Wiring + Oversight Gate | L2 High, L3 Medium, L5 Low | ✅ |
 | C7 | Skill Pack (MCP + plugin hooks + skills) | L3 High, L5 High, L6 High, L2 Low | ✅ |
-| C8 | Speech Act Classification Phase 2–3 | L2 High | 🔲 |
+| C8 | Speech Act Classification Phase 2–3 | L2 High | ✅ |
 
 **Layer × Chapter matrix**
 
@@ -523,14 +523,14 @@ After C7, OpenClaw agents are accountable, not just capable. The Quarkus MCP end
 
 #### Chapter 8 — Speech Act Classification Phase 2–3
 
-**Journey:** OpenClaw-CaseHub Integration | **Sequence:** 8 of 8 | **Status:** 🔲 pending
-**Delivered:** — | **Issues:** casehubio/openclaw#8, casehubio/openclaw#10 | **Blog:** —
+**Journey:** OpenClaw-CaseHub Integration | **Sequence:** 8 of 8 | **Status:** ✅ complete
+**Delivered:** 2026-06-05 | **Issues:** casehubio/openclaw#8, casehubio/openclaw#10 | **Blog:** `blog/2026-06-05-mdp01-c8-speech-act-classification.md`
 
 **What this delivers**
-🔲 Phase 2: detect skill-output prefix conventions (`[STATUS]`, `[DONE]`) and route to the correct Qhorus MessageType. Phase 3: parse structured JSON output. Both phases unblock `DefaultSpeechActClassifier` from always returning `DONE`.
+Three-tier speech act detection pipeline: JSON envelope (`{"type":"DONE","content":"..."}`) → bracket prefix (`[STATUS] message`) → STATUS fallback. `SpeechActDetection` public utility encapsulates detection; `DefaultSpeechActClassifier` applies STATUS fallback (not DONE — false completion is worse than stuck commitment). `SpeechActClassifier` returns `SpeechActResult(type, content, tier)`. `OversightGateService` uses stripped content for dispatch and oversight prompt; raw output preserved for Qhorus COMMAND audit record. `casehub-global` SKILL.md gains case step response protocol. ADR-0003 documents the STATUS fallback decision.
 
 **Accountability gaps closed**
-- 🔲 Agent output routed as DONE regardless of speech act type: to be closed by `SpeechActClassifier` Phase 2/3.
+- ✅ Agent output routed as DONE regardless of speech act type: closed by `SpeechActDetection` + `DefaultSpeechActClassifier` Phase 2/3.
 
 **Layer Impact**
 | Layer | Delta |
@@ -663,7 +663,7 @@ To implement a webhook-delivery client for an agent runtime in a CaseHub integra
 **Issues:** casehubio/openclaw#4, casehubio/openclaw#6, casehubio/openclaw#10, casehubio/openclaw#15, casehubio/openclaw#16
 **Navigation:** `git log --grep="#4" --oneline`, `git log --grep="#6" --oneline`
 **Blog:** `blog/2026-05-29-mdp01-casehub-spi-implementations.md`, `blog/2026-05-30-mdp01-bidirectional-wiring-oversight-gate.md`
-**Improvement refs:** casehubio/engine#402 (ActionRiskClassifier SPI), casehubio/openclaw#10 (SpeechActClassifier Phase 2/3)
+**Improvement refs:** casehubio/engine#402 (ActionRiskClassifier SPI), casehubio/openclaw#27 (NliSpeechActClassifier — future ML classification)
 **Completed:** 2026-05-31 (Phase 1)
 
 #### What it adds
@@ -1026,7 +1026,7 @@ What this layer adds:
 - **Always-active protocol awareness** — `casehub-global` SKILL.md instructs agents on when to use CaseHub tools explicitly and when not to (auto-commit handles the rest); does not instruct agents to call `casehub_commit` explicitly when `autoCommit: true` (would cause double-commitments)
 - **Stateless explicit skills** — each of the four explicit skills is a single MCP tool invocation; no multi-step state; no commitment lifecycle; user-initiated only
 
-Not closed here: Phase 2 multi-step skills (broadcast, vote, handoff); Phase 2/3 speech act classification (casehubio/openclaw#10).
+Not closed here: Phase 2 multi-step skills (broadcast, vote, handoff); future NLI speech act classification (casehubio/openclaw#27).
 
 #### Accountability gaps closed
 
@@ -1105,7 +1105,6 @@ To add SKILL.md files to a CaseHub integration tier:
 
 | Risk | Description | Issue | Mitigation |
 |---|---|---|---|
-| C8 pending | Speech act classification Phase 2/3 not built; `DefaultSpeechActClassifier` always returns DONE regardless of agent output type | casehubio/openclaw#8, #10 | Phase 1 placeholder; Watchdog handles unresolved commitments |
 | `ActionRiskClassifier` SPI not in engine-api | Local placeholder; migration to `casehub-engine-api` import swap depends on casehubio/engine#402 shipping | casehubio/engine#402 | `DefaultActionRiskClassifier` always-Autonomous; no real risk gate until SPI ships |
 | OpenClaw `after_tool_call` not firing | Upstream OpenClaw bug in embedded agent runs; any future use of `after_tool_call` hook depends on this fix | casehubio/openclaw#18 | No current dependency on `after_tool_call`; tracked for future phases |
 | Epic 3 issue (#3) never closed | `ChannelContextWindow` code is complete; the GitHub epic issue was left open after the Flyway migration was dropped from scope | casehubio/openclaw#3 | Close the issue; no code impact |
