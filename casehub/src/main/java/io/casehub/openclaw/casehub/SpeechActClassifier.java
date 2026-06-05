@@ -3,22 +3,27 @@ package io.casehub.openclaw.casehub;
 import io.casehub.qhorus.api.message.MessageType;
 
 /**
- * Classifies an OpenClaw agent output into a Qhorus {@link MessageType}.
+ * Classifies an OpenClaw agent output into a Qhorus {@link MessageType} and
+ * a stripped content string.
  *
- * <p><b>Phase 1 ({@link DefaultSpeechActClassifier}):</b> always returns
- * {@link MessageType#DONE}. Inferred from invocation context — a COMMAND was
- * received and this is the agent's completion response.
+ * <p><b>Phase 1 ({@link DefaultSpeechActClassifier}):</b> STATUS fallback for
+ * unrecognised output; DONE/STATUS/DECLINE/FAILURE/RESPONSE for explicit signals.
  *
- * <p><b>Phase 2 (openclaw#10):</b> detect skill-output prefix conventions prepended
- * by SKILL.md instructions — e.g. "[STATUS] Boiler pressure 1.2 bar" → STATUS.
+ * <p><b>Phase 2 (openclaw#10):</b> bracket prefix detection —
+ * {@code [STATUS] Boiler pressure 1.2 bar} → STATUS.
  *
- * <p><b>Phase 3 (openclaw#10):</b> parse structured JSON output from skills that
- * provide machine-readable speech acts: {@code {"type":"STATUS","content":"..."}}.
+ * <p><b>Phase 3 (openclaw#10):</b> structured JSON detection —
+ * {@code {"type":"STATUS","content":"..."}} → STATUS.
  *
- * <p>This interface exists now to isolate classification from {@link OversightGateService}.
- * Phase 2/3 implementations are drop-in replacements. Override with
- * {@code @Alternative @Priority(1)}.
+ * <p>Override with {@code @Alternative @Priority(1)}.
+ * Any {@code @Alternative} implementation must be updated to return
+ * {@link SpeechActResult} — the return type changed from {@link MessageType}
+ * in this pass.
+ *
+ * <p>Future: {@code NliSpeechActClassifier @Alternative @Priority(1)} in
+ * {@code casehub-openclaw-inference} (openclaw#27) will call
+ * {@link SpeechActDetection#detect(String)} and fall back to ML classification.
  */
 public interface SpeechActClassifier {
-    MessageType classify(SpeechActContext context);
+    SpeechActResult classify(SpeechActContext context);
 }

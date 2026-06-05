@@ -99,8 +99,9 @@ public class OversightGateService {
                 return;
             }
 
-            MessageType messageType = speechActClassifier.classify(
-                    new SpeechActContext(agentId, output, null));
+            SpeechActResult speechAct = speechActClassifier.classify(
+                    new SpeechActContext(agentId, output));
+            MessageType messageType = speechAct.type();
 
             RiskDecision decision = actionRiskClassifier.classify(
                     new PlannedAction(agentId, caseId, output, null, Map.of()));

@@ -7,7 +7,7 @@ import io.casehub.qhorus.api.message.MessageType;
 public class DefaultSpeechActClassifier implements SpeechActClassifier {
 
     @Override
-    public MessageType classify(SpeechActContext context) {
-        return MessageType.DONE;
+    public SpeechActResult classify(SpeechActContext ctx) {
+        return new SpeechActResult(MessageType.DONE, ctx.output() != null ? ctx.output() : "", DetectionTier.FALLBACK);
     }
 }

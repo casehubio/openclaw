@@ -10,19 +10,19 @@ class DefaultSpeechActClassifierTest {
 
     @Test
     void classify_normalOutput_returnsDone() {
-        assertThat(classifier.classify(new SpeechActContext("agent", "Analysis complete.", "finance")))
-                .isEqualTo(MessageType.DONE);
+        SpeechActResult result = classifier.classify(new SpeechActContext("agent", "Analysis complete."));
+        assertThat(result.type()).isEqualTo(MessageType.DONE);
     }
 
     @Test
     void classify_emptyOutput_returnsDone() {
-        assertThat(classifier.classify(new SpeechActContext("agent", "", null)))
-                .isEqualTo(MessageType.DONE);
+        SpeechActResult result = classifier.classify(new SpeechActContext("agent", ""));
+        assertThat(result.type()).isEqualTo(MessageType.DONE);
     }
 
     @Test
-    void classify_nullActionType_returnsDone() {
-        assertThat(classifier.classify(new SpeechActContext("agent", "result", null)))
-                .isEqualTo(MessageType.DONE);
+    void classify_nullOutput_returnsDone() {
+        SpeechActResult result = classifier.classify(new SpeechActContext("agent", null));
+        assertThat(result.type()).isEqualTo(MessageType.DONE);
     }
 }

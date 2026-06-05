@@ -86,7 +86,11 @@ class OversightGateServiceTest {
                 org.mockito.ArgumentMatchers.anyLong(),
                 any(), org.mockito.ArgumentMatchers.any());
 
-        when(speechActClassifier.classify(any())).thenReturn(MessageType.DONE);
+        when(speechActClassifier.classify(any())).thenAnswer(invocation -> {
+            SpeechActContext ctx = invocation.getArgument(0);
+            String content = (ctx != null && ctx.output() != null) ? ctx.output() : "";
+            return new SpeechActResult(MessageType.DONE, content, DetectionTier.FALLBACK);
+        });
         when(actionRiskClassifier.classify(any())).thenReturn(new RiskDecision.Autonomous());
 
         // Default dispatch result for the COMMAND sent to oversight channel
@@ -180,7 +184,8 @@ class OversightGateServiceTest {
     @Test
     void evaluate_autonomous_doesNotRequireInReplyToForStatusType() {
         // When speechActClassifier returns STATUS (not DONE), dispatch can proceed without inReplyTo
-        when(speechActClassifier.classify(any())).thenReturn(MessageType.STATUS);
+        SpeechActResult statusResult = new SpeechActResult(MessageType.STATUS, "Progress update.", DetectionTier.PREFIX);
+        when(speechActClassifier.classify(any())).thenAnswer(inv -> statusResult);
         String agentId = "finance-agent";
         String correlationId = UUID.randomUUID().toString();
 
