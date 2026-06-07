@@ -19,6 +19,8 @@ import io.casehub.openclaw.context.ChannelContextWindowService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -53,7 +55,7 @@ class OpenClawCaseChannelProviderTest {
         UUID channelId = UUID.randomUUID();
         String name = CaseChannel.channelName(caseId, "work");
         when(channelService.findByName(name)).thenReturn(Optional.empty());
-        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any()))
+        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(channel(channelId, name));
 
         CaseChannel result = provider.openChannel(caseId, "work");
@@ -73,7 +75,7 @@ class OpenClawCaseChannelProviderTest {
         CaseChannel result = provider.openChannel(caseId, "work");
 
         assertThat(result.id()).isEqualTo(channelId.toString());
-        verify(channelService, never()).create(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(channelService, never()).create(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -82,7 +84,7 @@ class OpenClawCaseChannelProviderTest {
         UUID channelId = UUID.randomUUID();
         String name = CaseChannel.channelName(caseId, "work");
         when(channelService.findByName(name)).thenReturn(Optional.empty());
-        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any()))
+        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(channel(channelId, name));
 
         provider.openChannel(caseId, "work");
@@ -138,5 +140,58 @@ class OpenClawCaseChannelProviderTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).purpose()).isEqualTo("work");
+    }
+
+    @Test
+    void openChannel_oversight_setsDeniedTypesEvent_allowedTypesNull() {
+        UUID caseId = UUID.randomUUID();
+        UUID channelId = UUID.randomUUID();
+        String name = CaseChannel.channelName(caseId, "oversight");
+        when(channelService.findByName(name)).thenReturn(Optional.empty());
+        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(channel(channelId, name));
+
+        provider.openChannel(caseId, "oversight");
+
+        verify(channelService).create(
+                anyString(), anyString(), any(),
+                isNull(), isNull(), isNull(), isNull(), isNull(),
+                isNull(),       // allowedTypes = null
+                eq("EVENT"));   // deniedTypes = "EVENT"
+    }
+
+    @Test
+    void openChannel_work_bothTypesNull() {
+        UUID caseId = UUID.randomUUID();
+        UUID channelId = UUID.randomUUID();
+        String name = CaseChannel.channelName(caseId, "work");
+        when(channelService.findByName(name)).thenReturn(Optional.empty());
+        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(channel(channelId, name));
+
+        provider.openChannel(caseId, "work");
+
+        verify(channelService).create(
+                anyString(), anyString(), any(),
+                isNull(), isNull(), isNull(), isNull(), isNull(),
+                isNull(), isNull());
+    }
+
+    @Test
+    void openChannel_observe_allowedTypesEventDeniedTypesNull() {
+        UUID caseId = UUID.randomUUID();
+        UUID channelId = UUID.randomUUID();
+        String name = CaseChannel.channelName(caseId, "observe");
+        when(channelService.findByName(name)).thenReturn(Optional.empty());
+        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(channel(channelId, name));
+
+        provider.openChannel(caseId, "observe");
+
+        verify(channelService).create(
+                anyString(), anyString(), any(),
+                isNull(), isNull(), isNull(), isNull(), isNull(),
+                eq("EVENT"),  // allowedTypes = "EVENT"
+                isNull());    // deniedTypes = null
     }
 }

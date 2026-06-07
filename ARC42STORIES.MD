@@ -111,7 +111,7 @@ C4Context
 
 **Foundation owns:** case lifecycle (casehub-engine); agent communication mesh and Qhorus channels (casehub-qhorus); Merkle audit chain and trust scoring (casehub-ledger); human task lifecycle (casehub-work).
 
-**Not owned here:** ActionRiskClassifier SPI in casehub-engine-api (casehubio/engine#402 — local placeholder only); oversight channel `allowedTypes` final decision (casehubio/claudony#142).
+**Not owned here:** ActionRiskClassifier SPI in casehub-engine-api (casehubio/engine#402 — local placeholder only). Oversight channel now uses `deniedTypes=EVENT` per PLATFORM.md (claudony#142 resolved in #25).
 
 See `../parent/docs/PLATFORM.md` Capability Ownership table and `../parent/docs/repos/casehub-openclaw.md`.
 

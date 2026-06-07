@@ -37,19 +37,16 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
     private static final Logger log = Logger.getLogger(OpenClawCaseChannelProvider.class);
     private static final String QHORUS_NAME_KEY = "qhorus-name";
 
-    // Normative layout: purpose → [description, allowedTypes CSV or null]
-    // Source of truth: Claudony's NormativeChannelLayout (casehub/src/main/.../NormativeChannelLayout.java).
-    // The spec §7.1 table differs (observe=EVENT+QUERY+STATUS, oversight=COMMAND+RESPONSE) — Claudony's
-    // actual implementation is used here as the platform ground truth. Consolidation: parent#93.
-    // oversight allowedTypes: null (unrestricted). Minimum types used by the gate mechanism:
-    // COMMAND (gate request, opens Commitment), RESPONSE (approved, closes Commitment),
-    // DECLINE (rejected, closes Commitment). Null used because the oversight conversation
-    // may also need QUERY (human asks for context), STATUS (agent clarifies), and EVENT (telemetry).
-    // Pending casehubio/claudony#142 — update to explicit list if Claudony's design resolution constrains it.
-    private static final Map<String, String[]> LAYOUT = Map.of(
-            "work",     new String[]{"Primary coordination — all obligation-carrying message types", null},
-            "observe",  new String[]{"Telemetry — EVENT only, no obligations created", "EVENT"},
-            "oversight",new String[]{"Human governance — agent actions pending human approval", null}
+    private record ChannelSpec(String description, String allowedTypes, String deniedTypes) {}
+
+    // Normative channel layout. Source of truth: PLATFORM.md §Agent Communication Mesh.
+    // oversight uses deniedTypes=EVENT (no telemetry on governance channel; all obligation
+    // types allowed). observe uses allowedTypes=EVENT (telemetry only, no obligations).
+    // work is unrestricted. Consolidation of NormativeChannelLayout: parent#93.
+    private static final Map<String, ChannelSpec> LAYOUT = Map.of(
+            "work",     new ChannelSpec("Primary coordination — all obligation-carrying message types", null, null),
+            "observe",  new ChannelSpec("Telemetry — EVENT only, no obligations created", "EVENT", null),
+            "oversight",new ChannelSpec("Human governance — agent actions pending human approval", null, "EVENT")
     );
 
     private final ChannelService channelService;
@@ -68,14 +65,14 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
     @Override
     public CaseChannel openChannel(UUID caseId, String purpose) {
         String channelName = CaseChannel.channelName(caseId, purpose);
-        String[] spec = LAYOUT.get(purpose);
-        String description = spec != null ? spec[0] : purpose;
-        String allowedTypes = spec != null ? spec[1] : null;
+        ChannelSpec spec = LAYOUT.get(purpose);
+        String description = spec != null ? spec.description() : purpose;
+        String allowedTypes = spec != null ? spec.allowedTypes() : null;
+        String deniedTypes = spec != null ? spec.deniedTypes() : null;
 
-        // Find existing before creating — idempotency contract from engine#323
         Channel channel = channelService.findByName(channelName)
                 .orElseGet(() -> channelService.create(channelName, description,
-                        ChannelSemantic.APPEND, null, null, null, null, null, allowedTypes));
+                        ChannelSemantic.APPEND, null, null, null, null, null, allowedTypes, deniedTypes));
 
         contextService.bindChannel(caseId, channel.id);
         log.debugf("Opened channel: %s (id=%s)", channelName, channel.id);
