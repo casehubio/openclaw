@@ -2,10 +2,8 @@ package io.casehub.openclaw.app.mcp;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -37,9 +35,11 @@ import io.quarkiverse.mcp.server.ToolResponse;
  * <p>Commitment identity: for channel-backed commits, commitmentId == correlationId of
  * the open COMMAND commitment on that channel. For self-commits, a new UUID is generated.
  *
- * <p>In-memory map ({@code commitmentId → channelId}) survives within a JVM process.
- * Crash gap: on Quarkus restart, channel-backed commitments must be resolved by the
- * Watchdog (tracked in casehubio/openclaw#20).
+ * <p>Channel resolution: channelId is read from the {@link Commitment} entity on every
+ * call to {@link #resolveChannelId(String)}, making the implementation crash-safe — no
+ * in-memory map is needed. Terminal commitments (FULFILLED, DECLINED, DELEGATED, etc.)
+ * are filtered out so that done()/reject() after escalate()/delegate() return
+ * COMMITMENT_ALREADY_CLOSED rather than silently re-dispatching.
  */
 @ApplicationScoped
 public class CommitmentTools {
@@ -49,9 +49,6 @@ public class CommitmentTools {
     private final MessageService messageService;
     private final CommitmentService commitmentService;
     private final CommitmentStore commitmentStore;
-
-    /** commitmentId (correlationId) → channelId; populated on channel-backed commit(). */
-    private final Map<String, UUID> channelMap = new ConcurrentHashMap<>();
 
     @Inject
     public CommitmentTools(MessageService messageService,
@@ -109,8 +106,6 @@ public class CommitmentTools {
                 .actorType(ActorType.AGENT)
                 .build());
 
-        channelMap.put(correlationId, channelId);
-
         return ToolResponse.success("""
                 {"commitmentId": "%s", "watchdogDeadline": "%s"}
                 """.formatted(correlationId, deadline != null ? deadline.toString() : "none").strip());
@@ -129,7 +124,7 @@ public class CommitmentTools {
                 agentId,
                 deadline);
 
-        // Self-commits don't go into channelMap — no channel to dispatch to
+        // Self-commits have no channel to dispatch to
 
         return ToolResponse.success("""
                 {"commitmentId": "%s", "watchdogDeadline": "%s"}
@@ -146,11 +141,9 @@ public class CommitmentTools {
             @ToolArg(description = "commitmentId returned by casehub_commit") String commitmentId,
             @ToolArg(description = "Optional outcome description", required = false) String outcome) {
 
-        UUID channelId = channelMap.get(commitmentId);
-        if (channelId != null) {
-            return channelBacked_done(agentId, commitmentId, channelId, outcome);
-        }
-        return selfCommit_done(commitmentId);
+        return resolveChannelId(commitmentId)
+                .map(channelId -> channelBacked_done(agentId, commitmentId, channelId, outcome))
+                .orElseGet(() -> selfCommit_done(commitmentId));
     }
 
     private ToolResponse channelBacked_done(String agentId, String correlationId,
@@ -161,8 +154,6 @@ public class CommitmentTools {
                     + correlationId + "' — cannot dispatch DONE (inReplyTo is required)");
         }
 
-        // dispatch() always throws on failure; remove after dispatch so a throwing
-        // dispatch leaves the map entry intact for a retry.
         DispatchResult result = messageService.dispatch(MessageDispatch.builder()
                 .channelId(channelId)
                 .sender(agentId)
@@ -173,8 +164,6 @@ public class CommitmentTools {
                 .actorType(ActorType.AGENT)
                 .build());
 
-        channelMap.remove(correlationId);
-
         return ToolResponse.success("""
                 {"closed": true, "ledgerSeq": %d}
                 """.formatted(result.messageId()).strip());
@@ -184,6 +173,10 @@ public class CommitmentTools {
         Optional<Commitment> existing = commitmentStore.findByCorrelationId(correlationId);
         if (existing.isEmpty()) {
             return ToolResponse.error("COMMITMENT_NOT_FOUND: " + correlationId);
+        }
+        if (existing.get().state.isTerminal()) {
+            return ToolResponse.error("COMMITMENT_ALREADY_CLOSED: " + correlationId
+                    + " is in state " + existing.get().state);
         }
         commitmentService.fulfill(correlationId);
         return ToolResponse.success("{\"closed\": true}");
@@ -198,11 +191,9 @@ public class CommitmentTools {
             @ToolArg(description = "commitmentId returned by casehub_commit") String commitmentId,
             @ToolArg(description = "Reason for declining") String reason) {
 
-        UUID channelId = channelMap.get(commitmentId);
-        if (channelId != null) {
-            return channelBacked_reject(agentId, commitmentId, channelId, reason);
-        }
-        return selfCommit_reject(commitmentId, reason);
+        return resolveChannelId(commitmentId)
+                .map(channelId -> channelBacked_reject(agentId, commitmentId, channelId, reason))
+                .orElseGet(() -> selfCommit_reject(commitmentId, reason));
     }
 
     private ToolResponse channelBacked_reject(String agentId, String correlationId,
@@ -223,7 +214,6 @@ public class CommitmentTools {
                 .actorType(ActorType.AGENT)
                 .build());
 
-        channelMap.remove(correlationId);
         return ToolResponse.success("{\"declined\": true}");
     }
 
@@ -231,6 +221,10 @@ public class CommitmentTools {
         Optional<Commitment> existing = commitmentStore.findByCorrelationId(correlationId);
         if (existing.isEmpty()) {
             return ToolResponse.error("COMMITMENT_NOT_FOUND: " + correlationId);
+        }
+        if (existing.get().state.isTerminal()) {
+            return ToolResponse.error("COMMITMENT_ALREADY_CLOSED: " + correlationId
+                    + " is in state " + existing.get().state);
         }
         commitmentService.decline(correlationId);
         return ToolResponse.success("{\"declined\": true}");
@@ -246,10 +240,11 @@ public class CommitmentTools {
             @ToolArg(description = "commitmentId returned by casehub_commit") String commitmentId,
             @ToolArg(description = "Progress note") String note) {
 
-        UUID channelId = channelMap.get(commitmentId);
-        if (channelId == null) {
+        Optional<UUID> channelOpt = resolveChannelId(commitmentId);
+        if (channelOpt.isEmpty()) {
             return ToolResponse.error("COMMITMENT_NOT_FOUND: " + commitmentId);
         }
+        UUID channelId = channelOpt.get();
 
         messageService.dispatch(MessageDispatch.builder()
                 .channelId(channelId)
@@ -274,10 +269,11 @@ public class CommitmentTools {
             @ToolArg(description = "Reason for escalation") String reason,
             @ToolArg(description = "Target agent or human identifier", required = false) String toAgent) {
 
-        UUID channelId = channelMap.get(commitmentId);
-        if (channelId == null) {
+        Optional<UUID> channelOpt = resolveChannelId(commitmentId);
+        if (channelOpt.isEmpty()) {
             return ToolResponse.error("COMMITMENT_NOT_FOUND: " + commitmentId);
         }
+        UUID channelId = channelOpt.get();
 
         long commandMessageId = findCommandMessageId(commitmentId);
         if (commandMessageId < 0) {
@@ -295,9 +291,6 @@ public class CommitmentTools {
                 .target(toAgent)
                 .actorType(ActorType.AGENT)
                 .build());
-
-        // Remove from map — this agent's turn is done; Watchdog continues for escalation target
-        channelMap.remove(commitmentId);
 
         return ToolResponse.success("{\"escalated\": true, \"escalationId\": \"%s\"}"
                 .formatted(commitmentId));
@@ -327,8 +320,6 @@ public class CommitmentTools {
             return ToolResponse.error("DEADLINE_IN_PAST: blockedUntil must be a future timestamp, got: " + blockedUntil);
         }
 
-        UUID channelId = channelMap.get(commitmentId);
-
         Optional<Commitment> cOpt = commitmentStore.findByCorrelationId(commitmentId);
         if (cOpt.isEmpty()) {
             return ToolResponse.error("COMMITMENT_NOT_FOUND: " + commitmentId);
@@ -347,9 +338,9 @@ public class CommitmentTools {
         commitment.expiresAt = newDeadline;
         commitmentStore.save(commitment);
 
-        if (channelId != null) {
+        if (commitment.channelId != null) {
             messageService.dispatch(MessageDispatch.builder()
-                    .channelId(channelId)
+                    .channelId(commitment.channelId)
                     .sender(agentId)
                     .type(MessageType.STATUS)
                     .content("BLOCKED: " + reason)
@@ -376,10 +367,11 @@ public class CommitmentTools {
             @ToolArg(description = "Reason for delegation — recorded in the Qhorus ledger") String reason,
             @ToolArg(description = "Target agent ID or human identifier") String toAgent) {
 
-        UUID channelId = channelMap.get(commitmentId);
-        if (channelId == null) {
+        Optional<UUID> channelOpt = resolveChannelId(commitmentId);
+        if (channelOpt.isEmpty()) {
             return ToolResponse.error("COMMITMENT_NOT_FOUND: " + commitmentId);
         }
+        UUID channelId = channelOpt.get();
 
         long commandMessageId = findCommandMessageId(commitmentId);
         if (commandMessageId < 0) {
@@ -398,14 +390,32 @@ public class CommitmentTools {
                 .actorType(ActorType.AGENT)
                 .build());
 
-        channelMap.remove(commitmentId);
-
         return ToolResponse.success("""
                 {"delegated": true, "delegatedTo": "%s"}
                 """.formatted(toAgent).strip());
     }
 
     // ---- helpers ----
+
+    /**
+     * Resolves the channelId for a commitment, filtering out terminal commitments.
+     *
+     * <p>Returns {@link Optional#empty()} if:
+     * <ul>
+     *   <li>no commitment exists for {@code correlationId}, or</li>
+     *   <li>the commitment is in a terminal state (FULFILLED, DECLINED, DELEGATED, etc.), or</li>
+     *   <li>the commitment has no channelId (self-commit).</li>
+     * </ul>
+     *
+     * <p>Callers that receive empty should fall through to the self-commit path
+     * (done/reject) or return COMMITMENT_NOT_FOUND (checkpoint/escalate/delegate).
+     */
+    private Optional<UUID> resolveChannelId(String correlationId) {
+        return commitmentStore.findByCorrelationId(correlationId)
+                .filter(c -> !c.state.isTerminal())
+                .map(c -> c.channelId)
+                .filter(id -> id != null);
+    }
 
     private long findCommandMessageId(String correlationId) {
         return messageService.findAllByCorrelationId(correlationId)
