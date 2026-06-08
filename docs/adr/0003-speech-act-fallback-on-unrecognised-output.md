@@ -1,7 +1,7 @@
 # 0003 — Speech act default when agent output has no explicit signal
 
 Date: 2026-06-05
-Status: Accepted
+Status: Superseded by [ADR-0004](0004-tool-call-first-completion-signaling.md)
 
 ## Context and Problem Statement
 
