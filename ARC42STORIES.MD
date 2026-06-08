@@ -660,13 +660,13 @@ To implement a webhook-delivery client for an agent runtime in a CaseHub integra
 ### Layer — L2: CaseHub SPI (`casehub/`)
 
 **Participates in chapters:** C4, C6, C7 (low), C8
-**Architectural patterns:** Strategy (SpeechActClassifier, ActionRiskClassifier), Observer (ChannelContextWindowObserver), Registry (OpenClawAgentRegistry)
+**Architectural patterns:** Observer (ChannelContextWindowObserver), Registry (OpenClawAgentRegistry). Tool-call-first: MCP tools own completion signaling; OversightGateService.evaluate() archives webhook text as STATUS (openclaw#28).
 **Key protocols:** `alternative-extension-patterns.md` (override via `@Alternative @Priority(1)`), `message-service-dispatch-enforcement-gate.md`
 **Design refs:** `docs/specs/2026-05-29-epic4-casehub-spi-design.md`, `docs/specs/2026-05-30-epic6-bidirectional-wiring-design.md`
 **Issues:** casehubio/openclaw#4, casehubio/openclaw#6, casehubio/openclaw#10, casehubio/openclaw#15, casehubio/openclaw#16
 **Navigation:** `git log --grep="#4" --oneline`, `git log --grep="#6" --oneline`
 **Blog:** `blog/2026-05-29-mdp01-casehub-spi-implementations.md`, `blog/2026-05-30-mdp01-bidirectional-wiring-oversight-gate.md`
-**Improvement refs:** casehubio/engine#402 (ActionRiskClassifier SPI), casehubio/openclaw#27 (NliSpeechActClassifier — future ML classification)
+**Improvement refs:** casehubio/engine#402 (ActionRiskClassifier SPI — Phase 2 gate wiring via openclaw#30), casehubio/openclaw#27 (NliSpeechActClassifier — CLOSED, superseded by openclaw#28 tool-call-first architecture)
 **Completed:** 2026-05-31 (Phase 1)
 
 #### What it adds
@@ -700,11 +700,7 @@ Not closed here: REST endpoints for delivery webhooks (L3), ActionRiskClassifier
 - `casehub/src/main/java/.../casehub/OpenClawWorkerStatusListener.java` — `@ApplicationScoped`; implements `WorkerStatusListener`; cleans up `OpenClawAgentRegistry` and `OpenClawHookClient` session on completion
 - `casehub/src/main/java/.../casehub/ChannelContextWindowObserver.java` — `@ApplicationScoped`; implements `MessageObserver`; wraps all logic in try/catch; never throws; excludes EVENT messages
 - `casehub/src/main/java/.../casehub/OpenClawAgentRegistry.java` — `@ApplicationScoped`; agentId→caseId routing map; shared by provisioner, backend, status listener
-- `casehub/src/main/java/.../casehub/OversightGateService.java` — `@ApplicationScoped`; `evaluate(channelId, payload)` dispatches or gates; `fulfill(gateId, payload)` looks up Commitment by correlationId
-- `casehub/src/main/java/.../casehub/ActionRiskClassifier.java` — SPI interface; override with `@Alternative @Priority(1)`; local placeholder for casehubio/engine#402
-- `casehub/src/main/java/.../casehub/DefaultActionRiskClassifier.java` — `@ApplicationScoped`; always returns `RiskDecision.Autonomous`
-- `casehub/src/main/java/.../casehub/SpeechActClassifier.java` — SPI interface; override with `@Alternative @Priority(1)` for Phase 2/3
-- `casehub/src/main/java/.../casehub/DefaultSpeechActClassifier.java` — `@ApplicationScoped`; always returns `MessageType.DONE` (Phase 1 placeholder)
+- `casehub/src/main/java/.../casehub/OversightGateService.java` — `@ApplicationScoped`; `evaluate(channelId, payload)` archives webhook text as non-resolving STATUS (openclaw#28); `fulfill(gateId, payload)` looks up Commitment by correlationId for Phase 2 gate fulfillment
 - `casehub/src/main/java/.../casehub/CaseChannelNames.java` — package-private utility; channel name → caseId extraction; channel type constants
 
 #### Key wiring
@@ -715,7 +711,7 @@ Not closed here: REST endpoints for delivery webhooks (L3), ActionRiskClassifier
 
 **`OversightGateService.fulfill()` uses Commitment lookup (not in-memory map) for durability.** `MessageService.dispatch(COMMAND, correlationId=gateId)` creates a `Commitment` in the database when the gate opens. After a restart, `commitmentStore.findByCorrelationId(gateId)` still resolves the gate. An in-memory map would silently drop open gates on restart.
 
-**`@Alternative @Priority(1)` for SPI overrides.** `DefaultActionRiskClassifier` and `DefaultSpeechActClassifier` are plain `@ApplicationScoped` beans. Override implementations must use `@Alternative @Priority(1)` (not `@DefaultBean`) — the defaults do not use `@DefaultBean`, so any `@ApplicationScoped` alternative would cause CDI ambiguity without the `@Alternative` marker.
+**`@Alternative @Priority(1)` for SPI overrides.** Override implementations of casehub-openclaw SPIs must use `@Alternative @Priority(1)` (not `@DefaultBean`) — defaults do not use `@DefaultBean`, so any `@ApplicationScoped` alternative would cause CDI ambiguity without the `@Alternative` marker. (Note: `ActionRiskClassifier` and `SpeechActClassifier` were deleted in openclaw#28 — tool-call-first completion; Phase 2 risk classification will use casehub-engine-api engine#402 SPI via openclaw#30.)
 
 #### Architectural decisions
 
