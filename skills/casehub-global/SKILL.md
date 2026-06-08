@@ -1,7 +1,7 @@
 ---
 name: casehub-global
 description: CaseHub accountability protocol awareness — always-active commitment protocol for all agents
-version: 1.0.0
+version: 2.0.0
 always: true
 tools:
   - casehub_commit
@@ -33,38 +33,16 @@ CaseHub escalates automatically.
 
 **When to call these explicitly:**
 
-Call `casehub_commit` when you receive a COMMAND and are personally taking responsibility
-for it — not for read-only queries or tasks already tracked by `casehub_create_workitem`.
-Call `casehub_done` when the task is genuinely complete. Call `casehub_reject` if you
-cannot proceed. Call `casehub_checkpoint` for long-running tasks to prevent false escalation.
-Call `casehub_escalate` when a task exceeds your authority or capability.
-Call `casehub_block` when you cannot proceed due to an external dependency — extend the deadline rather than letting the Watchdog fire prematurely.
-Call `casehub_delegate` when intentionally transferring responsibility to a specific named party.
+**For case steps:** your `commitmentId` is provided in the COMMAND message — call `casehub_done`
+directly when the task is complete. Call `casehub_commit` only if you need to send an early
+STATUS acknowledgment to reset the Watchdog before completing — for example, when the task
+will take longer than the default Watchdog TTL.
+
+Call `casehub_reject` if you cannot proceed. Call `casehub_checkpoint` for long-running tasks
+to prevent false escalation. Call `casehub_escalate` when a task exceeds your authority or
+capability. Call `casehub_block` when you cannot proceed due to an external dependency — extend
+the deadline rather than letting the Watchdog fire prematurely. Call `casehub_delegate` when
+intentionally transferring responsibility to a specific named party.
 
 **Open commitments** from prior sessions are injected at session start. Address them
 before starting new work — call `casehub_status` for details.
-
-## Case step responses
-
-**When CaseHub invokes you as a case step (you received a COMMAND and are replying via
-the deliver:webhook path), you MUST prefix every response with the speech act type.**
-Omitting a prefix is treated as an in-progress update — CaseHub will leave the commitment
-open and the Watchdog will escalate, even if you intended to signal completion.
-
-Do not wrap responses in markdown code fences.
-
-**JSON format (preferred — machine-readable, bare JSON only):**
-
-{"type": "DONE", "content": "Your response here."}
-
-**Bracket prefix format (simpler alternative):**
-
-[DONE] Your response here.
-[STATUS]: colon after the bracket is also accepted.
-
-Valid types:
-- DONE — task complete; commitment resolved as fulfilled
-- STATUS — still in progress; Watchdog stays armed (you can send DONE later)
-- DECLINE — you cannot complete the task; commitment resolved as declined
-- FAILURE — task failed with an error; commitment resolved as failed
-- RESPONSE — only if you received a QUERY obligation (not a COMMAND); if in doubt, use DONE

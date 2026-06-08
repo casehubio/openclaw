@@ -177,12 +177,17 @@ delivery mechanism.
 
 ### 3.2 Write Path — OpenClaw to Qhorus
 
-OpenClaw executes skill → generates output → POSTs to Qhorus channel endpoint via
-`deliver: "webhook"` → casehub-openclaw adapter receives it → wraps in a `MessageDispatch` with
-appropriate speech act type → calls `MessageService.dispatch()`.
+**Completion signaling (tool-call-first, openclaw#28):**
+During the agent turn, the agent calls `casehub_done(agentId, commitmentId, outcome)` via MCP →
+`CommitmentTools.done()` dispatches DONE (with `inReplyTo=COMMAND`, `correlationId=commitmentId`)
+to `MessageService.dispatch()` → commitment FULFILLED. The commitmentId is provided in the COMMAND
+message injection block by `OpenClawChannelBackend.post()` at invocation time.
 
-OpenClaw's output becomes a first-class Qhorus message — tracked, Commitment-eligible, Watchdog-
-eligible, ledgered. Clean and achievable without changes to OpenClaw.
+**Text archival:**
+OpenClaw executes → generates output → POSTs to Qhorus channel endpoint via `deliver: "webhook"` →
+`OversightGateService.evaluate()` dispatches a non-resolving STATUS message (no correlationId →
+Qhorus `dispatch()` skips `commitmentService.acknowledge()` — purely archival). The STATUS records
+the agent's text output for audit; the DONE from the tool call is the authoritative completion record.
 
 ### 3.3 Read Path — Active (Qhorus to OpenClaw LLM)
 
@@ -195,19 +200,23 @@ it as a prompt and responds. This is event-driven, clean, and fits both systems'
 This does NOT work naturally. OpenClaw has no automatic awareness of other agents' channel
 activity between heartbeat ticks. Addressed by the `ChannelContextWindow` service (see §5).
 
-### 3.5 Speech Act Classification
+### 3.5 Speech Act Signaling (tool-call-first, openclaw#28)
 
-OpenClaw's LLM outputs natural language. Qhorus expects typed speech acts. Three approaches,
-applied in phases:
+Typed speech act signaling is the responsibility of MCP tools, not text classification:
 
-| Approach | How | Reliability | Complexity |
-|---|---|---|---|
-| Infer from context | Adapter infers type from trigger: heartbeat → STATUS, task completion → DONE | Coarse but zero-friction | Low |
-| Skill instruction prefix | SKILL.md instructs LLM to prefix output: `[STATUS] Boiler pressure 1.2 bar` | Good — explicit in output | Medium |
-| Structured JSON output | Skill outputs `{"type": "STATUS", "content": "..."}` | Highest — no ambiguity | High per-skill |
+| Signal | Tool call | Result |
+|--------|-----------|--------|
+| DONE (complete) | `casehub_done(agentId, commitmentId, outcome)` | DONE dispatched to Qhorus → commitment FULFILLED |
+| DECLINE (cannot proceed) | `casehub_reject(agentId, commitmentId, reason)` | DECLINE dispatched → commitment DECLINED |
+| HANDOFF (delegate) | `casehub_delegate(agentId, commitmentId, reason, toAgent)` | HANDOFF dispatched → commitment DELEGATED |
+| STATUS (progress) | `casehub_checkpoint(agentId, commitmentId, note)` | STATUS dispatched → Watchdog TTL reset |
 
-Phase 1: infer from context. Phase 3: structured JSON. The graduated path avoids requiring
-skill authors to change all skills before the integration ships.
+The `commitmentId` (= correlationId of the COMMAND commitment) is injected into the COMMAND message
+by `OpenClawChannelBackend.post()` at invocation time — the agent receives it as a concrete value
+and can call `casehub_done` directly without a prior `casehub_commit` lookup.
+
+Text output via `deliver:webhook` is archived as a non-resolving STATUS message (no correlationId,
+no commitment state change). The tool call is the sole completion signal.
 
 ### 3.6 ChannelBackend SPI as Bidirectional Bridge
 

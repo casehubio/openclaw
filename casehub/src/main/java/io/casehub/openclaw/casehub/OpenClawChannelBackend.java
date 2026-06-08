@@ -31,6 +31,10 @@ import io.casehub.qhorus.runtime.gateway.ChannelGateway;
  * <p>Only COMMAND messages invoke the agent. All other types are silently ignored — they are
  * already stored in the ring buffer by ChannelContextWindowObserver and in the Qhorus ledger.
  *
+ * <p>When a COMMAND carries a correlationId (= commitmentId), a fully-resolved commitment
+ * context block is appended to the message before invocation. The agent receives the agentId
+ * and commitmentId as concrete values — no template variables to resolve (openclaw#28).
+ *
  * <p>OpenClawInvocationException is caught and logged — ChannelGateway.fanOut() is non-fatal
  * for non-default backends.
  */
@@ -45,10 +49,10 @@ public class OpenClawChannelBackend implements ChannelBackend {
     private final OpenClawClientConfig config;
 
     @Inject
-    public OpenClawChannelBackend(OpenClawAgentRegistry registry,
-                                   OpenClawHookClient hookClient,
-                                   ChannelGateway gateway,
-                                   OpenClawClientConfig config) {
+    public OpenClawChannelBackend(final OpenClawAgentRegistry registry,
+                                   final OpenClawHookClient hookClient,
+                                   final ChannelGateway gateway,
+                                   final OpenClawClientConfig config) {
         this.registry = registry;
         this.hookClient = hookClient;
         this.gateway = gateway;
@@ -72,25 +76,25 @@ public class OpenClawChannelBackend implements ChannelBackend {
     }
 
     @Override
-    public void open(ChannelRef channel, Map<String, String> metadata) {
+    public void open(final ChannelRef channel, final Map<String, String> metadata) {
         // Registration handled via ChannelInitialisedEvent — no-op here
     }
 
     @Override
-    public void post(ChannelRef channel, OutboundMessage message) {
+    public void post(final ChannelRef channel, final OutboundMessage message) {
         if (message.type() != MessageType.COMMAND) return;
 
-        UUID caseId = extractCaseId(channel.name());
+        final UUID caseId = extractCaseId(channel.name());
         if (caseId == null) return;
 
-        String agentId = registry.findAgentId(caseId).orElse(null);
+        final String agentId = registry.findAgentId(caseId).orElse(null);
         if (agentId == null) {
             log.debugf("No OpenClaw agent for caseId=%s — ignoring COMMAND on %s", caseId, channel.name());
             return;
         }
 
         // Log-and-return rather than throw — post() must never propagate exceptions through fanOut()
-        String sessionKey = registry.findSessionKey(agentId).orElse(null);
+        final String sessionKey = registry.findSessionKey(agentId).orElse(null);
         if (sessionKey == null) {
             log.warnf("No session key found for agentId=%s (registry write race?) — ignoring COMMAND", agentId);
             return;
@@ -99,11 +103,11 @@ public class OpenClawChannelBackend implements ChannelBackend {
         // webhookUrl is embedded in the POST /hooks/agent body — OpenClaw uses this
         // request-body URL for delivery. Concurrent overwrites of the session entry
         // are safe because invoke() sends the URL it reads at call time.
-        String webhookUrl = config.delivery().baseUrl() + "/channel/" + channel.id();
+        final String webhookUrl = config.delivery().baseUrl() + "/channel/" + channel.id();
         hookClient.registerSession(agentId, sessionKey, webhookUrl);
 
         try {
-            hookClient.invoke(agentId, message.content(),
+            hookClient.invoke(agentId, buildPrompt(message.content(), agentId, message.correlationId()),
                     config.agent().defaultModel(), config.agent().defaultTimeoutSeconds());
             log.debugf("Invoked OpenClaw agent: agentId=%s caseId=%s", agentId, caseId);
         } catch (OpenClawInvocationException e) {
@@ -113,12 +117,39 @@ public class OpenClawChannelBackend implements ChannelBackend {
     }
 
     @Override
-    public void close(ChannelRef channel) {
+    public void close(final ChannelRef channel) {
         // Qhorus channels are persistent — no teardown needed
     }
 
     /** Parses "case-{caseId}/{purpose}" → UUID, or returns null if format doesn't match. */
-    UUID extractCaseId(String channelName) {
+    UUID extractCaseId(final String channelName) {
         return CaseChannelNames.extractCaseId(channelName);
+    }
+
+    /**
+     * Appends a fully-resolved commitment context block to the task content when a
+     * commitmentId is available. Both agentId and commitmentId are substituted at build
+     * time — the rendered text contains no template variables.
+     *
+     * <p>When correlationId is null (COMMAND without a commitment), content is returned as-is.
+     */
+    private String buildPrompt(final String content, final String agentId, final UUID correlationId) {
+        if (correlationId == null) {
+            return content;
+        }
+        final String id = correlationId.toString();
+        return content + """
+
+                ---
+                CaseHub commitment active.
+                  commitmentId: %1$s
+
+                  Complete  → casehub_done("%2$s", "%1$s", outcome)
+                  Decline   → casehub_reject("%2$s", "%1$s", reason)
+                  Progress  → casehub_checkpoint("%2$s", "%1$s", note)
+                  Escalate  → casehub_escalate("%2$s", "%1$s", reason, toAgent?)
+                  Delegate  → casehub_delegate("%2$s", "%1$s", reason, toAgent)
+                  Block     → casehub_block("%2$s", "%1$s", reason, blockedUntil)
+                """.formatted(id, agentId);
     }
 }

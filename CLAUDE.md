@@ -137,11 +137,7 @@ This is **not** an application layer and **not** a framework. It is the wiring b
 - `MessageObserver` — observes Qhorus channel activity and feeds the ChannelContextWindow
 
 **Oversight gate (Java — `casehub/` module):**
-- `OversightGateService` — classifies agent output (speech act + risk), dispatches to work channel on AUTONOMOUS, or opens a human oversight gate on GATE_REQUIRED
-- `ActionRiskClassifier` — SPI interface (Phase 1: always AUTONOMOUS; local placeholder for casehubio/engine#402 SPI). Override via `@Alternative @Priority(1)`
-- `SpeechActClassifier` — SPI interface; `classify(SpeechActContext)` returns `SpeechActResult(type, content, tier)`. Three-tier detection: JSON envelope → bracket prefix → STATUS fallback (`DefaultSpeechActClassifier`). Future `NliSpeechActClassifier @Alternative @Priority(1)` in `casehub-openclaw-inference` (openclaw#27). Override via `@Alternative @Priority(1)`
-- `SpeechActDetection` — public utility; `detect(String output)` returns `Optional<SpeechActResult>`; strict JSON (`FAIL_ON_TRAILING_TOKENS`) + bracket-prefix `[TYPE]` detection; shared with future NLI classifier
-- `DetectionTier` — enum: JSON, PREFIX, FALLBACK (future: NEURAL)
+- `OversightGateService` — `evaluate()` archives agent webhook output as a non-resolving STATUS message (no correlationId, no commitment state change); `fulfill()` processes human responses to oversight gates (see openclaw#30 for Phase 2 gate wiring via `CommitmentTools.done()`)
 - `CaseChannelNames` — package-private utility for case channel name operations shared across the `casehub/` module
 
 **ChannelContextWindow service (`core/` module):**
@@ -152,7 +148,7 @@ A short-term, TTL-evicting ring buffer of Qhorus channel activity. Exposed as a 
 - Channel client — thin HTTP client to the ChannelContextWindow REST API
 - Compaction-safe: uses `appendSystemContext` (not context replacement) so Claude's compaction pass preserves it
 
-**Bidirectional channel wiring:** Qhorus channel messages drive OpenClaw agents; OpenClaw agent outputs are posted back to Qhorus channels. The integration is symmetric. Human oversight gates interrupt the return path when `ActionRiskClassifier` returns `GATE_REQUIRED`.
+**Bidirectional channel wiring:** Qhorus channel messages drive OpenClaw agents; OpenClaw agent outputs are posted back to Qhorus channels. The integration is symmetric. Completion signaling is via MCP tool calls (`casehub_done`, `casehub_reject`, etc.); the deliver:webhook path archives agent text as STATUS. Human oversight gate fulfillment (`fulfill()`) remains intact for Phase 2 wiring (openclaw#30).
 
 ---
 
@@ -181,9 +177,7 @@ skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, caseh
 **`casehub/`** owns:
 - All CaseHub SPI implementations
 - `ChannelContextWindowObserver` — implements `MessageObserver` SPI; synchronously receives every Qhorus dispatch and feeds the ring buffer; must never throw to Qhorus
-- `OversightGateService` — evaluate() classifies agent output and dispatches to work channel or opens gate; fulfill() processes human response and resolves the gate Commitment
-- `ActionRiskClassifier` / `DefaultActionRiskClassifier` — risk SPI (Phase 1: always AUTONOMOUS)
-- `SpeechActClassifier` / `DefaultSpeechActClassifier` — speech act SPI; three-tier detection (JSON → prefix → STATUS fallback); `SpeechActDetection` utility; `DetectionTier` enum (JSON/PREFIX/FALLBACK)
+- `OversightGateService` — `evaluate()` archives webhook text as archival STATUS; `fulfill()` processes human oversight gate responses (openclaw#30 wires gate entry via `CommitmentTools.done()`)
 - `CaseChannelNames` — package-private channel name utility
 
 **`app/`** owns:

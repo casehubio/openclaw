@@ -20,12 +20,14 @@ import io.casehub.qhorus.runtime.channel.ChannelService;
  * Receives OpenClaw agent results delivered via deliver:webhook.
  *
  * <p>Stays thin: validates channelId, confirms channel exists, delegates to
- * {@link OversightGateService#evaluate(UUID, String, String)} which owns classification
- * and gate logic. Always returns 200 on processing failures — OpenClaw must not retry.
+ * {@link OversightGateService#evaluate(UUID, String, String)} which archives the agent
+ * output as a non-resolving STATUS message on the work channel.
+ * Always returns 200 — OpenClaw must not retry.
  *
- * <p>Phase 1 speech act classification: always STATUS (DONE requires inReplyTo which is
- * not available at delivery time — tracked in openclaw#16). See openclaw#10 for Phase 2/3.
- * No auth — follows gateway topology. See auth-retrofit-readiness.md protocol.
+ * <p>Completion signaling (DONE, DECLINE, etc.) is owned by MCP tool calls
+ * ({@code casehub_done}, {@code casehub_reject}, etc.) which dispatch typed Qhorus
+ * messages during the agent turn (openclaw#28). No auth — follows gateway topology.
+ * See auth-retrofit-readiness.md protocol.
  */
 @Path("/openclaw/delivery/channel")
 @Consumes(MediaType.APPLICATION_JSON)

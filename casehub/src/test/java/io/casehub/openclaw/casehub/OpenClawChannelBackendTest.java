@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
 
 import io.casehub.api.model.CaseChannel;
 import io.casehub.openclaw.client.OpenClawClientConfig;
@@ -75,6 +76,42 @@ class OpenClawChannelBackendTest {
         verify(hookClient).registerSession(eq("finance-agent"), eq("finance-agent"),
                 eq("http://localhost:8080/channel/" + channelId));
         verify(hookClient).invoke(eq("finance-agent"), eq("Analyse this PR"),
+                eq("claude-opus-4-5"), eq(120));
+    }
+
+    @Test
+    void post_command_withCorrelationId_injectsFullyResolvedContext() {
+        registry.register("finance-agent", caseId, "finance-agent");
+        UUID commitmentId = UUID.randomUUID();
+        ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
+        OutboundMessage msg = commandWithCorrelationId("Review this PR.", commitmentId);
+
+        backend.post(ref, msg);
+
+        ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
+        verify(hookClient).invoke(eq("finance-agent"), messageCaptor.capture(),
+                eq("claude-opus-4-5"), eq(120));
+        String message = messageCaptor.getValue();
+        assertThat(message).startsWith("Review this PR.");
+        assertThat(message).contains(commitmentId.toString());
+        assertThat(message).contains("finance-agent");
+        assertThat(message).contains("casehub_done");
+        assertThat(message).contains("casehub_reject");
+        assertThat(message).contains("casehub_checkpoint");
+        assertThat(message).contains("casehub_escalate");
+        assertThat(message).contains("casehub_delegate");
+        assertThat(message).contains("casehub_block");
+    }
+
+    @Test
+    void post_command_nullCorrelationId_usesContentAsIs() {
+        registry.register("finance-agent", caseId, "finance-agent");
+        ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
+        OutboundMessage msg = command("Plain task.");
+
+        backend.post(ref, msg);
+
+        verify(hookClient).invoke(eq("finance-agent"), eq("Plain task."),
                 eq("claude-opus-4-5"), eq(120));
     }
 
@@ -165,6 +202,11 @@ class OpenClawChannelBackendTest {
     private OutboundMessage command(String content) {
         return new OutboundMessage(UUID.randomUUID(), "engine", MessageType.COMMAND,
                 content, null, null, ActorType.AGENT);
+    }
+
+    private OutboundMessage commandWithCorrelationId(String content, UUID correlationId) {
+        return new OutboundMessage(UUID.randomUUID(), "engine", MessageType.COMMAND,
+                content, correlationId, null, ActorType.AGENT);
     }
 
     private OpenClawClientConfig config(String baseUrl, String model, int timeout) {

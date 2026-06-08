@@ -105,8 +105,9 @@ class OversightGateDispatcherCdiTest {
         workChannel = channelService.create(
                 "case-" + caseId + "/work", "Work", ChannelSemantic.APPEND, null);
 
-        // Default gateway mock: return 200 for all invocations (gatewayClient is used by
-        // OpenClawHookClient internally — stub it so tests that trigger openGate don't fail)
+        // Default gateway mock: return 200 for all invocations. OpenClawHookClient is an
+        // @ApplicationScoped CDI bean in the test context; the gateway client it injects
+        // must be stubbed to avoid NPE when other tests in the same context invoke agents.
         when(gatewayClient.invokeAgent(any())).thenReturn(Response.ok().build());
 
         // Bridge findAllByCorrelationId to InMemory store.
@@ -125,9 +126,10 @@ class OversightGateDispatcherCdiTest {
     @Test
     void second_dispatch_failure_leaves_work_channel_empty_and_fulfill_is_fail_open() {
         // 1. Dispatch setup COMMAND to oversight channel.
-        //    ActorType.AGENT matches what openGate() uses in production.
-        //    Qhorus InMemory auto-creates a Commitment with channelId=oversightChannelId
-        //    and correlationId=gateId — this is what fulfill() looks up.
+        //    This simulates the gate COMMAND that OversightGateService.openGate() used to
+        //    dispatch (openclaw#30 will re-wire the gate entry). Qhorus InMemory auto-creates
+        //    a Commitment with channelId=oversightChannelId and correlationId=gateId —
+        //    this is what fulfill() looks up.
         messageService.dispatch(MessageDispatch.builder()
                 .channelId(oversightChannel.id)
                 .sender("openclaw-gate")   // matches OversightGateService.GATE_SENDER (package-private)

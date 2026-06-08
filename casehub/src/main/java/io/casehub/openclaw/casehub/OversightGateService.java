@@ -1,7 +1,5 @@
 package io.casehub.openclaw.casehub;
 
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -10,37 +8,28 @@ import jakarta.inject.Inject;
 
 import org.jboss.logging.Logger;
 
-import io.casehub.openclaw.client.OpenClawClientConfig;
-import io.casehub.openclaw.client.OpenClawHookClient;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.channel.Channel;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.message.Commitment;
-import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
 
 /**
- * Owns the oversight gate lifecycle: classifies agent output, dispatches to the
- * work channel (AUTONOMOUS) or opens a human oversight gate (GATE_REQUIRED).
+ * Owns the oversight gate lifecycle.
  *
- * <p>Phase 1: {@link DefaultActionRiskClassifier} always returns AUTONOMOUS, so
- * the gate path is never triggered in production. The gate is fully implemented
- * and unit-tested.
+ * <p>{@link #evaluate(UUID, String, String)} archives the agent's webhook output as a
+ * non-resolving STATUS message on the work channel. Completion signaling is the
+ * responsibility of the MCP tools ({@code casehub_done}, {@code casehub_reject}, etc.)
+ * which dispatch typed Qhorus messages directly (openclaw#28, tool-call-first architecture).
  *
- * <p>Message type semantics:
- * <ul>
- *   <li>Autonomous path dispatches STATUS — DONE requires inReplyTo and correlationId
- *       per the MessageDispatch builder contract; there is no prior COMMAND to reply to
- *       on the autonomous path.</li>
- *   <li>Gate path dispatches COMMAND to oversight channel — creates a Commitment
- *       via Qhorus that fulfill() later resolves.</li>
- *   <li>Fulfill dispatches RESPONSE or DECLINE to oversight (resolving the
- *       Commitment via inReplyTo + correlationId) and STATUS to the work channel
- *       (notification only — no COMMAND to resolve on the work channel).</li>
- * </ul>
+ * <p>{@link #fulfill(UUID, String)} processes human responses to oversight gates opened
+ * by the Phase 2 gate path (openclaw#30). The fulfillment path is retained intact so
+ * Phase 2 can re-wire the gate entry point without re-implementing it.
+ *
+ * <p>Fail-open: both methods catch and log all exceptions. Neither propagates to callers.
  */
 @ApplicationScoped
 public class OversightGateService {
@@ -51,156 +40,43 @@ public class OversightGateService {
     private final ChannelService channelService;
     private final MessageService messageService;
     private final CommitmentStore commitmentStore;
-    private final OpenClawHookClient hookClient;
-    private final OpenClawClientConfig clientConfig;
-    private final OpenClawCasehubConfig casehubConfig;
-    private final SpeechActClassifier speechActClassifier;
-    private final ActionRiskClassifier actionRiskClassifier;
     private final OversightGateDispatcher gateDispatcher;
 
     @Inject
-    public OversightGateService(ChannelService channelService,
-                                 MessageService messageService,
-                                 CommitmentStore commitmentStore,
-                                 OpenClawHookClient hookClient,
-                                 OpenClawClientConfig clientConfig,
-                                 OpenClawCasehubConfig casehubConfig,
-                                 SpeechActClassifier speechActClassifier,
-                                 ActionRiskClassifier actionRiskClassifier,
-                                 OversightGateDispatcher gateDispatcher) {
+    public OversightGateService(final ChannelService channelService,
+                                 final MessageService messageService,
+                                 final CommitmentStore commitmentStore,
+                                 final OversightGateDispatcher gateDispatcher) {
         this.channelService = channelService;
         this.messageService = messageService;
         this.commitmentStore = commitmentStore;
-        this.hookClient = hookClient;
-        this.clientConfig = clientConfig;
-        this.casehubConfig = casehubConfig;
-        this.speechActClassifier = speechActClassifier;
-        this.actionRiskClassifier = actionRiskClassifier;
         this.gateDispatcher = gateDispatcher;
     }
 
     /**
-     * Classifies the agent output and either dispatches to the work channel (AUTONOMOUS)
-     * or opens a human oversight gate (GATE_REQUIRED).
+     * Archives the agent's webhook output as a non-resolving STATUS on the work channel.
      *
-     * <p>Fail-open: any exception is caught and logged. Never propagates to callers.
+     * <p>Completion signaling is owned by MCP tool calls ({@code casehub_done} etc.) which
+     * dispatch typed Qhorus messages during the agent turn. The STATUS dispatched here is
+     * purely archival — it carries no {@code correlationId}, so Qhorus skips the
+     * {@code commitmentService.acknowledge()} transition and records only the message text.
+     *
+     * <p>Fail-open: any exception is caught and logged. Never propagates.
      */
-    public void evaluate(UUID workChannelId, String agentId, String output) {
+    public void evaluate(final UUID workChannelId, final String agentId, final String output) {
         try {
-            Channel workChannel = channelService.findById(workChannelId).orElse(null);
-            if (workChannel == null) {
-                log.warnf("evaluate() called for unknown workChannelId=%s — failing open", workChannelId);
-                return;
-            }
-
-            UUID caseId = CaseChannelNames.extractCaseId(workChannel.name);
-            if (caseId == null) {
-                log.warnf("Could not extract caseId from channel name '%s' — failing open", workChannel.name);
-                return;
-            }
-
-            SpeechActResult speechAct = speechActClassifier.classify(
-                    new SpeechActContext(agentId, output));
-
-            RiskDecision decision = actionRiskClassifier.classify(
-                    new PlannedAction(agentId, caseId, speechAct.content(), null, Map.of()));
-
-            if (decision instanceof RiskDecision.Autonomous) {
-                List<Commitment> open =
-                        commitmentStore.findOpenByObligor(agentId, workChannelId);
-                boolean hadCommitment = !open.isEmpty();
-                String correlationId = open.stream()
-                        .filter(c -> c.messageType == MessageType.COMMAND)
-                        .map(c -> c.correlationId)
-                        .findFirst()
-                        .orElse(null);
-
-                Long commandMessageId = resolveCommandMessageId(correlationId);
-
-                MessageDispatch.Builder builder = MessageDispatch.builder()
-                        .channelId(workChannelId)
-                        .sender(agentId)
-                        .content(speechAct.content())
-                        .actorType(ActorType.AGENT);
-
-                if (commandMessageId != null && correlationId != null) {
-                    builder.type(speechAct.type()).inReplyTo(commandMessageId).correlationId(correlationId);
-                } else {
-                    builder.type(MessageType.STATUS);
-                    if (hadCommitment) {
-                        log.errorf("Open COMMAND commitment found for agentId=%s on channel=%s but "
-                                + "COMMAND message lookup failed — Commitment will not be fulfilled; "
-                                + "Watchdog will escalate. Operator attention required.",
-                                agentId, workChannelId);
-                    } else {
-                        log.warnf("No open COMMAND commitment for agentId=%s on channel=%s — "
-                                + "Watchdog may have expired it during agent execution. Dispatching STATUS.",
-                                agentId, workChannelId);
-                    }
-                }
-                messageService.dispatch(builder.build());
-                return;
-            }
-
-            RiskDecision.GateRequired gate = (RiskDecision.GateRequired) decision;
-            openGate(caseId, workChannelId, agentId, output, speechAct, gate);
-
+            if (output == null || output.isBlank()) return;
+            messageService.dispatch(MessageDispatch.builder()
+                    .channelId(workChannelId)
+                    .sender(agentId)
+                    .type(MessageType.STATUS)
+                    .content(output)
+                    .actorType(ActorType.AGENT)
+                    .build());
         } catch (Exception e) {
-            log.errorf("OversightGateService.evaluate() failed for channel=%s agent=%s: %s",
+            log.errorf("evaluate() failed to archive webhook output for channel=%s agent=%s: %s",
                     workChannelId, agentId, e.getMessage());
         }
-    }
-
-    private void openGate(UUID caseId, UUID workChannelId, String agentId,
-                          String rawOutput, SpeechActResult speechAct,
-                          RiskDecision.GateRequired gate) {
-        Channel oversightChannel = channelService.findByName(
-                CaseChannelNames.oversightChannelName(caseId)).orElse(null);
-        if (oversightChannel == null) {
-            log.errorf("Oversight channel not found for caseId=%s — cannot open gate; failing open. " +
-                    "Oversight channel should be created by OpenClawCaseChannelProvider.openChannel().", caseId);
-            return;
-        }
-
-        UUID gateId = UUID.randomUUID();
-        String oversightPrompt = buildOversightPrompt(agentId, speechAct.content(), gate);
-
-        // COMMAND content = raw output for audit fidelity (machine-retrievable).
-        // The oversight prompt uses stripped content for human readability.
-        messageService.dispatch(MessageDispatch.builder()
-                .channelId(oversightChannel.id)
-                .sender(GATE_SENDER)
-                .type(MessageType.COMMAND)
-                .content(rawOutput != null ? rawOutput : "")
-                .correlationId(gateId.toString())
-                .actorType(ActorType.AGENT)
-                .build());
-
-        String oversightDeliveryUrl =
-                clientConfig.delivery().baseUrl() + "/openclaw/delivery/oversight/" + gateId;
-        String oversightAgentId = casehubConfig.oversight().agentId()
-                .filter(s -> !s.isBlank())
-                .orElse(agentId);
-
-        hookClient.invoke(oversightAgentId, oversightPrompt,
-                clientConfig.agent().defaultModel(),
-                clientConfig.agent().defaultTimeoutSeconds(),
-                oversightDeliveryUrl);
-
-        log.infof("Oversight gate opened: gateId=%s caseId=%s agent=%s reason=%s",
-                gateId, caseId, agentId, gate.reason());
-    }
-
-    private String buildOversightPrompt(String agentId, String output, RiskDecision.GateRequired gate) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("OpenClaw agent \"").append(agentId).append("\" proposes the following action:\n\n");
-        sb.append(output != null ? output : "(no output)").append("\n\n");
-        sb.append("Reason for oversight: ").append(gate.reason()).append("\n");
-        if (!gate.reversible()) {
-            sb.append("⚠️ This action cannot be undone once approved.\n");
-        }
-        sb.append("\nReply with \"approved\" to proceed or \"rejected\" to decline.");
-        return sb.toString();
     }
 
     /**
@@ -211,9 +87,8 @@ public class OversightGateService {
      *
      * <p>Fail-open on all error conditions: unknown gateId, missing channels, etc.
      */
-    public void fulfill(UUID gateId, String rawOutput) {
+    public void fulfill(final UUID gateId, final String rawOutput) {
         try {
-            // Look up the original COMMAND message (dispatched in openGate) to get its Long ID for inReplyTo
             Long commandMessageId = messageService.findAllByCorrelationId(gateId.toString()).stream()
                     .filter(m -> m.messageType == MessageType.COMMAND)
                     .mapToLong(m -> m.id)
@@ -254,8 +129,6 @@ public class OversightGateService {
                 return;
             }
 
-            // Extract UUID primitives before crossing the @Transactional boundary in gateDispatcher —
-            // no JPA entities may cross it (no-jpa-entities-across-requires-new protocol).
             gateDispatcher.dispatch(approved, oversightChannel.id, workChannel.id,
                     commandMessageId, gateId, rawOutput);
             log.infof("Gate %s: gateId=%s caseId=%s", approved ? "approved" : "rejected", gateId, caseId);
@@ -264,19 +137,11 @@ public class OversightGateService {
         }
     }
 
-    private Long resolveCommandMessageId(String correlationId) {
-        if (correlationId == null) return null;
-        return messageService.findAllByCorrelationId(correlationId).stream()
-                .filter(m -> m.messageType == MessageType.COMMAND)
-                .mapToLong(m -> m.id).boxed().findFirst().orElse(null);
-    }
-
-    private boolean parseApproval(UUID gateId, String rawOutput) {
+    private boolean parseApproval(final UUID gateId, final String rawOutput) {
         if (rawOutput == null || rawOutput.isBlank()) {
             log.warnf("fulfill() received null/blank output for gateId=%s — treating as rejected", gateId);
             return false;
         }
-        // First token stripped of trailing punctuation, lowered. "approved, please go ahead" → "approved".
         String firstToken = rawOutput.trim().toLowerCase().split("\\s+")[0].replaceAll("[^a-z]+$", "");
         return firstToken.equals("approved");
     }

@@ -62,9 +62,12 @@ public class CommitmentTools {
     // ---- casehub_commit ----
 
     @Tool(description = "Register a CaseHub commitment and arm a Watchdog. "
-            + "When channelId is provided, acknowledges an open COMMAND commitment on that channel "
-            + "by dispatching STATUS. Without channelId, creates a self-tracked commitment. "
-            + "Returns commitmentId (pass to casehub_done when the task is complete).")
+            + "For case steps, commitmentId is provided in the COMMAND message — call casehub_done directly "
+            + "when complete without calling this tool first. "
+            + "Call this tool only when you need to send an early STATUS acknowledgment to reset the Watchdog "
+            + "for a long-running task (when channelId is provided, dispatches STATUS to the channel). "
+            + "Without channelId, creates a self-tracked commitment. "
+            + "Returns commitmentId.")
     public ToolResponse commit(
             @ToolArg(description = "Your OpenClaw agentId") String agentId,
             @ToolArg(description = "Task description") String task,

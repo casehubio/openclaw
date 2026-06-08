@@ -125,7 +125,7 @@ See `../parent/docs/PLATFORM.md` Capability Ownership table and `../parent/docs/
 |---|---|
 | Hexagonal | `core/` owns protocol; `casehub/` owns SPI adaptors; `app/` owns deployment wiring. No outward dependencies from core. |
 | Observer | `ChannelContextWindowObserver @ApplicationScoped` implements `MessageObserver` SPI; receives every Qhorus dispatch passively; must never throw. |
-| Strategy | `SpeechActClassifier` and `ActionRiskClassifier` are SPI interfaces with `@ApplicationScoped` defaults; override via `@Alternative @Priority(1)`. |
+| Strategy | Completion signaling is via MCP tool calls (`casehub_done`, `casehub_reject`, etc.) — the tool call IS the typed signal; text output via `deliver:webhook` is archived as STATUS (openclaw#28, tool-call-first). |
 | Registry | `OpenClawAgentRegistry @ApplicationScoped` maintains agentId→caseId routing. `OpenClawHookClient @ApplicationScoped` maintains agentId→session mapping. |
 
 ### Custom Layer Taxonomy
@@ -135,7 +135,7 @@ casehub-openclaw uses **module tiers** as layers, not foundation module integrat
 | Layer | Module | What it represents |
 |---|---|---|
 | L1 Core protocol | `core/` | OpenClaw hook client, session registry, ChannelContextWindow service |
-| L2 CaseHub SPI | `casehub/` | WorkerProvisioner, ChannelBackend, SpeechActClassifier, OversightGate, CaseChannelProvider |
+| L2 CaseHub SPI | `casehub/` | WorkerProvisioner, ChannelBackend, OversightGate (fulfill path), CaseChannelProvider |
 | L3 Application | `app/` | CDI wiring, REST endpoints, Quarkus MCP server |
 | L4 Python SDK | `python/` | ChannelClient HTTP client, Pydantic v2 models, context injection |
 | L5 Plugin hooks | `plugin/` | TypeScript before_tool_call, agent_end, session_start, before_prompt_build hooks |
@@ -173,7 +173,7 @@ C4Container
     Container(backend, "OpenClawChannelBackend", "@ApplicationScoped", "ChannelBackend SPI — forwards COMMAND to OpenClaw; observes ChannelInitialisedEvent")
     Container(chanprov, "OpenClawCaseChannelProvider", "@ApplicationScoped", "CaseChannelProvider SPI — creates work/observe/oversight Qhorus channels")
     Container(observer, "ChannelContextWindowObserver", "@ApplicationScoped", "MessageObserver SPI — feeds ring buffer; must never throw")
-    Container(gate, "OversightGateService", "@ApplicationScoped", "Classifies agent output; opens human oversight gate on GATE_REQUIRED")
+    Container(gate, "OversightGateService", "@ApplicationScoped", "Archives webhook text output as STATUS; fulfill() handles oversight gate responses (gate entry rewired at CommitmentTools.done() in openclaw#30)")
     Container(registry, "OpenClawAgentRegistry", "@ApplicationScoped", "agentId→caseId routing; shared by provisioner, backend, status listener")
   }
 
@@ -204,8 +204,7 @@ C4Container
   Rel(casehub, backend, "Dispatches COMMAND via Qhorus fanOut")
   Rel(backend, hookclient, "invoke(agentId, message)")
   Rel(hookclient, gatewayclient, "POST /hooks/agent")
-  Rel(delivery, gate, "evaluate(channelId, payload)")
-  Rel(gate, hookclient, "invoke oversight agent")
+  Rel(delivery, gate, "evaluate(channelId, payload) — archives as STATUS")
   Rel(oversight, gate, "fulfill(gateId, payload)")
   Rel(hooks, tsclient, "GET /channel-context; POST /plugin/commit")
   Rel(pyclient, ccwres, "GET /channel-context/{agentId}")
@@ -219,9 +218,13 @@ C4Container
 
 ## §6 Runtime View
 
-### Scenario 1 — COMMAND → OpenClaw → DONE round trip (Epic 6)
+### Scenario 1 — COMMAND → OpenClaw → DONE round trip (tool-call-first, openclaw#28)
 
-CaseHub engine dispatches COMMAND on the case work channel. `OpenClawChannelBackend` receives the message via Qhorus fanOut. It calls `OpenClawHookClient.invoke(agentId, message)` which posts `{message, agentId, deliver: "webhook", to: <qhorus-delivery-url>}` to `POST /hooks/agent`. OpenClaw executes the agent turn. The TypeScript plugin's `before_prompt_build` hook injects ChannelContextWindow content before the turn starts. On turn completion, OpenClaw POSTs the result to the `deliver` URL — `POST /openclaw/delivery/channel/{channelId}`. `OpenClawDeliveryResource` calls `OversightGateService.evaluate()`. If `ActionRiskClassifier` returns `Autonomous`, the gate service dispatches STATUS to the work channel and the case step completes. If `GateRequired`, the gate service opens an oversight Qhorus channel, invokes a second OpenClaw agent with the oversight URL, and waits for a human RESPONSE via `POST /openclaw/delivery/oversight/{gateId}`.
+CaseHub engine dispatches COMMAND (with correlationId = commitmentId) on the case work channel. `OpenClawChannelBackend` receives the message via Qhorus fanOut. It appends a fully-resolved commitment context block to the message (agentId and commitmentId as concrete values) and calls `OpenClawHookClient.invoke(agentId, augmentedMessage)`, posting to `POST /hooks/agent`. OpenClaw executes the agent turn. The TypeScript plugin's `before_prompt_build` hook injects ChannelContextWindow content before the turn starts.
+
+During the agent turn, the agent calls `casehub_done(agentId, commitmentId, outcome)` via MCP → `CommitmentTools.done()` → dispatches DONE to the Qhorus work channel with `inReplyTo=COMMAND`, `correlationId=commitmentId` → commitment FULFILLED.
+
+On turn completion, OpenClaw POSTs the agent's text output to `POST /openclaw/delivery/channel/{channelId}`. `OpenClawDeliveryResource` calls `OversightGateService.evaluate()` which archives the text as a non-resolving STATUS message (no correlationId — does not trigger `commitmentService.acknowledge()` in Qhorus). The channel record contains both the typed DONE (completion signal) and the archival STATUS (agent text output).
 
 ### Scenario 2 — Explicit MCP tool invocation (Epic 7)
 
