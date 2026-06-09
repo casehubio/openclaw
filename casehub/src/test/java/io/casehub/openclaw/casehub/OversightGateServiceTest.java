@@ -403,6 +403,24 @@ class OversightGateServiceTest {
         assertThat(result).isInstanceOf(GateDecision.GatePending.class);
     }
 
+    @Test
+    void openGate_noCommandMessage_returnsAutonomousAndNoGateOpened() {
+        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null));
+        Commitment c = new Commitment();
+        c.id = UUID.randomUUID();
+        c.correlationId = commitmentId;
+        c.channelId = workChannelId;
+        c.state = io.casehub.qhorus.api.message.CommitmentState.OPEN;
+        when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
+        // No COMMAND message in history
+        when(messageService.findAllByCorrelationId(commitmentId)).thenReturn(List.of());
+
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+
+        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        verify(messageService, never()).dispatch(any());
+    }
+
     // ── fulfill() — with gate context (Phase 2 behaviour) ────────────────────
 
     @Test

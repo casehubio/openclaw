@@ -74,12 +74,19 @@ class OversightGateDispatcherTest {
         verify(messageService, times(2)).dispatch(captor.capture());
 
         MessageDispatch oversight = captor.getAllValues().get(0);
+        assertThat(oversight.channelId()).isEqualTo(oversightChannelId);
         assertThat(oversight.type()).isEqualTo(MessageType.DECLINE);
+        assertThat(oversight.sender()).isEqualTo(OversightGateService.GATE_SENDER);
         assertThat(oversight.correlationId()).isEqualTo(gateId.toString());
         assertThat(oversight.inReplyTo()).isEqualTo(42L);
+        assertThat(oversight.content()).isEqualTo("rejected");
+        assertThat(oversight.actorType()).isEqualTo(ActorType.AGENT);
 
         MessageDispatch work = captor.getAllValues().get(1);
+        assertThat(work.channelId()).isEqualTo(workChannelId);
         assertThat(work.type()).isEqualTo(MessageType.STATUS);
+        assertThat(work.sender()).isEqualTo(OversightGateService.GATE_SENDER);
+        assertThat(work.actorType()).isEqualTo(ActorType.AGENT);
     }
 
     @Test
