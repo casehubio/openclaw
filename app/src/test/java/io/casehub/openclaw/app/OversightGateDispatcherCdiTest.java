@@ -125,11 +125,11 @@ class OversightGateDispatcherCdiTest {
 
     @Test
     void second_dispatch_failure_leaves_work_channel_empty_and_fulfill_is_fail_open() {
-        // 1. Dispatch setup COMMAND to oversight channel.
-        //    This simulates the gate COMMAND that OversightGateService.openGate() used to
-        //    dispatch (openclaw#30 will re-wire the gate entry). Qhorus InMemory auto-creates
-        //    a Commitment with channelId=oversightChannelId and correlationId=gateId —
-        //    this is what fulfill() looks up.
+        // 1. Dispatch setup COMMAND to oversight channel (bare content — no Properties-format gate context).
+        //    This simulates a gate COMMAND from a pre-openclaw#30 environment or a post-restart scenario
+        //    where gate context is unavailable. Qhorus InMemory auto-creates a Commitment with
+        //    channelId=oversightChannelId and correlationId=gateId — this is what fulfill() looks up.
+        //    fulfill() will parse empty context and fall back to STATUS on the work channel.
         messageService.dispatch(MessageDispatch.builder()
                 .channelId(oversightChannel.id)
                 .sender("openclaw-gate")   // matches OversightGateService.GATE_SENDER (package-private)
