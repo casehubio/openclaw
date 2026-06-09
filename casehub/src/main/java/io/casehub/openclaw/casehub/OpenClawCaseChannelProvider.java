@@ -15,10 +15,12 @@ import io.casehub.api.spi.CaseChannelProvider;
 import io.casehub.openclaw.context.ChannelContextWindowService;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.channel.ChannelSemantic;
+import io.casehub.qhorus.api.gateway.ChannelRef;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.channel.Channel;
 import io.casehub.qhorus.runtime.channel.ChannelService;
+import io.casehub.qhorus.runtime.gateway.ChannelGateway;
 import io.casehub.qhorus.runtime.message.MessageService;
 
 /**
@@ -29,6 +31,8 @@ import io.casehub.qhorus.runtime.message.MessageService;
  * "case-{caseId}/{purpose}".
  *
  * <p>openChannel() is idempotent: finds existing channel by name before creating.
+ * gateway.initChannel() is called on new channels only — channels that already exist in the
+ * DB were registered by the ChannelGateway startup hook (onStart recovers all persisted channels).
  * bindChannel() is called after each open to register with ChannelContextWindow.
  */
 @ApplicationScoped
@@ -52,14 +56,17 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
     private final ChannelService channelService;
     private final MessageService messageService;
     private final ChannelContextWindowService contextService;
+    private final ChannelGateway gateway;
 
     @Inject
     public OpenClawCaseChannelProvider(ChannelService channelService,
                                         MessageService messageService,
-                                        ChannelContextWindowService contextService) {
+                                        ChannelContextWindowService contextService,
+                                        ChannelGateway gateway) {
         this.channelService = channelService;
         this.messageService = messageService;
         this.contextService = contextService;
+        this.gateway = gateway;
     }
 
     @Override
@@ -71,8 +78,12 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
         String deniedTypes = spec != null ? spec.deniedTypes() : null;
 
         Channel channel = channelService.findByName(channelName)
-                .orElseGet(() -> channelService.create(channelName, description,
-                        ChannelSemantic.APPEND, null, null, null, null, null, allowedTypes, deniedTypes));
+                .orElseGet(() -> {
+                    Channel created = channelService.create(channelName, description,
+                            ChannelSemantic.APPEND, null, null, null, null, null, allowedTypes, deniedTypes);
+                    gateway.initChannel(created.id, new ChannelRef(created.id, created.name));
+                    return created;
+                });
 
         contextService.bindChannel(caseId, channel.id);
         log.debugf("Opened channel: %s (id=%s)", channelName, channel.id);

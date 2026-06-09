@@ -9,16 +9,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.casehub.api.model.CaseChannel;
+import io.casehub.qhorus.api.gateway.ChannelRef;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.channel.ChannelService;
-import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.qhorus.runtime.channel.ChannelService;
+import io.casehub.qhorus.runtime.gateway.ChannelGateway;
+import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.openclaw.context.ChannelContextWindowService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -32,6 +35,7 @@ class OpenClawCaseChannelProviderTest {
     ChannelService channelService;
     MessageService messageService;
     ChannelContextWindowService mockContextService;
+    ChannelGateway gateway;
     OpenClawCaseChannelProvider provider;
 
     @BeforeEach
@@ -39,7 +43,8 @@ class OpenClawCaseChannelProviderTest {
         channelService = mock(ChannelService.class);
         messageService = mock(MessageService.class);
         mockContextService = mock(ChannelContextWindowService.class);
-        provider = new OpenClawCaseChannelProvider(channelService, messageService, mockContextService);
+        gateway = mock(ChannelGateway.class);
+        provider = new OpenClawCaseChannelProvider(channelService, messageService, mockContextService, gateway);
     }
 
     private Channel channel(UUID id, String name) {
@@ -193,5 +198,31 @@ class OpenClawCaseChannelProviderTest {
                 isNull(), isNull(), isNull(), isNull(), isNull(),
                 eq("EVENT"),  // allowedTypes = "EVENT"
                 isNull());    // deniedTypes = null
+    }
+
+    @Test
+    void openChannel_newChannel_callsInitChannel() {
+        UUID caseId = UUID.randomUUID();
+        UUID channelId = UUID.randomUUID();
+        String name = CaseChannel.channelName(caseId, "work");
+        when(channelService.findByName(name)).thenReturn(Optional.empty());
+        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(channel(channelId, name));
+
+        provider.openChannel(caseId, "work");
+
+        verify(gateway).initChannel(eq(channelId), argThat(ref -> ref.name().equals(name)));
+    }
+
+    @Test
+    void openChannel_existingChannel_doesNotCallInitChannel() {
+        UUID caseId = UUID.randomUUID();
+        UUID channelId = UUID.randomUUID();
+        String name = CaseChannel.channelName(caseId, "work");
+        when(channelService.findByName(name)).thenReturn(Optional.of(channel(channelId, name)));
+
+        provider.openChannel(caseId, "work");
+
+        verify(gateway, never()).initChannel(any(UUID.class), any(ChannelRef.class));
     }
 }
