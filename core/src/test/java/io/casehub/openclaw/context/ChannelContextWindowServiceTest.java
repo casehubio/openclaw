@@ -31,7 +31,7 @@ class ChannelContextWindowServiceTest {
 
     private MessageReceivedEvent event(UUID channelId, String channelName, MessageType type) {
         String content = (type == MessageType.EVENT) ? null : "content";
-        return new MessageReceivedEvent(channelName, channelId, type, "sender", "corr-1", content);
+        return new MessageReceivedEvent(channelName, channelId, "test-tenant", type, "sender", "corr-1", content);
     }
 
     // ── noAssociation path ────────────────────────────────────────────────────
