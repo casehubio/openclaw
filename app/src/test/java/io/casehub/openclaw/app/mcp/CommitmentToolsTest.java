@@ -10,6 +10,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import io.casehub.openclaw.casehub.GateDecision;
+import io.casehub.openclaw.casehub.OversightGateService;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.CommitmentState;
 import io.casehub.qhorus.api.message.DispatchResult;
@@ -38,6 +40,7 @@ class CommitmentToolsTest {
     MessageService messageService;
     CommitmentService commitmentService;
     CommitmentStore commitmentStore;
+    OversightGateService oversightGateService;
     CommitmentTools tools;
 
     @BeforeEach
@@ -45,7 +48,10 @@ class CommitmentToolsTest {
         messageService = mock(MessageService.class);
         commitmentService = mock(CommitmentService.class);
         commitmentStore = mock(CommitmentStore.class);
-        tools = new CommitmentTools(messageService, commitmentService, commitmentStore);
+        oversightGateService = mock(OversightGateService.class);
+        // Default: Autonomous — normal done() path
+        when(oversightGateService.openGate(any(), any(), any())).thenReturn(new GateDecision.Autonomous());
+        tools = new CommitmentTools(messageService, commitmentService, commitmentStore, oversightGateService);
     }
 
     // ---- casehub_commit: channel-backed ----
@@ -208,6 +214,68 @@ class CommitmentToolsTest {
 
         assertThat(response.isError()).isTrue();
         assertThat(text(response)).contains("COMMAND_NOT_FOUND");
+    }
+
+    // ── done(): gate decision paths ─────────────────────────────────────────
+
+    @Test
+    void done_channelBacked_autonomous_proceedsWithDone() {
+        UUID channelId = UUID.randomUUID();
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+
+        when(commitmentStore.findByCorrelationId(correlationId))
+                .thenReturn(Optional.of(commitment(correlationId, channelId, agentId,
+                        Instant.now().plus(1, ChronoUnit.HOURS))));
+        when(messageService.findAllByCorrelationId(correlationId))
+                .thenReturn(List.of(message(5L, channelId, MessageType.COMMAND, correlationId)));
+        when(messageService.dispatch(any()))
+                .thenReturn(dispatchResult(11L, channelId, agentId, MessageType.DONE, correlationId));
+        when(oversightGateService.openGate(agentId, correlationId, "Report sent"))
+                .thenReturn(new GateDecision.Autonomous());
+
+        ToolResponse response = tools.done(agentId, correlationId, "Report sent");
+
+        verify(messageService).dispatch(argThat(d -> MessageType.DONE == d.type()));
+        assertThat(response.isError()).isFalse();
+        assertThat(text(response)).contains("closed");
+    }
+
+    @Test
+    void done_channelBacked_gatePending_returnsPendingGateAndNoDispatch() {
+        UUID channelId = UUID.randomUUID();
+        String agentId = "finance-agent";
+        String correlationId = UUID.randomUUID().toString();
+        UUID gateId = UUID.randomUUID();
+
+        when(commitmentStore.findByCorrelationId(correlationId))
+                .thenReturn(Optional.of(commitment(correlationId, channelId, agentId,
+                        Instant.now().plus(1, ChronoUnit.HOURS))));
+        when(oversightGateService.openGate(agentId, correlationId, "Delete old files"))
+                .thenReturn(new GateDecision.GatePending(gateId, "risk: file deletion"));
+
+        ToolResponse response = tools.done(agentId, correlationId, "Delete old files");
+
+        verify(messageService, never()).dispatch(any());
+        assertThat(response.isError()).isFalse();
+        String responseText = text(response);
+        assertThat(responseText).contains("gated");
+        assertThat(responseText).contains(gateId.toString());
+        assertThat(responseText).contains("risk: file deletion");
+    }
+
+    @Test
+    void done_selfCommit_neverCallsOpenGate() {
+        String agentId = "home-agent";
+        String correlationId = UUID.randomUUID().toString();
+        Commitment c = commitment(correlationId, null, agentId, Instant.now().plusSeconds(3600));
+
+        when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
+        when(commitmentService.fulfill(anyString())).thenReturn(Optional.of(c));
+
+        tools.done(agentId, correlationId, null);
+
+        verify(oversightGateService, never()).openGate(any(), any(), any());
     }
 
     // ---- resolveChannelId() behaviour — tested via done() ----
