@@ -1,13 +1,20 @@
 package io.casehub.openclaw.casehub;
 
+import java.io.StringReader;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.UUID;
+
+import jakarta.enterprise.inject.Instance;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import io.casehub.api.spi.ActionRiskClassifier;
+import io.casehub.api.spi.RiskDecision;
+import io.casehub.openclaw.casehub.GateDecision;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.CommitmentState;
 import io.casehub.qhorus.api.message.DispatchResult;
@@ -38,6 +45,14 @@ class OversightGateServiceTest {
     CommitmentStore commitmentStore;
     OversightGateDispatcher gateDispatcher;
     OversightGateService service;
+
+    @SuppressWarnings("unchecked")
+    Instance<ActionRiskClassifier> classifiers = mock(Instance.class);
+    ActionRiskClassifier mockClassifier = mock(ActionRiskClassifier.class);
+
+    String agentId = "test-agent";
+    String commitmentId = UUID.randomUUID().toString();
+    long commandMsgId = 7L;
 
     UUID caseId = UUID.randomUUID();
     UUID workChannelId = UUID.randomUUID();
@@ -72,7 +87,11 @@ class OversightGateServiceTest {
 
         when(messageService.dispatch(any())).thenReturn(dispatchResult(42L));
 
-        service = new OversightGateService(channelService, messageService, commitmentStore, gateDispatcher);
+        // Default: no classifiers (isUnsatisfied = true)
+        when(classifiers.isUnsatisfied()).thenReturn(true);
+
+        service = new OversightGateService(channelService, messageService, commitmentStore,
+                gateDispatcher, classifiers);
     }
 
     // ── evaluate() — archival STATUS ──────────────────────────────────────────
@@ -231,7 +250,188 @@ class OversightGateServiceTest {
         verify(messageService, never()).dispatch(any());
     }
 
+    // ── openGate() ────────────────────────────────────────────────────────────
+
+    @Test
+    void openGate_noClassifiers_returnsAutonomous() {
+        when(classifiers.isUnsatisfied()).thenReturn(true);
+        stubOpenGateCommitment();
+
+        GateDecision result = service.openGate(agentId, commitmentId, "analysis done");
+
+        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        verify(messageService, never()).dispatch(any());
+    }
+
+    @Test
+    void openGate_classifierReturnsAutonomous_returnsAutonomous() {
+        stubSingleClassifier(new RiskDecision.Autonomous());
+        stubOpenGateCommitment();
+
+        GateDecision result = service.openGate(agentId, commitmentId, "analysis done");
+
+        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        verify(messageService, never()).dispatch(any());
+    }
+
+    @Test
+    void openGate_classifierReturnsGateRequired_dispatchesCommandToOversightAndReturnsPending() {
+        stubSingleClassifier(new RiskDecision.GateRequired("risk: file deletion", true, null, null, null));
+        stubOpenGateCommitment();
+
+        GateDecision result = service.openGate(agentId, commitmentId, "deleting old reports");
+
+        assertThat(result).isInstanceOf(GateDecision.GatePending.class);
+        GateDecision.GatePending pending = (GateDecision.GatePending) result;
+        assertThat(pending.reason()).isEqualTo("risk: file deletion");
+        assertThat(pending.gateId()).isNotNull();
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        MessageDispatch cmd = captor.getValue();
+        assertThat(cmd.channelId()).isEqualTo(oversightChannelId);
+        assertThat(cmd.type()).isEqualTo(MessageType.COMMAND);
+        assertThat(cmd.sender()).isEqualTo(OversightGateService.GATE_SENDER);
+        assertThat(cmd.correlationId()).isEqualTo(pending.gateId().toString());
+        assertThat(cmd.content()).isNotBlank();
+    }
+
+    @Test
+    void openGate_gateCommandContentIsPropertiesFormatContainingOriginalCommitmentId()
+            throws Exception {
+        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null));
+        stubOpenGateCommitment();
+
+        service.openGate(agentId, commitmentId, "outcome");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        String content = captor.getValue().content();
+
+        Properties props = new Properties();
+        props.load(new StringReader(content));
+        assertThat(props.getProperty("originalCommitmentId")).isEqualTo(commitmentId);
+        assertThat(props.getProperty("workChannelId")).isEqualTo(workChannelId.toString());
+        assertThat(props.getProperty("commandMessageId")).isEqualTo(String.valueOf(commandMsgId));
+        assertThat(props.getProperty("reason")).isEqualTo("risky");
+    }
+
+    @Test
+    void openGate_classifierThrows_appliesFailSafeGateRequired() {
+        stubSingleClassifier_throws(new RuntimeException("classifier crashed"));
+        stubOpenGateCommitment();
+
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+
+        assertThat(result).isInstanceOf(GateDecision.GatePending.class);
+        GateDecision.GatePending pending = (GateDecision.GatePending) result;
+        assertThat(pending.reason()).contains("Classifier error");
+    }
+
+    @Test
+    void openGate_oversightChannelMissing_returnsAutonomous() {
+        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null));
+        stubOpenGateCommitment();
+        when(channelService.findByName("case-" + caseId + "/oversight"))
+                .thenReturn(Optional.empty());
+
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+
+        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        verify(messageService, never()).dispatch(any());
+    }
+
+    @Test
+    void openGate_dispatchThrows_failsOpenAndReturnsAutonomous() {
+        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null));
+        stubOpenGateCommitment();
+        when(messageService.dispatch(any())).thenThrow(new RuntimeException("channel unavailable"));
+
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+
+        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+    }
+
+    @Test
+    void openGate_noChannelBackedCommitment_returnsAutonomous() {
+        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null));
+        Commitment c = new Commitment();
+        c.id = UUID.randomUUID();
+        c.correlationId = commitmentId;
+        c.channelId = null;  // self-commit — no channel
+        c.state = io.casehub.qhorus.api.message.CommitmentState.OPEN;
+        when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
+
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+
+        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        verify(messageService, never()).dispatch(any());
+    }
+
+    @Test
+    void openGate_mostRestrictive_picksSmallerCandidateGroupsAsMoreRestrictive() {
+        ActionRiskClassifier narrowClassifier = mock(ActionRiskClassifier.class);
+        ActionRiskClassifier broadClassifier = mock(ActionRiskClassifier.class);
+        when(narrowClassifier.classify(any()))
+                .thenReturn(new RiskDecision.GateRequired("narrow", true, List.of("admin"), null, null));
+        when(broadClassifier.classify(any()))
+                .thenReturn(new RiskDecision.GateRequired("broad", true, List.of("admin", "member"), null, null));
+        when(classifiers.isUnsatisfied()).thenReturn(false);
+        when(classifiers.iterator()).thenReturn(List.of(narrowClassifier, broadClassifier).iterator());
+        stubOpenGateCommitment();
+
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+
+        assertThat(result).isInstanceOf(GateDecision.GatePending.class);
+        assertThat(((GateDecision.GatePending) result).reason()).isEqualTo("narrow");
+    }
+
+    @Test
+    void openGate_twoClassifiersOneAutonomousOneGateRequired_returnsGatePending() {
+        ActionRiskClassifier autonomousClassifier = mock(ActionRiskClassifier.class);
+        ActionRiskClassifier gateClassifier = mock(ActionRiskClassifier.class);
+        when(autonomousClassifier.classify(any())).thenReturn(new RiskDecision.Autonomous());
+        when(gateClassifier.classify(any()))
+                .thenReturn(new RiskDecision.GateRequired("risk", true, null, null, null));
+        when(classifiers.isUnsatisfied()).thenReturn(false);
+        when(classifiers.iterator()).thenReturn(List.of(autonomousClassifier, gateClassifier).iterator());
+        stubOpenGateCommitment();
+
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+
+        assertThat(result).isInstanceOf(GateDecision.GatePending.class);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private void stubOpenGateCommitment() {
+        Commitment c = new Commitment();
+        c.id = UUID.randomUUID();
+        c.correlationId = commitmentId;
+        c.channelId = workChannelId;
+        c.obligor = agentId;
+        c.state = io.casehub.qhorus.api.message.CommitmentState.OPEN;
+        c.expiresAt = java.time.Instant.now().plusSeconds(3600);
+        when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
+
+        Message cmd = new Message();
+        cmd.id = commandMsgId;
+        cmd.messageType = MessageType.COMMAND;
+        cmd.correlationId = commitmentId;
+        when(messageService.findAllByCorrelationId(commitmentId)).thenReturn(List.of(cmd));
+    }
+
+    private void stubSingleClassifier(RiskDecision decision) {
+        when(mockClassifier.classify(any())).thenReturn(decision);
+        when(classifiers.isUnsatisfied()).thenReturn(false);
+        when(classifiers.iterator()).thenReturn(List.of(mockClassifier).iterator());
+    }
+
+    private void stubSingleClassifier_throws(RuntimeException ex) {
+        when(mockClassifier.classify(any())).thenThrow(ex);
+        when(classifiers.isUnsatisfied()).thenReturn(false);
+        when(classifiers.iterator()).thenReturn(List.of(mockClassifier).iterator());
+    }
 
     /**
      * Stubs the message lookup fulfill() requires without calling service.evaluate().
