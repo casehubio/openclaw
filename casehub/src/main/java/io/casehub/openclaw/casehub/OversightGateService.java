@@ -130,7 +130,7 @@ public class OversightGateService {
             }
 
             gateDispatcher.dispatch(approved, oversightChannel.id, workChannel.id,
-                    commandMessageId, gateId, rawOutput);
+                    commandMessageId, gateId, rawOutput, Optional.empty());
             log.infof("Gate %s: gateId=%s caseId=%s", approved ? "approved" : "rejected", gateId, caseId);
         } catch (Exception e) {
             log.errorf("OversightGateService.fulfill() failed for gateId=%s: %s", gateId, e.getMessage());

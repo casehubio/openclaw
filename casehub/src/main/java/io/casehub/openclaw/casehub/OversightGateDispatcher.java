@@ -1,5 +1,6 @@
 package io.casehub.openclaw.casehub;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.enterprise.context.ApplicationScoped;
@@ -16,7 +17,12 @@ import io.casehub.qhorus.runtime.message.MessageService;
  *
  * <p>Both dispatches in an approve/reject decision commit in the same transaction,
  * so a crash between them cannot leave the case step hanging with a resolved
- * Commitment but no STATUS on the work channel (openclaw#15).
+ * Commitment but no closure on the work channel (openclaw#15).
+ *
+ * <p>When {@code gateContext} is present (Phase 2 gate path), the work-channel
+ * dispatch closes the agent's original commitment: DONE on approval, DECLINE on
+ * rejection. When absent (restart recovery / content parse error), the work channel
+ * receives STATUS only (no commitment closure — logged by caller).
  *
  * <p>Accepts primitives only — no JPA entities cross a @Transactional boundary.
  * Package-private: only OversightGateService may call this.
@@ -37,7 +43,8 @@ class OversightGateDispatcher {
                   UUID workChannelId,
                   long commandMessageId,
                   UUID gateId,
-                  String rawOutput) {
+                  String rawOutput,
+                  Optional<GateContext> gateContext) {
         if (approved) {
             messageService.dispatch(MessageDispatch.builder()
                     .channelId(oversightChannelId)
@@ -48,13 +55,26 @@ class OversightGateDispatcher {
                     .inReplyTo(commandMessageId)
                     .actorType(ActorType.AGENT)
                     .build());
-            messageService.dispatch(MessageDispatch.builder()
-                    .channelId(workChannelId)
-                    .sender(OversightGateService.GATE_SENDER)
-                    .type(MessageType.STATUS)
-                    .content("Gate approved")
-                    .actorType(ActorType.AGENT)
-                    .build());
+            if (gateContext.isPresent()) {
+                GateContext ctx = gateContext.get();
+                messageService.dispatch(MessageDispatch.builder()
+                        .channelId(ctx.workChannelId())
+                        .sender(OversightGateService.GATE_SENDER)
+                        .type(MessageType.DONE)
+                        .content("Action approved by oversight gate")
+                        .correlationId(ctx.originalCommitmentId())
+                        .inReplyTo(ctx.commandMessageId())
+                        .actorType(ActorType.AGENT)
+                        .build());
+            } else {
+                messageService.dispatch(MessageDispatch.builder()
+                        .channelId(workChannelId)
+                        .sender(OversightGateService.GATE_SENDER)
+                        .type(MessageType.STATUS)
+                        .content("Gate approved")
+                        .actorType(ActorType.AGENT)
+                        .build());
+            }
         } else {
             messageService.dispatch(MessageDispatch.builder()
                     .channelId(oversightChannelId)
@@ -65,13 +85,26 @@ class OversightGateDispatcher {
                     .inReplyTo(commandMessageId)
                     .actorType(ActorType.AGENT)
                     .build());
-            messageService.dispatch(MessageDispatch.builder()
-                    .channelId(workChannelId)
-                    .sender(OversightGateService.GATE_SENDER)
-                    .type(MessageType.STATUS)
-                    .content("Human rejected the proposed action via oversight gate")
-                    .actorType(ActorType.AGENT)
-                    .build());
+            if (gateContext.isPresent()) {
+                GateContext ctx = gateContext.get();
+                messageService.dispatch(MessageDispatch.builder()
+                        .channelId(ctx.workChannelId())
+                        .sender(OversightGateService.GATE_SENDER)
+                        .type(MessageType.DECLINE)
+                        .content("Action rejected by oversight gate")
+                        .correlationId(ctx.originalCommitmentId())
+                        .inReplyTo(ctx.commandMessageId())
+                        .actorType(ActorType.AGENT)
+                        .build());
+            } else {
+                messageService.dispatch(MessageDispatch.builder()
+                        .channelId(workChannelId)
+                        .sender(OversightGateService.GATE_SENDER)
+                        .type(MessageType.STATUS)
+                        .content("Human rejected the proposed action via oversight gate")
+                        .actorType(ActorType.AGENT)
+                        .build());
+            }
         }
     }
 }
