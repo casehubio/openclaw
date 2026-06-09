@@ -145,6 +145,10 @@ public class OversightGateService {
                     .mapToLong(m -> m.id)
                     .findFirst()
                     .orElse(-1L);
+            if (commandMessageId < 0) {
+                log.warnf("openGate: no COMMAND message found for commitmentId=%s — failing open", commitmentId);
+                return new GateDecision.Autonomous();
+            }
 
             UUID gateId = UUID.randomUUID();
             GateContext ctx = new GateContext(commitmentId, workChannelId, commandMessageId);

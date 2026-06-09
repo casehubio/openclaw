@@ -160,10 +160,13 @@ public class CommitmentTools {
                                              UUID channelId, String outcome) {
         GateDecision gate = oversightGateService.openGate(agentId, correlationId, outcome);
         if (gate instanceof GateDecision.GatePending g) {
+            String escapedReason = g.reason() != null
+                    ? g.reason().replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+                    : "";
             return ToolResponse.success(
                     """
                     {"gated": true, "gateId": "%s", "pendingReason": "%s"}
-                    """.formatted(g.gateId(), g.reason()).strip());
+                    """.formatted(g.gateId(), escapedReason).strip());
         }
 
         // GateDecision.Autonomous — proceed with normal DONE dispatch
