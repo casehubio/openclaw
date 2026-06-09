@@ -11,6 +11,8 @@ import jakarta.transaction.Transactional;
 
 import org.jboss.logging.Logger;
 
+import io.casehub.openclaw.casehub.GateDecision;
+import io.casehub.openclaw.casehub.OversightGateService;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.DispatchResult;
 import io.casehub.qhorus.api.message.MessageDispatch;
@@ -49,14 +51,17 @@ public class CommitmentTools {
     private final MessageService messageService;
     private final CommitmentService commitmentService;
     private final CommitmentStore commitmentStore;
+    private final OversightGateService oversightGateService;
 
     @Inject
     public CommitmentTools(MessageService messageService,
                            CommitmentService commitmentService,
-                           CommitmentStore commitmentStore) {
+                           CommitmentStore commitmentStore,
+                           OversightGateService oversightGateService) {
         this.messageService = messageService;
         this.commitmentService = commitmentService;
         this.commitmentStore = commitmentStore;
+        this.oversightGateService = oversightGateService;
     }
 
     // ---- casehub_commit ----
@@ -138,7 +143,9 @@ public class CommitmentTools {
 
     @Tool(description = "Close a CaseHub commitment. Dispatches DONE to the originating Qhorus "
             + "channel (if channel-backed) or calls CommitmentService.fulfill() directly "
-            + "(self-commit). Disarms the Watchdog. Always call this when a task is complete.")
+            + "(self-commit). Disarms the Watchdog. Always call this when a task is complete. "
+            + "If the action requires human oversight, returns a pending gate response instead of "
+            + "closing immediately — the commitment closes when the human approves or rejects.")
     public ToolResponse done(
             @ToolArg(description = "Your OpenClaw agentId") String agentId,
             @ToolArg(description = "commitmentId returned by casehub_commit") String commitmentId,
@@ -151,6 +158,15 @@ public class CommitmentTools {
 
     private ToolResponse channelBacked_done(String agentId, String correlationId,
                                              UUID channelId, String outcome) {
+        GateDecision gate = oversightGateService.openGate(agentId, correlationId, outcome);
+        if (gate instanceof GateDecision.GatePending g) {
+            return ToolResponse.success(
+                    """
+                    {"gated": true, "gateId": "%s", "pendingReason": "%s"}
+                    """.formatted(g.gateId(), g.reason()).strip());
+        }
+
+        // GateDecision.Autonomous — proceed with normal DONE dispatch
         long commandMessageId = findCommandMessageId(correlationId);
         if (commandMessageId < 0) {
             return ToolResponse.error("COMMAND_NOT_FOUND: no COMMAND message found for correlationId '"
