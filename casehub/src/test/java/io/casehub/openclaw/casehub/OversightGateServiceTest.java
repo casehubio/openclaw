@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -402,6 +403,69 @@ class OversightGateServiceTest {
         assertThat(result).isInstanceOf(GateDecision.GatePending.class);
     }
 
+    // ── fulfill() — with gate context (Phase 2 behaviour) ────────────────────
+
+    @Test
+    void fulfill_approved_withContext_passesGateContextToDispatcher() throws Exception {
+        UUID gateId = setupGateStubsWithContext();
+        when(commitmentStore.findByCorrelationId(gateId.toString()))
+                .thenReturn(Optional.of(commitment(gateId)));
+
+        service.fulfill(gateId, "approved");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Optional<GateContext>> contextCaptor =
+                (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
+        verify(gateDispatcher).dispatch(
+                eq(true), any(), any(), anyLong(), any(), any(), contextCaptor.capture());
+        assertThat(contextCaptor.getValue()).isPresent();
+        GateContext ctx = contextCaptor.getValue().get();
+        assertThat(ctx.originalCommitmentId()).isEqualTo(commitmentId);
+        assertThat(ctx.workChannelId()).isEqualTo(workChannelId);
+        assertThat(ctx.commandMessageId()).isEqualTo(commandMsgId);
+    }
+
+    @Test
+    void fulfill_rejected_withContext_passesGateContextToDispatcher() throws Exception {
+        UUID gateId = setupGateStubsWithContext();
+        when(commitmentStore.findByCorrelationId(gateId.toString()))
+                .thenReturn(Optional.of(commitment(gateId)));
+
+        service.fulfill(gateId, "rejected");
+
+        ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Optional<GateContext>> contextCaptor =
+                (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
+        verify(gateDispatcher).dispatch(
+                approvedCaptor.capture(), any(), any(), anyLong(), any(), any(), contextCaptor.capture());
+        assertThat(approvedCaptor.getValue()).isFalse();
+        assertThat(contextCaptor.getValue()).isPresent();
+    }
+
+    @Test
+    void fulfill_malformedGateContent_passesEmptyContextToDispatcher() {
+        UUID gateId = UUID.randomUUID();
+        Message cmd = new Message();
+        cmd.id = 42L;
+        cmd.messageType = MessageType.COMMAND;
+        cmd.correlationId = gateId.toString();
+        cmd.content = "not-properties-format-at-all";
+        when(messageService.findAllByCorrelationId(gateId.toString()))
+                .thenReturn(List.of(cmd));
+        when(commitmentStore.findByCorrelationId(gateId.toString()))
+                .thenReturn(Optional.of(commitment(gateId)));
+
+        service.fulfill(gateId, "approved");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Optional<GateContext>> contextCaptor =
+                (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
+        verify(gateDispatcher).dispatch(
+                anyBoolean(), any(), any(), anyLong(), any(), any(), contextCaptor.capture());
+        assertThat(contextCaptor.getValue()).isEmpty();
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private void stubOpenGateCommitment() {
@@ -431,6 +495,32 @@ class OversightGateServiceTest {
         when(mockClassifier.classify(any())).thenThrow(ex);
         when(classifiers.isUnsatisfied()).thenReturn(false);
         when(classifiers.iterator()).thenReturn(List.of(mockClassifier).iterator());
+    }
+
+    /**
+     * Stubs a gate COMMAND message with valid Properties-format content so that
+     * parseGateContent() returns a populated Optional<GateContext>.
+     * Used by the fulfill()-with-context tests.
+     */
+    private UUID setupGateStubsWithContext() throws Exception {
+        UUID gateId = UUID.randomUUID();
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("originalCommitmentId", commitmentId);
+        props.setProperty("workChannelId", workChannelId.toString());
+        props.setProperty("commandMessageId", String.valueOf(commandMsgId));
+        props.setProperty("reason", "test reason");
+        java.io.StringWriter sw = new java.io.StringWriter();
+        props.store(sw, null);
+        String content = sw.toString();
+
+        Message cmd = new Message();
+        cmd.id = 42L;
+        cmd.messageType = MessageType.COMMAND;
+        cmd.correlationId = gateId.toString();
+        cmd.content = content;
+        when(messageService.findAllByCorrelationId(gateId.toString()))
+                .thenReturn(List.of(cmd));
+        return gateId;
     }
 
     /**
