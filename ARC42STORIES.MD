@@ -1117,9 +1117,9 @@ To add SKILL.md files to a CaseHub integration tier:
 | Oversight channel `allowedTypes` | Set to null (all types allowed); final decision (null vs. tiered model vs. new MessageTypes) deferred to casehubio/claudony#142 | casehubio/openclaw (no tracking issue) | Low |
 | Webhook payload `@JsonAlias` unverified | Field names in `OpenClawDeliveryPayload` may differ from live OpenClaw API; assumed camelCase, unconfirmed | casehubio/openclaw#11 | XS |
 | `channelId` not stored on Commitment | `OversightGateService` must reconstruct `channelId` from Qhorus queries after restart; storing it would simplify `fulfill()` | casehubio/openclaw#20 | S |
-| Reactive SPI variants not built | `ReactiveWorkerProvisioner`, `ReactiveCaseChannelProvider` planned but deferred | casehubio/openclaw#12 | Low |
+| ~~Reactive SPI variants not built~~ | ~~`ReactiveWorkerProvisioner`, `ReactiveCaseChannelProvider` planned but deferred~~ | casehubio/openclaw#12 **CLOSED** | **Fixed 2026-06-09** — `ReactiveOpenClawWorkerProvisioner` and `ReactiveOpenClawCaseChannelProvider` implemented; `OpenClawCaseChannelProvider.openChannel()` initChannel() bug fixed; gated on `casehub.qhorus.reactive.enabled` |
 | Epic 6 code review findings | Minor code quality issues from review; not correctness defects | casehubio/openclaw#17 | S |
-| Deep-dive doc stale for Epic 7 MCP layer | `../parent/docs/repos/casehub-openclaw.md` not updated for Epic 7 MCP endpoint | casehubio/openclaw#19 | Low |
+| ~~Deep-dive doc stale for Epic 7 MCP layer~~ | ~~`../parent/docs/repos/casehub-openclaw.md` not updated for Epic 7 MCP endpoint~~ | casehubio/openclaw#19 **CLOSED** | **Resolved 2026-06-09** — doc already updated in parent repo; verified Layer 0 section and PLATFORM.md Capability Ownership entry both present |
 
 ---
 
