@@ -151,7 +151,7 @@ public class OversightGateService {
             }
 
             UUID gateId = UUID.randomUUID();
-            GateContext ctx = new GateContext(commitmentId, workChannelId, commandMessageId);
+            GateContext ctx = new GateContext(commitmentId, workChannelId, commandMessageId, null /* tenancyId — wired in Task 5 */);
 
             messageService.dispatch(MessageDispatch.builder()
                     .channelId(oversightChannel.id)
@@ -226,8 +226,8 @@ public class OversightGateService {
                 return;
             }
 
-            gateDispatcher.dispatch(approved, oversightChannel.id, workChannel.id,
-                    commandMessageId, gateId, rawOutput, gateContext);
+            gateDispatcher.dispatch(approved, oversightChannel.id,
+                    commandMessageId, gateId, rawOutput, gateContext, null /* tenancyId — wired in Task 5 */);
             log.infof("Gate %s: gateId=%s caseId=%s", approved ? "approved" : "rejected", gateId, caseId);
         } catch (Exception e) {
             log.errorf("OversightGateService.fulfill() failed for gateId=%s: %s", gateId, e.getMessage());
@@ -273,6 +273,7 @@ public class OversightGateService {
         props.setProperty("workChannelId", ctx.workChannelId().toString());
         props.setProperty("commandMessageId", String.valueOf(ctx.commandMessageId()));
         props.setProperty("reason", reason != null ? reason : "");
+        if (ctx.tenancyId() != null) props.setProperty("tenancyId", ctx.tenancyId());
         StringWriter sw = new StringWriter();
         try {
             props.store(sw, null);
@@ -291,7 +292,8 @@ public class OversightGateService {
             String wci = props.getProperty("workChannelId");
             String cmi = props.getProperty("commandMessageId");
             if (oci == null || wci == null || cmi == null) return Optional.empty();
-            return Optional.of(new GateContext(oci, UUID.fromString(wci), Long.parseLong(cmi)));
+            String tid = props.getProperty("tenancyId");
+            return Optional.of(new GateContext(oci, UUID.fromString(wci), Long.parseLong(cmi), tid));
         } catch (Exception e) {
             log.warnf("parseGateContent: failed to parse gate content: %s", e.getMessage());
             return Optional.empty();

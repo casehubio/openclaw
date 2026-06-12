@@ -84,7 +84,7 @@ class OversightGateServiceTest {
 
         gateDispatcher = mock(OversightGateDispatcher.class);
         doNothing().when(gateDispatcher).dispatch(
-                anyBoolean(), any(), any(), anyLong(), any(), any(), any());
+                anyBoolean(), any(), anyLong(), any(), any(), any(), any());
 
         when(messageService.dispatch(any())).thenReturn(dispatchResult(42L));
 
@@ -145,16 +145,14 @@ class OversightGateServiceTest {
 
         ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
         ArgumentCaptor<UUID> oversightCaptor = ArgumentCaptor.forClass(UUID.class);
-        ArgumentCaptor<UUID> workCaptor = ArgumentCaptor.forClass(UUID.class);
         ArgumentCaptor<Long> inReplyToCaptor = ArgumentCaptor.forClass(Long.class);
         ArgumentCaptor<UUID> gateIdCaptor = ArgumentCaptor.forClass(UUID.class);
         ArgumentCaptor<String> outputCaptor = ArgumentCaptor.forClass(String.class);
         verify(gateDispatcher).dispatch(
-                approvedCaptor.capture(), oversightCaptor.capture(), workCaptor.capture(),
-                inReplyToCaptor.capture(), gateIdCaptor.capture(), outputCaptor.capture(), any());
+                approvedCaptor.capture(), oversightCaptor.capture(),
+                inReplyToCaptor.capture(), gateIdCaptor.capture(), outputCaptor.capture(), any(), any());
         assertThat(approvedCaptor.getValue()).isTrue();
         assertThat(oversightCaptor.getValue()).isEqualTo(oversightChannelId);
-        assertThat(workCaptor.getValue()).isEqualTo(workChannelId);
         assertThat(inReplyToCaptor.getValue()).isEqualTo(42L);
         assertThat(gateIdCaptor.getValue()).isEqualTo(gateId);
         assertThat(outputCaptor.getValue()).isEqualTo("approved");
@@ -170,7 +168,7 @@ class OversightGateServiceTest {
 
         ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
         verify(gateDispatcher).dispatch(
-                approvedCaptor.capture(), any(), any(), anyLong(), any(), any(), any());
+                approvedCaptor.capture(), any(), anyLong(), any(), any(), any(), any());
         assertThat(approvedCaptor.getValue()).isFalse();
     }
 
@@ -184,7 +182,7 @@ class OversightGateServiceTest {
 
         ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
         verify(gateDispatcher).dispatch(
-                approvedCaptor.capture(), any(), any(), anyLong(), any(), any(), any());
+                approvedCaptor.capture(), any(), anyLong(), any(), any(), any(), any());
         assertThat(approvedCaptor.getValue()).isFalse();
     }
 
@@ -198,7 +196,7 @@ class OversightGateServiceTest {
 
         ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
         verify(gateDispatcher).dispatch(
-                approvedCaptor.capture(), any(), any(), anyLong(), any(), any(), any());
+                approvedCaptor.capture(), any(), anyLong(), any(), any(), any(), any());
         assertThat(approvedCaptor.getValue()).isFalse();
     }
 
@@ -212,7 +210,7 @@ class OversightGateServiceTest {
 
         ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
         verify(gateDispatcher).dispatch(
-                approvedCaptor.capture(), any(), any(), anyLong(), any(), any(), any());
+                approvedCaptor.capture(), any(), anyLong(), any(), any(), any(), any());
         assertThat(approvedCaptor.getValue()).isTrue();
     }
 
@@ -226,7 +224,7 @@ class OversightGateServiceTest {
 
         ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
         verify(gateDispatcher).dispatch(
-                approvedCaptor.capture(), any(), any(), anyLong(), any(), any(), any());
+                approvedCaptor.capture(), any(), anyLong(), any(), any(), any(), any());
         assertThat(approvedCaptor.getValue()).isFalse();
     }
 
@@ -435,7 +433,7 @@ class OversightGateServiceTest {
         ArgumentCaptor<Optional<GateContext>> contextCaptor =
                 (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
         verify(gateDispatcher).dispatch(
-                eq(true), any(), any(), anyLong(), any(), any(), contextCaptor.capture());
+                eq(true), any(), anyLong(), any(), any(), contextCaptor.capture(), any());
         assertThat(contextCaptor.getValue()).isPresent();
         GateContext ctx = contextCaptor.getValue().get();
         assertThat(ctx.originalCommitmentId()).isEqualTo(commitmentId);
@@ -456,7 +454,7 @@ class OversightGateServiceTest {
         ArgumentCaptor<Optional<GateContext>> contextCaptor =
                 (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
         verify(gateDispatcher).dispatch(
-                approvedCaptor.capture(), any(), any(), anyLong(), any(), any(), contextCaptor.capture());
+                approvedCaptor.capture(), any(), anyLong(), any(), any(), contextCaptor.capture(), any());
         assertThat(approvedCaptor.getValue()).isFalse();
         assertThat(contextCaptor.getValue()).isPresent();
     }
@@ -480,7 +478,7 @@ class OversightGateServiceTest {
         ArgumentCaptor<Optional<GateContext>> contextCaptor =
                 (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
         verify(gateDispatcher).dispatch(
-                anyBoolean(), any(), any(), anyLong(), any(), any(), contextCaptor.capture());
+                anyBoolean(), any(), anyLong(), any(), any(), contextCaptor.capture(), any());
         assertThat(contextCaptor.getValue()).isEmpty();
     }
 
