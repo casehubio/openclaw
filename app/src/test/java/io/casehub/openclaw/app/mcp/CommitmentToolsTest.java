@@ -41,6 +41,7 @@ class CommitmentToolsTest {
     CommitmentService commitmentService;
     CommitmentStore commitmentStore;
     OversightGateService oversightGateService;
+    io.casehub.platform.api.identity.CurrentPrincipal currentPrincipal;
     CommitmentTools tools;
 
     @BeforeEach
@@ -49,9 +50,12 @@ class CommitmentToolsTest {
         commitmentService = mock(CommitmentService.class);
         commitmentStore = mock(CommitmentStore.class);
         oversightGateService = mock(OversightGateService.class);
+        currentPrincipal = mock(io.casehub.platform.api.identity.CurrentPrincipal.class);
+        when(currentPrincipal.tenancyId()).thenReturn("test-tenant");
         // Default: Autonomous — normal done() path
-        when(oversightGateService.openGate(any(), any(), any())).thenReturn(new GateDecision.Autonomous());
-        tools = new CommitmentTools(messageService, commitmentService, commitmentStore, oversightGateService);
+        when(oversightGateService.openGate(any(), any(), any(), any())).thenReturn(new GateDecision.Autonomous());
+        tools = new CommitmentTools(messageService, commitmentService, commitmentStore,
+                                     oversightGateService, currentPrincipal);
     }
 
     // ---- casehub_commit: channel-backed ----
@@ -231,7 +235,7 @@ class CommitmentToolsTest {
                 .thenReturn(List.of(message(5L, channelId, MessageType.COMMAND, correlationId)));
         when(messageService.dispatch(any()))
                 .thenReturn(dispatchResult(11L, channelId, agentId, MessageType.DONE, correlationId));
-        when(oversightGateService.openGate(agentId, correlationId, "Report sent"))
+        when(oversightGateService.openGate(eq(agentId), eq(correlationId), eq("Report sent"), any()))
                 .thenReturn(new GateDecision.Autonomous());
 
         ToolResponse response = tools.done(agentId, correlationId, "Report sent");
@@ -251,7 +255,7 @@ class CommitmentToolsTest {
         when(commitmentStore.findByCorrelationId(correlationId))
                 .thenReturn(Optional.of(commitment(correlationId, channelId, agentId,
                         Instant.now().plus(1, ChronoUnit.HOURS))));
-        when(oversightGateService.openGate(agentId, correlationId, "Delete old files"))
+        when(oversightGateService.openGate(eq(agentId), eq(correlationId), eq("Delete old files"), any()))
                 .thenReturn(new GateDecision.GatePending(gateId, "risk: file deletion"));
 
         ToolResponse response = tools.done(agentId, correlationId, "Delete old files");
@@ -275,7 +279,7 @@ class CommitmentToolsTest {
 
         tools.done(agentId, correlationId, null);
 
-        verify(oversightGateService, never()).openGate(any(), any(), any());
+        verify(oversightGateService, never()).openGate(any(), any(), any(), any());
     }
 
     // ---- resolveChannelId() behaviour — tested via done() ----

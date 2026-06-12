@@ -14,6 +14,7 @@ import org.jboss.logging.Logger;
 import io.casehub.openclaw.casehub.GateDecision;
 import io.casehub.openclaw.casehub.OversightGateService;
 import io.casehub.platform.api.identity.ActorType;
+import io.casehub.platform.api.identity.CurrentPrincipal;
 import io.casehub.qhorus.api.message.DispatchResult;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
@@ -52,16 +53,19 @@ public class CommitmentTools {
     private final CommitmentService commitmentService;
     private final CommitmentStore commitmentStore;
     private final OversightGateService oversightGateService;
+    private final CurrentPrincipal currentPrincipal;
 
     @Inject
     public CommitmentTools(MessageService messageService,
                            CommitmentService commitmentService,
                            CommitmentStore commitmentStore,
-                           OversightGateService oversightGateService) {
+                           OversightGateService oversightGateService,
+                           CurrentPrincipal currentPrincipal) {
         this.messageService = messageService;
         this.commitmentService = commitmentService;
         this.commitmentStore = commitmentStore;
         this.oversightGateService = oversightGateService;
+        this.currentPrincipal = currentPrincipal;
     }
 
     // ---- casehub_commit ----
@@ -158,7 +162,8 @@ public class CommitmentTools {
 
     private ToolResponse channelBacked_done(String agentId, String correlationId,
                                              UUID channelId, String outcome) {
-        GateDecision gate = oversightGateService.openGate(agentId, correlationId, outcome);
+        String tenancyId = currentPrincipal.tenancyId();
+        GateDecision gate = oversightGateService.openGate(agentId, correlationId, outcome, tenancyId);
         if (gate instanceof GateDecision.GatePending g) {
             String escapedReason = g.reason() != null
                     ? g.reason().replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
