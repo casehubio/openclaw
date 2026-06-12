@@ -35,7 +35,7 @@ class OpenClawWorkerStatusListenerTest {
     @Test
     void onWorkerCompleted_deregistersFromRegistry() {
         UUID caseId = UUID.randomUUID();
-        registry.register("agent-1", caseId, "sk");
+        registry.register("agent-1", "test-tenant", caseId, "sk");
 
         listener.onWorkerCompleted("agent-1", WorkResult.completed("key", Map.of(), "agent-1", caseId));
 
@@ -45,7 +45,7 @@ class OpenClawWorkerStatusListenerTest {
     @Test
     void onWorkerCompleted_callsUnbindAgentOnContextWindowService() {
         UUID caseId = UUID.randomUUID();
-        registry.register("agent-1", caseId, "sk");
+        registry.register("agent-1", "test-tenant", caseId, "sk");
 
         listener.onWorkerCompleted("agent-1", WorkResult.completed("key", Map.of(), "agent-1", caseId));
 
@@ -61,7 +61,7 @@ class OpenClawWorkerStatusListenerTest {
     @Test
     void onWorkerStalled_doesNotDeregisterFromRegistry() {
         UUID caseId = UUID.randomUUID();
-        registry.register("agent-1", caseId, "sk");
+        registry.register("agent-1", "test-tenant", caseId, "sk");
 
         listener.onWorkerStalled("agent-1");
 

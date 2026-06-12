@@ -24,24 +24,29 @@ public class OpenClawAgentRegistry {
     private final ConcurrentHashMap<String, UUID> agentToCase = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, String> caseToAgent = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> agentToSessionKey = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, String> caseToTenancy = new ConcurrentHashMap<>();
 
-    public void register(String agentId, UUID caseId, String sessionKey) {
+    public void register(String agentId, String tenancyId, UUID caseId, String sessionKey) {
         // MVP constraint: 1:1 caseId:agentId. Overwrite is silent by map semantics, but
         // it indicates misconfigured or unexpected provisioning — warn loudly.
         String existingAgent = caseToAgent.get(caseId);
         if (existingAgent != null && !existingAgent.equals(agentId)) {
-            log.warnf("caseId=%s already mapped to agentId=%s; overwriting with agentId=%s. " +
-                    "Multiple OpenClaw agents per case violates the MVP 1:1 constraint.",
+            log.warnf("caseId=%s already mapped to agentId=%s; overwriting with agentId=%s. "
+                    + "Multiple OpenClaw agents per case violates the MVP 1:1 constraint.",
                     caseId, existingAgent, agentId);
         }
         agentToCase.put(agentId, caseId);
         caseToAgent.put(caseId, agentId);
         agentToSessionKey.put(agentId, sessionKey);
+        caseToTenancy.put(caseId, tenancyId);
     }
 
     public void deregister(String agentId) {
         UUID caseId = agentToCase.remove(agentId);
-        if (caseId != null) caseToAgent.remove(caseId);
+        if (caseId != null) {
+            caseToAgent.remove(caseId);
+            caseToTenancy.remove(caseId);
+        }
         agentToSessionKey.remove(agentId);
     }
 
@@ -55,5 +60,9 @@ public class OpenClawAgentRegistry {
 
     public Optional<String> findSessionKey(String agentId) {
         return Optional.ofNullable(agentToSessionKey.get(agentId));
+    }
+
+    public Optional<String> findTenancyId(UUID caseId) {
+        return Optional.ofNullable(caseToTenancy.get(caseId));
     }
 }
