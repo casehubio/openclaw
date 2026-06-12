@@ -19,14 +19,14 @@ class OpenClawAgentRegistryTest {
     @Test
     void register_findAgentId_roundTrip() {
         UUID caseId = UUID.randomUUID();
-        registry.register("agent-1", caseId, "session-key-1");
+        registry.register("agent-1", "tenant-A", caseId, "session-key-1");
         assertThat(registry.findAgentId(caseId)).contains("agent-1");
     }
 
     @Test
     void register_findSessionKey_roundTrip() {
         UUID caseId = UUID.randomUUID();
-        registry.register("agent-1", caseId, "session-key-1");
+        registry.register("agent-1", "tenant-A", caseId, "session-key-1");
         assertThat(registry.findSessionKey("agent-1")).contains("session-key-1");
     }
 
@@ -43,7 +43,7 @@ class OpenClawAgentRegistryTest {
     @Test
     void deregister_removesAllMappings() {
         UUID caseId = UUID.randomUUID();
-        registry.register("agent-1", caseId, "sk");
+        registry.register("agent-1", "tenant-A", caseId, "sk");
         registry.deregister("agent-1");
         assertThat(registry.findAgentId(caseId)).isEmpty();
         assertThat(registry.findSessionKey("agent-1")).isEmpty();
@@ -52,8 +52,28 @@ class OpenClawAgentRegistryTest {
     @Test
     void register_overwrite_updatesSessionKey() {
         UUID caseId = UUID.randomUUID();
-        registry.register("agent-1", caseId, "sk-1");
-        registry.register("agent-1", caseId, "sk-2");
+        registry.register("agent-1", "tenant-A", caseId, "sk-1");
+        registry.register("agent-1", "tenant-A", caseId, "sk-2");
         assertThat(registry.findSessionKey("agent-1")).contains("sk-2");
+    }
+
+    @Test
+    void register_storesTenancyIdByCaseId() {
+        UUID caseId = UUID.randomUUID();
+        registry.register("agent-1", "tenant-A", caseId, "sk");
+        assertThat(registry.findTenancyId(caseId)).contains("tenant-A");
+    }
+
+    @Test
+    void deregister_removesTenancyEntry() {
+        UUID caseId = UUID.randomUUID();
+        registry.register("agent-1", "tenant-A", caseId, "sk");
+        registry.deregister("agent-1");
+        assertThat(registry.findTenancyId(caseId)).isEmpty();
+    }
+
+    @Test
+    void findTenancyId_unknownCaseId_returnsEmpty() {
+        assertThat(registry.findTenancyId(UUID.randomUUID())).isEmpty();
     }
 }
