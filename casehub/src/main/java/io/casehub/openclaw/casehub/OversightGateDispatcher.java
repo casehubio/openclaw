@@ -40,11 +40,11 @@ class OversightGateDispatcher {
     @Transactional
     void dispatch(boolean approved,
                   UUID oversightChannelId,
-                  UUID workChannelId,
                   long commandMessageId,
                   UUID gateId,
                   String rawOutput,
-                  Optional<GateContext> gateContext) {
+                  Optional<GateContext> gateContext,
+                  String tenancyId) {
         if (approved) {
             messageService.dispatch(MessageDispatch.builder()
                     .channelId(oversightChannelId)
@@ -54,6 +54,7 @@ class OversightGateDispatcher {
                     .correlationId(gateId.toString())
                     .inReplyTo(commandMessageId)
                     .actorType(ActorType.AGENT)
+                    .tenancyId(tenancyId)
                     .build());
             if (gateContext.isPresent()) {
                 GateContext ctx = gateContext.get();
@@ -65,16 +66,10 @@ class OversightGateDispatcher {
                         .correlationId(ctx.originalCommitmentId())
                         .inReplyTo(ctx.commandMessageId())
                         .actorType(ActorType.AGENT)
-                        .build());
-            } else {
-                messageService.dispatch(MessageDispatch.builder()
-                        .channelId(workChannelId)
-                        .sender(OversightGateService.GATE_SENDER)
-                        .type(MessageType.STATUS)
-                        .content("Gate approved")
-                        .actorType(ActorType.AGENT)
+                        .tenancyId(tenancyId)
                         .build());
             }
+            // absent gateContext: work channel dispatch skipped (see openclaw#34)
         } else {
             messageService.dispatch(MessageDispatch.builder()
                     .channelId(oversightChannelId)
@@ -84,6 +79,7 @@ class OversightGateDispatcher {
                     .correlationId(gateId.toString())
                     .inReplyTo(commandMessageId)
                     .actorType(ActorType.AGENT)
+                    .tenancyId(tenancyId)
                     .build());
             if (gateContext.isPresent()) {
                 GateContext ctx = gateContext.get();
@@ -95,14 +91,7 @@ class OversightGateDispatcher {
                         .correlationId(ctx.originalCommitmentId())
                         .inReplyTo(ctx.commandMessageId())
                         .actorType(ActorType.AGENT)
-                        .build());
-            } else {
-                messageService.dispatch(MessageDispatch.builder()
-                        .channelId(workChannelId)
-                        .sender(OversightGateService.GATE_SENDER)
-                        .type(MessageType.STATUS)
-                        .content("Human rejected the proposed action via oversight gate")
-                        .actorType(ActorType.AGENT)
+                        .tenancyId(tenancyId)
                         .build());
             }
         }

@@ -26,11 +26,13 @@ class OversightGateDispatcherTest {
     OversightGateDispatcher dispatcher;
 
     UUID oversightChannelId = UUID.randomUUID();
-    UUID workChannelId = UUID.randomUUID();
-    UUID gateId = UUID.randomUUID();
+    UUID workChannelId      = UUID.randomUUID();
+    UUID gateId             = UUID.randomUUID();
     String originalCommitmentId = UUID.randomUUID().toString();
-    long originalCommandMsgId = 99L;
-    GateContext gateContext = new GateContext(originalCommitmentId, workChannelId, originalCommandMsgId);
+    long originalCommandMsgId   = 99L;
+    String tenancyId = "tenant-A";
+    GateContext gateContext = new GateContext(originalCommitmentId, workChannelId,
+                                              originalCommandMsgId, tenancyId);
 
     @BeforeEach
     void setup() {
@@ -39,82 +41,42 @@ class OversightGateDispatcherTest {
         when(messageService.dispatch(any())).thenReturn(dispatchResult(1L));
     }
 
-    // ── no-context fallback (existing behaviour) ────────────────────────────
+    // ── absent gateContext (pre-#29 gate / parse error): oversight channel only ──
 
     @Test
-    void dispatch_approved_noContext_sendsResponseToOversightAndStatusToWork() {
-        dispatcher.dispatch(true, oversightChannelId, workChannelId, 42L, gateId, "approved",
-                Optional.empty());
+    void dispatch_approved_noContext_sendsOnlyResponseToOversight() {
+        dispatcher.dispatch(true, oversightChannelId, 42L, gateId, "approved",
+                Optional.empty(), null);
 
         ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
-        verify(messageService, times(2)).dispatch(captor.capture());
+        verify(messageService, times(1)).dispatch(captor.capture());
 
-        MessageDispatch oversight = captor.getAllValues().get(0);
+        MessageDispatch oversight = captor.getValue();
         assertThat(oversight.channelId()).isEqualTo(oversightChannelId);
         assertThat(oversight.type()).isEqualTo(MessageType.RESPONSE);
-        assertThat(oversight.sender()).isEqualTo(OversightGateService.GATE_SENDER);
         assertThat(oversight.correlationId()).isEqualTo(gateId.toString());
         assertThat(oversight.inReplyTo()).isEqualTo(42L);
         assertThat(oversight.content()).isEqualTo("approved");
         assertThat(oversight.actorType()).isEqualTo(ActorType.AGENT);
-
-        MessageDispatch work = captor.getAllValues().get(1);
-        assertThat(work.channelId()).isEqualTo(workChannelId);
-        assertThat(work.type()).isEqualTo(MessageType.STATUS);
-        assertThat(work.sender()).isEqualTo(OversightGateService.GATE_SENDER);
-        assertThat(work.actorType()).isEqualTo(ActorType.AGENT);
     }
 
     @Test
-    void dispatch_rejected_noContext_sendsDeclineToOversightAndStatusToWork() {
-        dispatcher.dispatch(false, oversightChannelId, workChannelId, 42L, gateId, "rejected",
-                Optional.empty());
+    void dispatch_rejected_noContext_sendsOnlyDeclineToOversight() {
+        dispatcher.dispatch(false, oversightChannelId, 42L, gateId, "rejected",
+                Optional.empty(), null);
 
         ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
-        verify(messageService, times(2)).dispatch(captor.capture());
-
-        MessageDispatch oversight = captor.getAllValues().get(0);
-        assertThat(oversight.channelId()).isEqualTo(oversightChannelId);
-        assertThat(oversight.type()).isEqualTo(MessageType.DECLINE);
-        assertThat(oversight.sender()).isEqualTo(OversightGateService.GATE_SENDER);
-        assertThat(oversight.correlationId()).isEqualTo(gateId.toString());
-        assertThat(oversight.inReplyTo()).isEqualTo(42L);
-        assertThat(oversight.content()).isEqualTo("rejected");
-        assertThat(oversight.actorType()).isEqualTo(ActorType.AGENT);
-
-        MessageDispatch work = captor.getAllValues().get(1);
-        assertThat(work.channelId()).isEqualTo(workChannelId);
-        assertThat(work.type()).isEqualTo(MessageType.STATUS);
-        assertThat(work.sender()).isEqualTo(OversightGateService.GATE_SENDER);
-        assertThat(work.actorType()).isEqualTo(ActorType.AGENT);
+        verify(messageService, times(1)).dispatch(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(MessageType.DECLINE);
+        assertThat(captor.getValue().channelId()).isEqualTo(oversightChannelId);
     }
 
-    @Test
-    void dispatch_approved_noContext_nullOutput_contentDefaultsToApproved() {
-        dispatcher.dispatch(true, oversightChannelId, workChannelId, 42L, gateId, null,
-                Optional.empty());
-
-        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
-        verify(messageService, times(2)).dispatch(captor.capture());
-        assertThat(captor.getAllValues().get(0).content()).isEqualTo("approved");
-    }
-
-    @Test
-    void dispatch_rejected_noContext_nullOutput_contentDefaultsToRejected() {
-        dispatcher.dispatch(false, oversightChannelId, workChannelId, 42L, gateId, null,
-                Optional.empty());
-
-        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
-        verify(messageService, times(2)).dispatch(captor.capture());
-        assertThat(captor.getAllValues().get(0).content()).isEqualTo("rejected");
-    }
-
-    // ── with context (new behaviour) ────────────────────────────────────────
+    // ── with gateContext: two dispatches, tenancyId set on all ───────────────
 
     @Test
     void dispatch_approved_withContext_sendsResponseToOversightAndDoneToWork() {
-        dispatcher.dispatch(true, oversightChannelId, workChannelId, 42L, gateId, "approved",
-                Optional.of(gateContext));
+        dispatcher.dispatch(true, oversightChannelId, 42L, gateId, "approved",
+                Optional.of(gateContext), tenancyId);
 
         ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
         verify(messageService, times(2)).dispatch(captor.capture());
@@ -124,38 +86,35 @@ class OversightGateDispatcherTest {
         assertThat(oversight.type()).isEqualTo(MessageType.RESPONSE);
         assertThat(oversight.correlationId()).isEqualTo(gateId.toString());
         assertThat(oversight.inReplyTo()).isEqualTo(42L);
+        assertThat(oversight.tenancyId()).isEqualTo(tenancyId);
 
         MessageDispatch work = captor.getAllValues().get(1);
         assertThat(work.channelId()).isEqualTo(workChannelId);
         assertThat(work.type()).isEqualTo(MessageType.DONE);
         assertThat(work.correlationId()).isEqualTo(originalCommitmentId);
         assertThat(work.inReplyTo()).isEqualTo(originalCommandMsgId);
-        assertThat(work.sender()).isEqualTo(OversightGateService.GATE_SENDER);
-        assertThat(work.actorType()).isEqualTo(ActorType.AGENT);
+        assertThat(work.tenancyId()).isEqualTo(tenancyId);
     }
 
     @Test
     void dispatch_rejected_withContext_sendsDeclineToOversightAndDeclineToWork() {
-        dispatcher.dispatch(false, oversightChannelId, workChannelId, 42L, gateId, "rejected",
-                Optional.of(gateContext));
+        dispatcher.dispatch(false, oversightChannelId, 42L, gateId, "rejected",
+                Optional.of(gateContext), tenancyId);
 
         ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
         verify(messageService, times(2)).dispatch(captor.capture());
 
-        MessageDispatch oversight = captor.getAllValues().get(0);
-        assertThat(oversight.type()).isEqualTo(MessageType.DECLINE);
-        assertThat(oversight.correlationId()).isEqualTo(gateId.toString());
-
-        MessageDispatch work = captor.getAllValues().get(1);
-        assertThat(work.type()).isEqualTo(MessageType.DECLINE);
-        assertThat(work.correlationId()).isEqualTo(originalCommitmentId);
-        assertThat(work.inReplyTo()).isEqualTo(originalCommandMsgId);
+        assertThat(captor.getAllValues().get(0).type()).isEqualTo(MessageType.DECLINE);
+        assertThat(captor.getAllValues().get(0).tenancyId()).isEqualTo(tenancyId);
+        assertThat(captor.getAllValues().get(1).type()).isEqualTo(MessageType.DECLINE);
+        assertThat(captor.getAllValues().get(1).correlationId()).isEqualTo(originalCommitmentId);
+        assertThat(captor.getAllValues().get(1).tenancyId()).isEqualTo(tenancyId);
     }
 
     @Test
     void dispatch_approved_withContext_twoDispatchCallsTotal() {
-        dispatcher.dispatch(true, oversightChannelId, workChannelId, 42L, gateId, "approved",
-                Optional.of(gateContext));
+        dispatcher.dispatch(true, oversightChannelId, 42L, gateId, "approved",
+                Optional.of(gateContext), tenancyId);
         verify(messageService, times(2)).dispatch(any());
     }
 
