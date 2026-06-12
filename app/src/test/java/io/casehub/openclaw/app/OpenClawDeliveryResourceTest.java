@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import io.casehub.openclaw.casehub.OversightGateService;
+import io.casehub.qhorus.api.qualifier.CrossTenant;
 import io.casehub.qhorus.runtime.channel.Channel;
 import io.casehub.qhorus.runtime.store.CrossTenantChannelStore;
 import io.quarkus.test.InjectMock;
@@ -23,6 +24,7 @@ import static org.mockito.Mockito.when;
 class OpenClawDeliveryResourceTest {
 
     @InjectMock
+    @CrossTenant
     CrossTenantChannelStore crossTenantChannelStore;
 
     @InjectMock
