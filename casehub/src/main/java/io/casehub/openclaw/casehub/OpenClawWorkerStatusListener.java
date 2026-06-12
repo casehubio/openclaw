@@ -1,6 +1,7 @@
 package io.casehub.openclaw.casehub;
 
 import java.util.Map;
+import java.util.UUID;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Event;
@@ -48,10 +49,11 @@ public class OpenClawWorkerStatusListener implements WorkerStatusListener {
     @Override
     public void onWorkerCompleted(String workerId, WorkResult result) {
         log.infof("OpenClaw agent completed: agentId=%s status=%s", workerId, result.status());
-        // Capture caseId before deregistering — registry removes the mapping on deregister()
-        java.util.UUID caseId = registry.findCaseId(workerId).orElse(null);
+        // Capture caseId and tenancyId before deregistering — registry removes the mappings on deregister()
+        UUID caseId = registry.findCaseId(workerId).orElse(null);
+        String tenancyId = caseId != null ? registry.findTenancyId(caseId).orElse(null) : null;
         registry.deregister(workerId);
-        service.unbindAgent(workerId);
+        service.unbindAgent(workerId, tenancyId);
         if (caseId != null) {
             service.closeCase(caseId);
         }

@@ -2,6 +2,7 @@ package io.casehub.openclaw.casehub;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -16,6 +17,7 @@ import io.casehub.api.spi.ProvisionResult;
 import io.casehub.api.spi.ProvisioningException;
 import io.casehub.api.spi.ReactiveWorkerProvisioner;
 import io.casehub.openclaw.context.ChannelContextWindowService;
+import io.casehub.platform.api.identity.CurrentPrincipal;
 import io.quarkus.arc.properties.IfBuildProperty;
 import io.smallrye.mutiny.Uni;
 
@@ -39,26 +41,33 @@ public class ReactiveOpenClawWorkerProvisioner implements ReactiveWorkerProvisio
     private final ChannelContextWindowService service;
     private final OpenClawAgentRegistry registry;
     private final OpenClawCasehubConfig config;
+    private final CurrentPrincipal currentPrincipal;
 
     @Inject
     public ReactiveOpenClawWorkerProvisioner(ChannelContextWindowService service,
                                               OpenClawAgentRegistry registry,
-                                              OpenClawCasehubConfig config) {
+                                              OpenClawCasehubConfig config,
+                                              CurrentPrincipal currentPrincipal) {
         this.service = service;
         this.registry = registry;
         this.config = config;
+        this.currentPrincipal = currentPrincipal;
     }
 
     @Override
     public Uni<ProvisionResult> provision(Set<String> capabilities, ProvisionContext context) {
+        // Capture tenancyId on the calling (request) thread — Uni.item(Supplier) executes
+        // lazily on subscription, which may be a Vert.x worker thread where request scope
+        // is not available.
+        final String tenancyId = currentPrincipal.tenancyId();
         return Uni.createFrom().item(() -> {
             String agentId = resolveAgentId(capabilities);
             String sessionKey = config.agents().get(agentId).sessionKey();
             UUID caseId = context.caseId();
-            registry.register(agentId, caseId, sessionKey);
-            service.bindAgent(agentId, caseId);
-            log.infof("Provisioned OpenClaw agent (reactive): agentId=%s caseId=%s capabilities=%s",
-                    agentId, caseId, capabilities);
+            registry.register(agentId, tenancyId, caseId, sessionKey);
+            service.bindAgent(agentId, tenancyId, caseId);
+            log.infof("Provisioned OpenClaw agent (reactive): agentId=%s caseId=%s tenancyId=%s capabilities=%s",
+                    agentId, caseId, tenancyId, capabilities);
             return ProvisionResult.empty();
         });
     }
@@ -66,7 +75,12 @@ public class ReactiveOpenClawWorkerProvisioner implements ReactiveWorkerProvisio
     @Override
     public Uni<Void> terminate(String workerId) {
         return Uni.createFrom().<Void>item(() -> {
+            Optional<UUID> caseId = registry.findCaseId(workerId);
+            String tenancyId = caseId.flatMap(registry::findTenancyId).orElse(null);
             registry.deregister(workerId);
+            if (tenancyId != null) {
+                service.unbindAgent(workerId, tenancyId);
+            }
             log.infof("Terminated OpenClaw agent (reactive): agentId=%s", workerId);
             return null;
         });
