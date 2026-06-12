@@ -35,7 +35,6 @@ zero tenancy awareness: `OpenClawAgentRegistry`, `ChannelContextWindowService`, 
 - `MessageDispatch.tenancyId` — already exists (null = auto-resolve from CurrentPrincipal); all request-context dispatch paths auto-resolve correctly and need no explicit setting
 - `CaseChannelProvider` / `ReactiveCaseChannelProvider` — `openChannel()` and `postToChannel()` run in request context; `ChannelService.create()` and `MessageDispatch` auto-resolve tenancyId via CurrentPrincipal; no changes
 - `ChannelContextWindowObserver`, `ChannelContextWindowResource` path for `add()` — channelId is globally unique; buffer lookup needs no tenancyId
-- Delivery endpoint URL for channel delivery — tenancyId is recovered from `ChannelStore.find(UUID)` (cross-tenant UUID lookup); no path change needed
 
 ---
 
@@ -176,10 +175,11 @@ DEFAULT_TENANT_ID behaviour for such gates (see openclaw#34).
 
 ```
 1. crossTenantMessageStore.findByCorrelationId(gateId.toString())
-   → gate COMMAND message → oversightChannelId, commandMessageId
+   → filter for messageType == COMMAND → gate COMMAND message
+   → oversightChannelId (message.channelId), commandMessageId (message.id)
    → parseGateContent(message.content) → GateContext{tenancyId, workChannelId, originalCommitmentId}
 
-2. channelStore.find(oversightChannelId)   // UUID lookup — cross-tenant
+2. channelStore.find(oversightChannelId)   // UUID lookup — cross-tenant (no tenancy filter)
    → oversight Channel entity
 
 3. channelStore.find(gateContext.workChannelId())   // UUID lookup — cross-tenant
@@ -195,8 +195,9 @@ DEFAULT_TENANT_ID behaviour for such gates (see openclaw#34).
 previously obtained from `commitment.channelId` is now recovered from the gate COMMAND message
 directly — simpler and cross-tenant safe.
 
-`OversightGateService` injects `@CrossTenant CrossTenantMessageStore` (new) alongside the
-existing `ChannelStore` injection.
+`OversightGateService` adds two new injections to its constructor:
+- `@CrossTenant CrossTenantMessageStore crossTenantMessageStore` (new qhorus addition)
+- `ChannelStore channelStore` — injected directly (not via `ChannelService`) because `ChannelStore.find(UUID)` is a UUID lookup with no tenancy filter, whereas `ChannelService.findById()` reads `CurrentPrincipal` and would return empty in the delivery webhook context
 
 ### 9. `OversightGateDispatcher` (`casehub/`)
 
@@ -219,12 +220,15 @@ current behaviour.
 ```java
 /** @CrossTenant CDI qualifier required. Refs casehubio/openclaw#29. */
 public interface CrossTenantMessageStore {
-    Optional<Message> findByCorrelationId(String correlationId);
+    List<Message> findByCorrelationId(String correlationId);
 }
 ```
 
+Returns `List<Message>` — a correlationId may have multiple messages (COMMAND + DONE/DECLINE).
+Callers filter by `messageType`. Mirrors the existing `messageService.findAllByCorrelationId()` pattern.
+
 Implementations:
-- `JpaCrossTenantMessageStore` — `SELECT m FROM Message m WHERE m.correlationId = :correlationId`; no tenancy filter; returns first match
+- `JpaCrossTenantMessageStore` — `SELECT m FROM Message m WHERE m.correlationId = :correlationId ORDER BY m.id`; no tenancy filter
 - `InMemoryCrossTenantMessageStore` in `testing/` — for `@QuarkusTest` use in casehub-openclaw
 
 Follows `CrossTenantCommitmentStore` pattern verbatim. Filed as casehubio/qhorus issue (qhorus is a peer repo; this PR is opened from the qhorus session).
