@@ -1,5 +1,6 @@
 package io.casehub.openclaw.app;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.inject.Inject;
@@ -14,15 +15,21 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 
 import io.casehub.openclaw.casehub.OversightGateService;
-import io.casehub.qhorus.runtime.channel.ChannelService;
+import io.casehub.qhorus.api.qualifier.CrossTenant;
+import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.qhorus.runtime.store.CrossTenantChannelStore;
 
 /**
  * Receives OpenClaw agent results delivered via deliver:webhook.
  *
- * <p>Stays thin: validates channelId, confirms channel exists, delegates to
- * {@link OversightGateService#evaluate(UUID, String, String)} which archives the agent
+ * <p>Stays thin: validates channelId, resolves tenancyId cross-tenant, delegates to
+ * {@link OversightGateService#evaluate(UUID, String, String, String)} which archives the agent
  * output as a non-resolving STATUS message on the work channel.
  * Always returns 200 — OpenClaw must not retry.
+ *
+ * <p>Uses {@link CrossTenantChannelStore} rather than tenant-scoped {@link io.casehub.qhorus.runtime.channel.ChannelService}
+ * because the delivery webhook carries no casehub principal — the channel lookup must be
+ * cross-tenant or it will return empty for any non-default tenant (openclaw#29).
  *
  * <p>Completion signaling (DONE, DECLINE, etc.) is owned by MCP tool calls
  * ({@code casehub_done}, {@code casehub_reject}, etc.) which dispatch typed Qhorus
@@ -37,7 +44,8 @@ public class OpenClawDeliveryResource {
     private static final Logger log = Logger.getLogger(OpenClawDeliveryResource.class);
 
     @Inject
-    ChannelService channelService;
+    @CrossTenant
+    CrossTenantChannelStore crossTenantChannelStore;
 
     @Inject
     OversightGateService oversightGateService;
@@ -53,16 +61,17 @@ public class OpenClawDeliveryResource {
             return Response.status(400).build();
         }
 
-        if (channelService.findById(channelId).isEmpty()) {
-            log.warnf("Delivery received for unknown channelId=%s", channelId);
-            return Response.status(404).build();
+        Optional<Channel> channel = crossTenantChannelStore.findById(channelId);
+        if (channel.isEmpty()) {
+            log.warnf("Delivery received for unknown channelId=%s — tenancyId unresolvable; skipping dispatch",
+                    channelId);
         }
+        String tenancyId = channel.map(ch -> ch.tenancyId).orElse(null);
 
         String agentId = payload != null && payload.agentId() != null ? payload.agentId() : "openclaw-agent";
-        String output = payload != null && payload.output() != null ? payload.output() : "";
+        String output  = payload != null && payload.output()  != null ? payload.output()  : "";
 
-        oversightGateService.evaluate(channelId, agentId, output);
-
-        return Response.ok().build();
+        oversightGateService.evaluate(channelId, tenancyId, agentId, output);
+        return Response.ok().build();   // Always 200 — OpenClaw must not retry
     }
 }

@@ -103,8 +103,8 @@ class BidirectionalWiringTest {
         var oversightChannel = channelService.create(oversightChannelName, "Oversight channel", ChannelSemantic.APPEND, null);
         oversightChannelId = oversightChannel.id;
 
-        // Register agent in the routing registry
-        registry.register("test-agent", caseId, "test-session-key");
+        // Register agent in the routing registry (tenancyId: default tenant)
+        registry.register("test-agent", "278776f9-e1b0-46fb-9032-8bddebdcf9ce", caseId, "test-session-key");
 
         // Fire CDI event to register the backend for the work channel (simulates startup)
         channelInitEvent.fire(new ChannelInitialisedEvent(workChannelId, workChannelName, false));
@@ -191,10 +191,13 @@ class BidirectionalWiringTest {
         assertThat(request.message()).contains("casehub_done");
     }
 
-    // ── 4. Delivery to unknown channel returns 404 ───────────────────────────
+    // ── 4. Delivery to unknown channel returns 200 (fail-open, openclaw#29) ────
 
     @Test
-    void deliver_unknown_channel_returns_404() {
+    void deliver_unknown_channel_returns_200() {
+        // Unknown channelId: CrossTenantChannelStore returns empty → tenancyId=null
+        // evaluate() with null tenancyId logs a warning and skips dispatch.
+        // Always 200 — OpenClaw must not retry (openclaw-delivery-always-200 protocol).
         given()
             .contentType(JSON)
             .body("""
@@ -203,7 +206,7 @@ class BidirectionalWiringTest {
         .when()
             .post("/openclaw/delivery/channel/" + UUID.randomUUID())
         .then()
-            .statusCode(404);
+            .statusCode(200);
     }
 
     // ── 5. Delivery with invalid UUID returns 400 ────────────────────────────
