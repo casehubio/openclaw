@@ -16,6 +16,8 @@ import io.casehub.platform.api.identity.CurrentPrincipal;
 import io.smallrye.mutiny.helpers.test.UniAssertSubscriber;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -149,6 +151,15 @@ class ReactiveOpenClawWorkerProvisionerTest {
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
         verify(mockService).unbindAgent("finance-agent", "test-tenant");
+    }
+
+    @Test
+    void terminate_unknownAgent_stillCallsUnbindAgent() {
+        // never provisioned — tenancyId is null; service must still be called (null-safe)
+        provisioner.terminate("not-registered")
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem();
+        verify(mockService).unbindAgent(eq("not-registered"), isNull());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

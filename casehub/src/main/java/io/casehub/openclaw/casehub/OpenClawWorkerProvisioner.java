@@ -71,9 +71,7 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
         Optional<UUID> caseId = registry.findCaseId(workerId);
         String tenancyId = caseId.flatMap(registry::findTenancyId).orElse(null);
         registry.deregister(workerId);
-        if (tenancyId != null) {
-            service.unbindAgent(workerId, tenancyId);
-        }
+        service.unbindAgent(workerId, tenancyId);  // null-safe: service logs warn and no-ops
         log.infof("Terminated OpenClaw agent: agentId=%s", workerId);
     }
 
