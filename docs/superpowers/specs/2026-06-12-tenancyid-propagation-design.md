@@ -302,6 +302,30 @@ Multi-tenant support for both plugins deferred to openclaw#33 (requires auth ret
 - Missing tenancyId in gate content → `parseGateContent()` returns empty → gateContext absent →
   dispatcher skips work channel, dispatches only to oversight channel
 
+**`CommitmentToolsTest`** — existing tests require surgery:
+
+`CommitmentTools` adds `CurrentPrincipal` to its constructor (§8). This breaks the test in two
+distinct ways:
+
+*Constructor arity* — line 54 `new CommitmentTools(messageService, commitmentService, commitmentStore, oversightGateService)` fails to compile.
+Fix: add `currentPrincipal = mock(CurrentPrincipal.class)` to the field list and `setUp()`;
+stub `when(currentPrincipal.tenancyId()).thenReturn("test-tenant")`; pass `currentPrincipal` as the
+5th argument.
+
+*`openGate()` argument count* — four locations reference the 3-arg signature; all fail after the
+change to 4 args (Mockito enforces arity on both stubs and `verify()` calls, including `never()`):
+
+| Line | Current | Required |
+|------|---------|----------|
+| 53 — setUp default stub | `openGate(any(), any(), any())` | add 4th `any()` |
+| 234 — `done_channelBacked_autonomous_proceedsWithDone` | `openGate(agentId, correlationId, "Report sent")` | add 4th arg `any()` |
+| 254 — `done_channelBacked_gatePending_returnsPendingGateAndNoDispatch` | `openGate(agentId, correlationId, "Delete old files")` | add 4th arg `any()` |
+| 278 — `done_selfCommit_neverCallsOpenGate` | `verify(..., never()).openGate(any(), any(), any())` | add 4th `any()` |
+
+No test behaviour changes — only arity updates. The assertions themselves remain valid.
+
+---
+
 **`OversightGateDispatcherTest`** — existing tests require surgery:
 
 *Delete* all 4 existing no-context tests (`dispatch_approved_noContext_*`,
