@@ -26,12 +26,14 @@ import io.casehub.qhorus.runtime.message.Commitment;
 import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.runtime.store.CrossTenantMessageStore;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
@@ -45,6 +47,7 @@ class OversightGateServiceTest {
     MessageService messageService;
     CommitmentStore commitmentStore;
     OversightGateDispatcher gateDispatcher;
+    CrossTenantMessageStore crossTenantMessageStore;
     OversightGateService service;
 
     @SuppressWarnings("unchecked")
@@ -66,6 +69,9 @@ class OversightGateServiceTest {
         channelService = mock(ChannelService.class);
         messageService = mock(MessageService.class);
         commitmentStore = mock(CommitmentStore.class);
+        crossTenantMessageStore = mock(CrossTenantMessageStore.class);
+        // default: return empty list (no gate COMMAND found)
+        when(crossTenantMessageStore.scan(any())).thenReturn(java.util.List.of());
 
         workChannel = new Channel();
         workChannel.id = workChannelId;
@@ -92,14 +98,14 @@ class OversightGateServiceTest {
         when(classifiers.isUnsatisfied()).thenReturn(true);
 
         service = new OversightGateService(channelService, messageService, commitmentStore,
-                gateDispatcher, classifiers);
+                gateDispatcher, classifiers, crossTenantMessageStore);
     }
 
     // ── evaluate() — archival STATUS ──────────────────────────────────────────
 
     @Test
     void evaluate_withOutput_archivesAsStatus() {
-        service.evaluate(workChannelId, "finance-agent", "Analysis complete.");
+        service.evaluate(workChannelId, "tenant-A", "finance-agent", "Analysis complete.");
 
         ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
         verify(messageService).dispatch(captor.capture());
@@ -116,30 +122,44 @@ class OversightGateServiceTest {
 
     @Test
     void evaluate_withNullOutput_noDispatch() {
-        service.evaluate(workChannelId, "finance-agent", null);
+        service.evaluate(workChannelId, "tenant-A", "finance-agent", null);
         verify(messageService, never()).dispatch(any());
     }
 
     @Test
     void evaluate_withBlankOutput_noDispatch() {
-        service.evaluate(workChannelId, "finance-agent", "   ");
+        service.evaluate(workChannelId, "tenant-A", "finance-agent", "   ");
         verify(messageService, never()).dispatch(any());
     }
 
     @Test
     void evaluate_dispatchException_failsOpen() {
         when(messageService.dispatch(any())).thenThrow(new RuntimeException("db down"));
-        assertThatCode(() -> service.evaluate(workChannelId, "finance-agent", "output"))
+        assertThatCode(() -> service.evaluate(workChannelId, "tenant-A", "finance-agent", "output"))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void evaluate_withTenancyId_setsOnDispatch() {
+        service.evaluate(workChannelId, "tenant-A", "agent-1", "output content");
+
+        ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
+        verify(messageService).dispatch(captor.capture());
+        assertThat(captor.getValue().tenancyId()).isEqualTo("tenant-A");
+        assertThat(captor.getValue().type()).isEqualTo(MessageType.STATUS);
+    }
+
+    @Test
+    void evaluate_nullTenancyId_skipsDispatch() {
+        service.evaluate(UUID.randomUUID(), null, "agent-1", "output");
+        verify(messageService, never()).dispatch(any());
     }
 
     // ── fulfill() ─────────────────────────────────────────────────────────────
 
     @Test
     void fulfill_approved_callsGateDispatcherWithApprovedTrue() {
-        UUID gateId = setupGateStubs();
-        when(commitmentStore.findByCorrelationId(gateId.toString()))
-                .thenReturn(Optional.of(commitment(gateId)));
+        UUID gateId = setupFulfillStubs(oversightChannelId, "approved", "tenant-A", 42L);
 
         service.fulfill(gateId, "approved");
 
@@ -160,9 +180,7 @@ class OversightGateServiceTest {
 
     @Test
     void fulfill_rejected_callsGateDispatcherWithApprovedFalse() {
-        UUID gateId = setupGateStubs();
-        when(commitmentStore.findByCorrelationId(gateId.toString()))
-                .thenReturn(Optional.of(commitment(gateId)));
+        UUID gateId = setupFulfillStubs(oversightChannelId, "rejected", "tenant-A", 42L);
 
         service.fulfill(gateId, "rejected");
 
@@ -174,9 +192,7 @@ class OversightGateServiceTest {
 
     @Test
     void fulfill_rawOutputNull_treatsAsRejected() {
-        UUID gateId = setupGateStubs();
-        when(commitmentStore.findByCorrelationId(gateId.toString()))
-                .thenReturn(Optional.of(commitment(gateId)));
+        UUID gateId = setupFulfillStubs(oversightChannelId, null, "tenant-A", 42L);
 
         service.fulfill(gateId, null);
 
@@ -188,9 +204,7 @@ class OversightGateServiceTest {
 
     @Test
     void fulfill_rawOutputBlank_treatsAsRejected() {
-        UUID gateId = setupGateStubs();
-        when(commitmentStore.findByCorrelationId(gateId.toString()))
-                .thenReturn(Optional.of(commitment(gateId)));
+        UUID gateId = setupFulfillStubs(oversightChannelId, "   ", "tenant-A", 42L);
 
         service.fulfill(gateId, "   ");
 
@@ -202,9 +216,7 @@ class OversightGateServiceTest {
 
     @Test
     void fulfill_approvedWithTrailingText_isApproved() {
-        UUID gateId = setupGateStubs();
-        when(commitmentStore.findByCorrelationId(gateId.toString()))
-                .thenReturn(Optional.of(commitment(gateId)));
+        UUID gateId = setupFulfillStubs(oversightChannelId, "approved, please go ahead", "tenant-A", 42L);
 
         service.fulfill(gateId, "approved, please go ahead");
 
@@ -216,9 +228,7 @@ class OversightGateServiceTest {
 
     @Test
     void fulfill_notApprovedPrefix_isRejected() {
-        UUID gateId = setupGateStubs();
-        when(commitmentStore.findByCorrelationId(gateId.toString()))
-                .thenReturn(Optional.of(commitment(gateId)));
+        UUID gateId = setupFulfillStubs(oversightChannelId, "not approved", "tenant-A", 42L);
 
         service.fulfill(gateId, "not approved");
 
@@ -231,22 +241,99 @@ class OversightGateServiceTest {
     @Test
     void fulfill_noCommandMessageFound_failsOpen() {
         UUID unknownGateId = UUID.randomUUID();
-        when(messageService.findAllByCorrelationId(unknownGateId.toString()))
-                .thenReturn(List.of());
+        // crossTenantMessageStore.scan() already returns empty list by default in setUp
 
         assertThatCode(() -> service.fulfill(unknownGateId, "approved")).doesNotThrowAnyException();
         verify(messageService, never()).dispatch(any());
+        verify(gateDispatcher, never()).dispatch(anyBoolean(), any(), anyLong(), any(), any(), any(), any());
     }
 
     @Test
-    void fulfill_commandFoundButNoCommitment_failsOpen() {
-        UUID gateId = UUID.randomUUID();
-        when(messageService.findAllByCorrelationId(gateId.toString()))
-                .thenReturn(List.of(commandMessage(gateId, 42L)));
-        when(commitmentStore.findByCorrelationId(gateId.toString())).thenReturn(Optional.empty());
+    void fulfill_gateCmdNotFound_noDispatch() {
+        when(crossTenantMessageStore.scan(any())).thenReturn(java.util.List.of());
+        service.fulfill(UUID.randomUUID(), "approved");
+        verify(gateDispatcher, never()).dispatch(anyBoolean(), any(), anyLong(), any(), any(), any(), any());
+    }
 
-        assertThatCode(() -> service.fulfill(gateId, "approved")).doesNotThrowAnyException();
-        verify(messageService, never()).dispatch(any());
+    // ── fulfill() — with gate context ────────────────────────────────────────
+
+    @Test
+    void fulfill_approved_withContext_passesGateContextToDispatcher() throws Exception {
+        UUID gateId = UUID.randomUUID();
+        Message gateCmd = buildGateCommand(oversightChannelId, gateId, workChannelId, commitmentId, "tenant-A");
+        when(crossTenantMessageStore.scan(any())).thenReturn(List.of(gateCmd));
+
+        service.fulfill(gateId, "approved");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Optional<GateContext>> contextCaptor =
+                (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
+        verify(gateDispatcher).dispatch(
+                eq(true), any(), anyLong(), any(), any(), contextCaptor.capture(), any());
+        assertThat(contextCaptor.getValue()).isPresent();
+        GateContext ctx = contextCaptor.getValue().get();
+        assertThat(ctx.originalCommitmentId()).isEqualTo(commitmentId);
+        assertThat(ctx.workChannelId()).isEqualTo(workChannelId);
+        assertThat(ctx.commandMessageId()).isEqualTo(commandMsgId);
+    }
+
+    @Test
+    void fulfill_rejected_withContext_passesGateContextToDispatcher() throws Exception {
+        UUID gateId = UUID.randomUUID();
+        Message gateCmd = buildGateCommand(oversightChannelId, gateId, workChannelId, commitmentId, "tenant-A");
+        when(crossTenantMessageStore.scan(any())).thenReturn(List.of(gateCmd));
+
+        service.fulfill(gateId, "rejected");
+
+        ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Optional<GateContext>> contextCaptor =
+                (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
+        verify(gateDispatcher).dispatch(
+                approvedCaptor.capture(), any(), anyLong(), any(), any(), contextCaptor.capture(), any());
+        assertThat(approvedCaptor.getValue()).isFalse();
+        assertThat(contextCaptor.getValue()).isPresent();
+    }
+
+    @Test
+    void fulfill_malformedGateContent_passesEmptyContextToDispatcher() {
+        UUID gateId = UUID.randomUUID();
+        Message cmd = new Message();
+        cmd.id = 42L;
+        cmd.channelId = oversightChannelId;
+        cmd.messageType = MessageType.COMMAND;
+        cmd.correlationId = gateId.toString();
+        cmd.content = "not-properties-format-at-all";
+        when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
+
+        service.fulfill(gateId, "approved");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Optional<GateContext>> contextCaptor =
+                (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
+        verify(gateDispatcher).dispatch(
+                anyBoolean(), any(), anyLong(), any(), any(), contextCaptor.capture(), any());
+        assertThat(contextCaptor.getValue()).isEmpty();
+    }
+
+    @Test
+    void fulfill_approved_dispatchesWithTenancyIdFromGateContext() {
+        UUID gateId = UUID.randomUUID();
+        String tenancyId = "tenant-A";
+        Message gateCmd = buildGateCommand(oversightChannelId, gateId, workChannelId, commitmentId, tenancyId);
+        when(crossTenantMessageStore.scan(any())).thenReturn(List.of(gateCmd));
+
+        service.fulfill(gateId, "approved");
+
+        verify(gateDispatcher).dispatch(
+                eq(true),
+                eq(oversightChannelId),
+                eq(42L),
+                eq(gateId),
+                eq("approved"),
+                argThat(opt -> opt.isPresent() && tenancyId.equals(opt.get().tenancyId())),
+                eq(tenancyId)
+        );
     }
 
     // ── openGate() ────────────────────────────────────────────────────────────
@@ -256,7 +343,7 @@ class OversightGateServiceTest {
         when(classifiers.isUnsatisfied()).thenReturn(true);
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "analysis done");
+        GateDecision result = service.openGate(agentId, commitmentId, "analysis done", "tenant-A");
 
         assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
         verify(messageService, never()).dispatch(any());
@@ -267,7 +354,7 @@ class OversightGateServiceTest {
         stubSingleClassifier(new RiskDecision.Autonomous());
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "analysis done");
+        GateDecision result = service.openGate(agentId, commitmentId, "analysis done", "tenant-A");
 
         assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
         verify(messageService, never()).dispatch(any());
@@ -278,7 +365,7 @@ class OversightGateServiceTest {
         stubSingleClassifier(new RiskDecision.GateRequired("risk: file deletion", true, null, null, null));
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "deleting old reports");
+        GateDecision result = service.openGate(agentId, commitmentId, "deleting old reports", "tenant-A");
 
         assertThat(result).isInstanceOf(GateDecision.GatePending.class);
         GateDecision.GatePending pending = (GateDecision.GatePending) result;
@@ -301,7 +388,7 @@ class OversightGateServiceTest {
         stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null));
         stubOpenGateCommitment();
 
-        service.openGate(agentId, commitmentId, "outcome");
+        service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
         ArgumentCaptor<MessageDispatch> captor = ArgumentCaptor.forClass(MessageDispatch.class);
         verify(messageService).dispatch(captor.capture());
@@ -320,7 +407,7 @@ class OversightGateServiceTest {
         stubSingleClassifier_throws(new RuntimeException("classifier crashed"));
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
         assertThat(result).isInstanceOf(GateDecision.GatePending.class);
         GateDecision.GatePending pending = (GateDecision.GatePending) result;
@@ -334,7 +421,7 @@ class OversightGateServiceTest {
         when(channelService.findByName("case-" + caseId + "/oversight"))
                 .thenReturn(Optional.empty());
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
         assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
         verify(messageService, never()).dispatch(any());
@@ -346,7 +433,7 @@ class OversightGateServiceTest {
         stubOpenGateCommitment();
         when(messageService.dispatch(any())).thenThrow(new RuntimeException("channel unavailable"));
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
         assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
     }
@@ -361,7 +448,7 @@ class OversightGateServiceTest {
         c.state = io.casehub.qhorus.api.message.CommitmentState.OPEN;
         when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
         assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
         verify(messageService, never()).dispatch(any());
@@ -379,7 +466,7 @@ class OversightGateServiceTest {
         when(classifiers.iterator()).thenReturn(List.of(narrowClassifier, broadClassifier).iterator());
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
         assertThat(result).isInstanceOf(GateDecision.GatePending.class);
         assertThat(((GateDecision.GatePending) result).reason()).isEqualTo("narrow");
@@ -396,7 +483,7 @@ class OversightGateServiceTest {
         when(classifiers.iterator()).thenReturn(List.of(autonomousClassifier, gateClassifier).iterator());
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
         assertThat(result).isInstanceOf(GateDecision.GatePending.class);
     }
@@ -413,73 +500,10 @@ class OversightGateServiceTest {
         // No COMMAND message in history
         when(messageService.findAllByCorrelationId(commitmentId)).thenReturn(List.of());
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome");
+        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
         assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
         verify(messageService, never()).dispatch(any());
-    }
-
-    // ── fulfill() — with gate context (Phase 2 behaviour) ────────────────────
-
-    @Test
-    void fulfill_approved_withContext_passesGateContextToDispatcher() throws Exception {
-        UUID gateId = setupGateStubsWithContext();
-        when(commitmentStore.findByCorrelationId(gateId.toString()))
-                .thenReturn(Optional.of(commitment(gateId)));
-
-        service.fulfill(gateId, "approved");
-
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Optional<GateContext>> contextCaptor =
-                (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
-        verify(gateDispatcher).dispatch(
-                eq(true), any(), anyLong(), any(), any(), contextCaptor.capture(), any());
-        assertThat(contextCaptor.getValue()).isPresent();
-        GateContext ctx = contextCaptor.getValue().get();
-        assertThat(ctx.originalCommitmentId()).isEqualTo(commitmentId);
-        assertThat(ctx.workChannelId()).isEqualTo(workChannelId);
-        assertThat(ctx.commandMessageId()).isEqualTo(commandMsgId);
-    }
-
-    @Test
-    void fulfill_rejected_withContext_passesGateContextToDispatcher() throws Exception {
-        UUID gateId = setupGateStubsWithContext();
-        when(commitmentStore.findByCorrelationId(gateId.toString()))
-                .thenReturn(Optional.of(commitment(gateId)));
-
-        service.fulfill(gateId, "rejected");
-
-        ArgumentCaptor<Boolean> approvedCaptor = ArgumentCaptor.forClass(Boolean.class);
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Optional<GateContext>> contextCaptor =
-                (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
-        verify(gateDispatcher).dispatch(
-                approvedCaptor.capture(), any(), anyLong(), any(), any(), contextCaptor.capture(), any());
-        assertThat(approvedCaptor.getValue()).isFalse();
-        assertThat(contextCaptor.getValue()).isPresent();
-    }
-
-    @Test
-    void fulfill_malformedGateContent_passesEmptyContextToDispatcher() {
-        UUID gateId = UUID.randomUUID();
-        Message cmd = new Message();
-        cmd.id = 42L;
-        cmd.messageType = MessageType.COMMAND;
-        cmd.correlationId = gateId.toString();
-        cmd.content = "not-properties-format-at-all";
-        when(messageService.findAllByCorrelationId(gateId.toString()))
-                .thenReturn(List.of(cmd));
-        when(commitmentStore.findByCorrelationId(gateId.toString()))
-                .thenReturn(Optional.of(commitment(gateId)));
-
-        service.fulfill(gateId, "approved");
-
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Optional<GateContext>> contextCaptor =
-                (ArgumentCaptor<Optional<GateContext>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Optional.class);
-        verify(gateDispatcher).dispatch(
-                anyBoolean(), any(), anyLong(), any(), any(), contextCaptor.capture(), any());
-        assertThat(contextCaptor.getValue()).isEmpty();
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -514,53 +538,36 @@ class OversightGateServiceTest {
     }
 
     /**
-     * Stubs a gate COMMAND message with valid Properties-format content so that
-     * parseGateContent() returns a populated Optional<GateContext>.
-     * Used by the fulfill()-with-context tests.
+     * Sets up a gate COMMAND message via crossTenantMessageStore for fulfill() tests.
+     * The content is a valid Properties-format string with gate context.
      */
-    private UUID setupGateStubsWithContext() throws Exception {
+    private UUID setupFulfillStubs(UUID oversightChanId, String rawOutput, String tenancyId, long msgId) {
         UUID gateId = UUID.randomUUID();
-        java.util.Properties props = new java.util.Properties();
-        props.setProperty("originalCommitmentId", commitmentId);
-        props.setProperty("workChannelId", workChannelId.toString());
-        props.setProperty("commandMessageId", String.valueOf(commandMsgId));
-        props.setProperty("reason", "test reason");
-        java.io.StringWriter sw = new java.io.StringWriter();
-        props.store(sw, null);
-        String content = sw.toString();
-
-        Message cmd = new Message();
-        cmd.id = 42L;
-        cmd.messageType = MessageType.COMMAND;
-        cmd.correlationId = gateId.toString();
-        cmd.content = content;
-        when(messageService.findAllByCorrelationId(gateId.toString()))
-                .thenReturn(List.of(cmd));
+        Message gateCmd = buildGateCommand(oversightChanId, gateId, workChannelId, commitmentId, tenancyId);
+        gateCmd.id = msgId;
+        when(crossTenantMessageStore.scan(any())).thenReturn(List.of(gateCmd));
         return gateId;
     }
 
     /**
-     * Stubs the message lookup fulfill() requires without calling service.evaluate().
-     * Used by all fulfill() tests that need a gateId in the durable message store.
+     * Builds a gate COMMAND message with Properties-format content containing gate context.
      */
-    private UUID setupGateStubs() {
-        UUID gateId = UUID.randomUUID();
-        when(messageService.findAllByCorrelationId(gateId.toString()))
-                .thenReturn(List.of(commandMessage(gateId, 42L)));
-        return gateId;
-    }
+    private Message buildGateCommand(UUID oversightChanId, UUID gateId, UUID workChanId,
+                                      String origCommitmentId, String tenancyId) {
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("originalCommitmentId", origCommitmentId);
+        props.setProperty("workChannelId", workChanId.toString());
+        props.setProperty("commandMessageId", String.valueOf(commandMsgId));
+        props.setProperty("reason", "test risk");
+        if (tenancyId != null) props.setProperty("tenancyId", tenancyId);
+        java.io.StringWriter sw = new java.io.StringWriter();
+        try { props.store(sw, null); } catch (Exception e) { throw new RuntimeException(e); }
 
-    private Commitment commitment(UUID gateId) {
-        Commitment c = new Commitment();
-        c.channelId = oversightChannelId;
-        c.correlationId = gateId.toString();
-        return c;
-    }
-
-    private Message commandMessage(UUID gateId, long messageId) {
         Message m = new Message();
-        m.id = messageId;
+        m.id = 42L;
+        m.channelId = oversightChanId;
         m.messageType = MessageType.COMMAND;
+        m.content = sw.toString();
         m.correlationId = gateId.toString();
         return m;
     }

@@ -21,20 +21,23 @@ import io.casehub.api.spi.RiskDecision;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
+import io.casehub.qhorus.api.qualifier.CrossTenant;
 import io.casehub.qhorus.runtime.channel.Channel;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.message.Commitment;
 import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.runtime.store.CrossTenantMessageStore;
+import io.casehub.qhorus.runtime.store.query.MessageQuery;
 
 /**
  * Owns the oversight gate lifecycle.
  *
- * <p>{@link #evaluate(UUID, String, String)} archives the agent's webhook output as a
+ * <p>{@link #evaluate(UUID, String, String, String)} archives the agent's webhook output as a
  * non-resolving STATUS message on the work channel.
  *
- * <p>{@link #openGate(String, String, String)} classifies the proposed action via
+ * <p>{@link #openGate(String, String, String, String)} classifies the proposed action via
  * {@code @RiskClassifier} CDI beans. If {@code GateRequired}, dispatches a COMMAND to
  * the oversight channel and returns {@link GateDecision.GatePending}. If {@code Autonomous}
  * (or no classifiers registered), returns {@link GateDecision.Autonomous} so the caller
@@ -57,32 +60,42 @@ public class OversightGateService {
     private final CommitmentStore commitmentStore;
     private final OversightGateDispatcher gateDispatcher;
     private final Instance<ActionRiskClassifier> classifiers;
+    private final CrossTenantMessageStore crossTenantMessageStore;
 
     @Inject
     public OversightGateService(final ChannelService channelService,
                                  final MessageService messageService,
                                  final CommitmentStore commitmentStore,
                                  final OversightGateDispatcher gateDispatcher,
-                                 @RiskClassifier final Instance<ActionRiskClassifier> classifiers) {
+                                 @RiskClassifier final Instance<ActionRiskClassifier> classifiers,
+                                 @CrossTenant final CrossTenantMessageStore crossTenantMessageStore) {
         this.channelService = channelService;
         this.messageService = messageService;
         this.commitmentStore = commitmentStore;
         this.gateDispatcher = gateDispatcher;
         this.classifiers = classifiers;
+        this.crossTenantMessageStore = crossTenantMessageStore;
     }
 
     /**
      * Archives the agent's webhook output as a non-resolving STATUS on the work channel.
      */
-    public void evaluate(final UUID workChannelId, final String agentId, final String output) {
+    public void evaluate(final UUID workChannelId, final String tenancyId,
+                         final String agentId, final String output) {
         try {
             if (output == null || output.isBlank()) return;
+            if (tenancyId == null) {
+                log.warnf("evaluate(): null tenancyId for channelId=%s — channel not found; skipping dispatch",
+                        workChannelId);
+                return;
+            }
             messageService.dispatch(MessageDispatch.builder()
                     .channelId(workChannelId)
                     .sender(agentId)
                     .type(MessageType.STATUS)
                     .content(output)
                     .actorType(ActorType.AGENT)
+                    .tenancyId(tenancyId)
                     .build());
         } catch (Exception e) {
             log.errorf("evaluate() failed to archive webhook output for channel=%s agent=%s: %s",
@@ -100,7 +113,7 @@ public class OversightGateService {
      * Classifier exception → GateRequired fail-safe (not Autonomous — failure ≠ safe).
      */
     public GateDecision openGate(final String agentId, final String commitmentId,
-                                  final String outcome) {
+                                  final String outcome, final String tenancyId) {
         try {
             Optional<Commitment> cOpt = commitmentStore.findByCorrelationId(commitmentId);
             if (cOpt.isEmpty() || cOpt.get().channelId == null) {
@@ -151,7 +164,7 @@ public class OversightGateService {
             }
 
             UUID gateId = UUID.randomUUID();
-            GateContext ctx = new GateContext(commitmentId, workChannelId, commandMessageId, null /* tenancyId — wired in Task 5 */);
+            GateContext ctx = new GateContext(commitmentId, workChannelId, commandMessageId, tenancyId);
 
             messageService.dispatch(MessageDispatch.builder()
                     .channelId(oversightChannel.id)
@@ -160,6 +173,7 @@ public class OversightGateService {
                     .content(serializeGateContent(ctx, gate.reason()))
                     .correlationId(gateId.toString())
                     .actorType(ActorType.AGENT)
+                    .tenancyId(tenancyId)
                     .build());
 
             log.infof("Gate opened: gateId=%s agentId=%s commitmentId=%s caseId=%s reason=%s",
@@ -175,60 +189,33 @@ public class OversightGateService {
 
     /**
      * Processes the oversight agent's response to a gate.
+     *
+     * <p>Uses {@link CrossTenantMessageStore#scan} to locate the gate COMMAND cross-tenant —
+     * the delivery webhook has no casehub principal, so tenant-scoped {@link MessageService}
+     * cannot resolve the message.
      */
     public void fulfill(final UUID gateId, final String rawOutput) {
         try {
-            Optional<Message> gateCmdOpt = messageService.findAllByCorrelationId(gateId.toString())
-                    .stream()
-                    .filter(m -> m.messageType == MessageType.COMMAND)
-                    .findFirst();
-            if (gateCmdOpt.isEmpty()) {
-                log.warnf("fulfill() called for gateId=%s — no COMMAND message found via correlationId; " +
-                        "possible restart or duplicate delivery; failing open", gateId);
+            Message gateCmd = crossTenantMessageStore.scan(
+                    MessageQuery.builder()
+                            .correlationId(gateId.toString())
+                            .messageType(MessageType.COMMAND)
+                            .build())
+                    .stream().findFirst().orElse(null);
+            if (gateCmd == null) {
+                log.warnf("fulfill(): no COMMAND message found for gateId=%s — ignoring", gateId);
                 return;
             }
-            long commandMessageId = gateCmdOpt.get().id;
-
-            Optional<GateContext> gateContext = parseGateContent(gateCmdOpt.get().content);
-            if (gateContext.isEmpty()) {
-                log.warnf("fulfill() gateId=%s — gate context missing or unparseable; " +
-                        "work commitment will not be closed (falling back to STATUS)", gateId);
-            }
+            UUID oversightChannelId = gateCmd.channelId;
+            long commandMessageId = gateCmd.id;
+            Optional<GateContext> gateContext = parseGateContent(gateCmd.content);
+            String tenancyId = gateContext.map(GateContext::tenancyId).orElse(null);
 
             boolean approved = parseApproval(gateId, rawOutput);
+            gateDispatcher.dispatch(approved, oversightChannelId, commandMessageId,
+                    gateId, rawOutput, gateContext, tenancyId);
 
-            Optional<Commitment> commitmentOpt = commitmentStore.findByCorrelationId(gateId.toString());
-            if (commitmentOpt.isEmpty()) {
-                log.warnf("fulfill() called for unknown gateId=%s — possible duplicate delivery, ignoring",
-                        gateId);
-                return;
-            }
-
-            Commitment commitment = commitmentOpt.get();
-            Channel oversightChannel = channelService.findById(commitment.channelId).orElse(null);
-            if (oversightChannel == null) {
-                log.errorf("Oversight channel %s not found for gateId=%s — failing open",
-                        commitment.channelId, gateId);
-                return;
-            }
-
-            UUID caseId = CaseChannelNames.extractCaseId(oversightChannel.name);
-            if (caseId == null) {
-                log.errorf("Could not extract caseId from oversight channel '%s' for gateId=%s — failing open",
-                        oversightChannel.name, gateId);
-                return;
-            }
-
-            Channel workChannel = channelService.findByName(CaseChannelNames.workChannelName(caseId))
-                    .orElse(null);
-            if (workChannel == null) {
-                log.errorf("Work channel not found for caseId=%s gateId=%s — failing open", caseId, gateId);
-                return;
-            }
-
-            gateDispatcher.dispatch(approved, oversightChannel.id,
-                    commandMessageId, gateId, rawOutput, gateContext, null /* tenancyId — wired in Task 5 */);
-            log.infof("Gate %s: gateId=%s caseId=%s", approved ? "approved" : "rejected", gateId, caseId);
+            log.infof("Gate %s: gateId=%s", approved ? "approved" : "rejected", gateId);
         } catch (Exception e) {
             log.errorf("OversightGateService.fulfill() failed for gateId=%s: %s", gateId, e.getMessage());
         }
