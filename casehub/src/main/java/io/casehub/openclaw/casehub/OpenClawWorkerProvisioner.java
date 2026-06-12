@@ -2,6 +2,7 @@ package io.casehub.openclaw.casehub;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -16,6 +17,7 @@ import io.casehub.api.spi.ProvisionResult;
 import io.casehub.api.spi.ProvisioningException;
 import io.casehub.api.spi.WorkerProvisioner;
 import io.casehub.openclaw.context.ChannelContextWindowService;
+import io.casehub.platform.api.identity.CurrentPrincipal;
 
 /**
  * Provisions OpenClaw agents as CaseHub workers.
@@ -35,14 +37,17 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
     private final ChannelContextWindowService service;
     private final OpenClawAgentRegistry registry;
     private final OpenClawCasehubConfig config;
+    private final CurrentPrincipal currentPrincipal;
 
     @Inject
     public OpenClawWorkerProvisioner(ChannelContextWindowService service,
                                       OpenClawAgentRegistry registry,
-                                      OpenClawCasehubConfig config) {
+                                      OpenClawCasehubConfig config,
+                                      CurrentPrincipal currentPrincipal) {
         this.service = service;
         this.registry = registry;
         this.config = config;
+        this.currentPrincipal = currentPrincipal;
     }
 
     @Override
@@ -50,19 +55,23 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
         String agentId = resolveAgentId(capabilities);
         String sessionKey = config.agents().get(agentId).sessionKey();
         UUID caseId = context.caseId();
+        String tenancyId = currentPrincipal.tenancyId();
 
-        registry.register(agentId, caseId, sessionKey);
-        service.bindAgent(agentId, caseId);
+        registry.register(agentId, tenancyId, caseId, sessionKey);
+        service.bindAgent(agentId, tenancyId, caseId);
 
-        log.infof("Provisioned OpenClaw agent: agentId=%s caseId=%s capabilities=%s",
-                agentId, caseId, capabilities);
+        log.infof("Provisioned OpenClaw agent: agentId=%s caseId=%s tenancyId=%s capabilities=%s",
+                agentId, caseId, tenancyId, capabilities);
 
         return ProvisionResult.empty();
     }
 
     @Override
     public void terminate(String workerId) {
+        Optional<UUID> caseId = registry.findCaseId(workerId);
+        String tenancyId = caseId.flatMap(registry::findTenancyId).orElse(null);
         registry.deregister(workerId);
+        service.unbindAgent(workerId, tenancyId);  // null-safe: service logs warn and no-ops
         log.infof("Terminated OpenClaw agent: agentId=%s", workerId);
     }
 

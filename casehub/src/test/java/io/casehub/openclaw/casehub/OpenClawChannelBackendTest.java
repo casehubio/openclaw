@@ -67,7 +67,7 @@ class OpenClawChannelBackendTest {
 
     @Test
     void post_command_invokesAgent() {
-        registry.register("finance-agent", caseId, "finance-agent");
+        registry.register("finance-agent", "test-tenant", caseId, "finance-agent");
         ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
         OutboundMessage msg = command("Analyse this PR");
 
@@ -81,7 +81,7 @@ class OpenClawChannelBackendTest {
 
     @Test
     void post_command_withCorrelationId_injectsFullyResolvedContext() {
-        registry.register("finance-agent", caseId, "finance-agent");
+        registry.register("finance-agent", "test-tenant", caseId, "finance-agent");
         UUID commitmentId = UUID.randomUUID();
         ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
         OutboundMessage msg = commandWithCorrelationId("Review this PR.", commitmentId);
@@ -105,7 +105,7 @@ class OpenClawChannelBackendTest {
 
     @Test
     void post_command_nullCorrelationId_usesContentAsIs() {
-        registry.register("finance-agent", caseId, "finance-agent");
+        registry.register("finance-agent", "test-tenant", caseId, "finance-agent");
         ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
         OutboundMessage msg = command("Plain task.");
 
@@ -118,7 +118,7 @@ class OpenClawChannelBackendTest {
     @ParameterizedTest
     @EnumSource(value = MessageType.class, mode = EnumSource.Mode.EXCLUDE, names = {"COMMAND"})
     void post_nonCommand_doesNotInvokeAgent(MessageType type) {
-        registry.register("finance-agent", caseId, "finance-agent");
+        registry.register("finance-agent", "test-tenant", caseId, "finance-agent");
         ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
         OutboundMessage msg = new OutboundMessage(UUID.randomUUID(), "engine", type,
                 "content", null, null, ActorType.AGENT);
@@ -136,7 +136,7 @@ class OpenClawChannelBackendTest {
 
     @Test
     void post_invokeThrows_exceptionCaughtNotPropagated() {
-        registry.register("finance-agent", caseId, "finance-agent");
+        registry.register("finance-agent", "test-tenant", caseId, "finance-agent");
         doThrow(new OpenClawInvocationException("network error"))
                 .when(hookClient).invoke(any(), any(), any(), any(Integer.class));
         ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
@@ -147,11 +147,11 @@ class OpenClawChannelBackendTest {
     @Test
     void post_agentFoundButSessionKeyMissing_doesNotThrow() {
         // Simulates registry write race: agentId present in caseToAgent but not in agentToSessionKey
-        registry.register("finance-agent", caseId, "sk");
+        registry.register("finance-agent", "test-tenant", caseId, "sk");
         // Manually corrupt state by re-registering a different agent over the caseId
         // Then register the original but without the session key — simulated via a new registry
         OpenClawAgentRegistry partialRegistry = new OpenClawAgentRegistry();
-        partialRegistry.register("finance-agent", caseId, "sk");
+        partialRegistry.register("finance-agent", "test-tenant", caseId, "sk");
         partialRegistry.deregister("finance-agent"); // removes sessionKey
         // Now caseToAgent has caseId → null (deregistered), so findAgentId returns empty
         // Test that findSessionKey returning empty causes no-op, not exception
@@ -165,7 +165,7 @@ class OpenClawChannelBackendTest {
 
     @Test
     void post_nonCaseChannelName_noOp() {
-        registry.register("finance-agent", caseId, "finance-agent");
+        registry.register("finance-agent", "test-tenant", caseId, "finance-agent");
         ChannelRef ref = new ChannelRef(channelId, "non-case-channel");
 
         assertThatCode(() -> backend.post(ref, command("content"))).doesNotThrowAnyException();

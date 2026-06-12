@@ -12,11 +12,15 @@ import io.casehub.api.model.ProvisionContext;
 import io.casehub.api.spi.ProvisionResult;
 import io.casehub.api.spi.ProvisioningException;
 import io.casehub.openclaw.context.ChannelContextWindowService;
+import io.casehub.platform.api.identity.CurrentPrincipal;
 import io.smallrye.mutiny.helpers.test.UniAssertSubscriber;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class ReactiveOpenClawWorkerProvisionerTest {
 
@@ -24,6 +28,7 @@ class ReactiveOpenClawWorkerProvisionerTest {
     OpenClawAgentRegistry registry;
     ReactiveOpenClawWorkerProvisioner provisioner;
     OpenClawCasehubConfig config;
+    CurrentPrincipal mockPrincipal;
 
     @BeforeEach
     void setup() {
@@ -32,7 +37,9 @@ class ReactiveOpenClawWorkerProvisionerTest {
         config = buildConfig(Map.of(
                 "finance-agent",     entry(List.of("finance", "banking"), "finance-agent"),
                 "code-review-agent", entry(List.of("code-review"), "cr-agent-main")));
-        provisioner = new ReactiveOpenClawWorkerProvisioner(mockService, registry, config);
+        mockPrincipal = mock(CurrentPrincipal.class);
+        when(mockPrincipal.tenancyId()).thenReturn("test-tenant");
+        provisioner = new ReactiveOpenClawWorkerProvisioner(mockService, registry, config, mockPrincipal);
     }
 
     // ── provision ────────────────────────────────────────────────────────────
@@ -67,7 +74,7 @@ class ReactiveOpenClawWorkerProvisionerTest {
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
 
-        verify(mockService).bindAgent("code-review-agent", caseId);
+        verify(mockService).bindAgent("code-review-agent", "test-tenant", caseId);
     }
 
     @Test
@@ -123,6 +130,36 @@ class ReactiveOpenClawWorkerProvisionerTest {
                 .awaitItem();
 
         assertThat(registry.findAgentId(caseId)).isEmpty();
+    }
+
+    @Test
+    void provision_storesTenancyIdInRegistry() {
+        UUID caseId = UUID.randomUUID();
+        provisioner.provision(Set.of("finance"), ctx(caseId))
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem();
+        assertThat(registry.findTenancyId(caseId)).contains("test-tenant");
+    }
+
+    @Test
+    void terminate_unbindsAgentWithTenancyId() {
+        UUID caseId = UUID.randomUUID();
+        provisioner.provision(Set.of("finance"), ctx(caseId))
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem();
+        provisioner.terminate("finance-agent")
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem();
+        verify(mockService).unbindAgent("finance-agent", "test-tenant");
+    }
+
+    @Test
+    void terminate_unknownAgent_stillCallsUnbindAgent() {
+        // never provisioned — tenancyId is null; service must still be called (null-safe)
+        provisioner.terminate("not-registered")
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem();
+        verify(mockService).unbindAgent(eq("not-registered"), isNull());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
