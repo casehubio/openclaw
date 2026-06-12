@@ -1,5 +1,7 @@
 # casehub-openclaw
 
+[![Build](https://github.com/casehubio/openclaw/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/casehubio/openclaw/actions/workflows/publish.yml) [![Open PRs](https://img.shields.io/github/issues-pr/casehubio/openclaw)](https://github.com/casehubio/openclaw/pulls)
+
 CaseHub × OpenClaw integration — bridges the CaseHub agentic harness with the
 OpenClaw personal AI agent platform.
 
