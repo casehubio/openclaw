@@ -46,15 +46,15 @@ public class ChannelContextWindowService {
 
     private final AtomicLong windowSeq = new AtomicLong(0);
     private final ConcurrentHashMap<UUID, ChannelRingBuffer> buffers = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, UUID> agentToCase = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<AgentKey, UUID> agentToCase = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, Set<UUID>> caseChannels = new ConcurrentHashMap<>();
 
     /**
      * Registers which case this agent handles. Called by OpenClawWorkerProvisioner.provision().
      * Ordering-independent with bindChannel() — the service joins at query time.
      */
-    public void bindAgent(String agentId, UUID caseId) {
-        agentToCase.put(agentId, caseId);
+    public void bindAgent(String agentId, String tenancyId, UUID caseId) {
+        agentToCase.put(new AgentKey(agentId, tenancyId), caseId);
     }
 
     /**
@@ -71,8 +71,12 @@ public class ChannelContextWindowService {
      * Removes the agent's case association. Called by OpenClawWorkerStatusListener.onWorkerCompleted().
      * The caseChannels entry is retained briefly — call closeCase() when the case is fully closed.
      */
-    public void unbindAgent(String agentId) {
-        agentToCase.remove(agentId);
+    public void unbindAgent(String agentId, String tenancyId) {
+        if (tenancyId == null) {
+            log.warnf("unbindAgent called with null tenancyId for agentId=%s — agent was never provisioned; no-op", agentId);
+            return;
+        }
+        agentToCase.remove(new AgentKey(agentId, tenancyId));
     }
 
     /**
@@ -116,8 +120,8 @@ public class ChannelContextWindowService {
      * Returns an associated empty window if bindAgent() was called but no channels are
      * bound yet via bindChannel() — this is a transient state in the normal engine flow.
      */
-    public WindowContent query(String agentId, long since) {
-        UUID caseId = agentToCase.get(agentId);
+    public WindowContent query(String agentId, String tenancyId, long since) {
+        UUID caseId = agentToCase.get(new AgentKey(agentId, tenancyId));
         if (caseId == null) return WindowContent.noAssociation();
 
         Set<UUID> channelIds = caseChannels.getOrDefault(caseId, Set.of());
