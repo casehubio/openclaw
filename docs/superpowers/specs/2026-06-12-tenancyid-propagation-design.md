@@ -198,37 +198,47 @@ reading CurrentPrincipal for tenancy. tenancyId is an explicit parameter:
 public GateDecision openGate(String agentId, String commitmentId, String outcome, String tenancyId)
 ```
 
-The caller `CommitmentTools.done()` (an MCP tool running in request context) reads
-`currentPrincipal.tenancyId()` and passes it down. `openGate()` stores tenancyId in GateContext,
-and sets `.tenancyId(tenancyId)` on the oversight channel `MessageDispatch`.
+The caller `CommitmentTools.channelBacked_done()` already exists (openclaw#30, now closed) and
+currently calls `openGate(agentId, correlationId, outcome)` — three arguments. This PR breaks
+that call site. **`CommitmentTools` is a component changed in this PR:**
+- Inject `CurrentPrincipal` (constructor injection; CommitmentTools is always called from MCP
+  request context — PP-20260609-39c391 does not apply)
+- `channelBacked_done()` reads `String tenancyId = currentPrincipal.tenancyId()` before calling
+  `openGate(agentId, correlationId, outcome, tenancyId)`
+
+`openGate()` stores tenancyId in GateContext and sets `.tenancyId(tenancyId)` on the oversight
+channel `MessageDispatch`.
 
 ### 9. `OversightGateService.fulfill()` (`casehub/`)
 
 `fulfill()` no longer bootstraps via `commitmentStore` or loads channel entities. New flow:
 
+```java
+Message gateCmd = crossTenantMessageStore
+    .scan(MessageQuery.builder()
+        .correlationId(gateId.toString())
+        .messageType(MessageType.COMMAND)
+        .build())
+    .stream().findFirst().orElse(null);
+if (gateCmd == null) {
+    log.warnf("fulfill(): no COMMAND message found for gateId=%s — ignoring", gateId);
+    return;
+}
+UUID oversightChannelId = gateCmd.channelId;
+long commandMessageId   = gateCmd.id;
+Optional<GateContext> gateContext = parseGateContent(gateCmd.content);
+String tenancyId = gateContext.map(GateContext::tenancyId).orElse(null);
+// tenancyId null = pre-#29 gate; all dispatches land under DEFAULT_TENANT_ID (see openclaw#34)
+
+boolean approved = parseApproval(gateId, rawOutput);
+gateDispatcher.dispatch(approved, oversightChannelId, commandMessageId,
+                        gateId, rawOutput, gateContext, tenancyId);
 ```
-1. crossTenantMessageStore.scan(
-       MessageQuery.builder()
-           .correlationId(gateId.toString())
-           .messageType(MessageType.COMMAND)
-           .build())
-   → gate COMMAND message (or empty → log warn, return)
-   → oversightChannelId (message.channelId), commandMessageId (message.id)
-   → parseGateContent(message.content) → Optional<GateContext>
 
-2. parseApproval(gateId, rawOutput)
-
-3. gateDispatcher.dispatch(
-       approved,
-       oversightChannelId,
-       commandMessageId, gateId, rawOutput,
-       gateContext,          // Optional — absent for pre-#29 gates
-       gateContext.map(GateContext::tenancyId).orElse(null))
-```
-
-No channel entity lookups. oversightChannelId comes from `message.channelId`; workChannelId and
-tenancyId come from GateContext when present. `commitmentStore.findByCorrelationId()` is removed
-from `fulfill()` entirely.
+The query filters by both `correlationId` AND `messageType=COMMAND`; the result is 0 or 1 entries.
+`findFirst()` is unambiguous. No channel entity lookups. oversightChannelId comes from
+`gateCmd.channelId`; workChannelId and tenancyId come from GateContext when present.
+`commitmentStore.findByCorrelationId()` is removed from `fulfill()` entirely.
 
 `OversightGateService` adds one new injection:
 - `@CrossTenant CrossTenantMessageStore crossTenantMessageStore`
@@ -292,9 +302,22 @@ Multi-tenant support for both plugins deferred to openclaw#33 (requires auth ret
 - Missing tenancyId in gate content → `parseGateContent()` returns empty → gateContext absent →
   dispatcher skips work channel, dispatches only to oversight channel
 
-**`OversightGateDispatcherTest`**:
-- `dispatch(..., gateContext.present(), tenancyId)` → all MessageDispatch calls carry tenancyId
-- `dispatch(..., gateContext.absent(), tenancyId)` → only oversight channel dispatch; work channel skipped
+**`OversightGateDispatcherTest`** — existing tests require surgery:
+
+*Delete* all 4 existing no-context tests (`dispatch_approved_noContext_*`,
+`dispatch_rejected_noContext_*`): they assert `times(2)` dispatches and a STATUS to
+`workChannelId` — both assumptions are removed by the §10 design change (absent gateContext
+now dispatches only to oversight channel; `workChannelId` parameter removed).
+
+*Rewrite* all 3 existing with-context tests: remove `workChannelId` from the `dispatch()` call;
+add `tenancyId`; update `GateContext` construction to include `tenancyId` (record gains the
+field). Assert all dispatched `MessageDispatch` objects carry the passed `tenancyId`.
+
+*Add* two replacement tests for the absent-gateContext path:
+- `dispatch_approved_noContext_sendsOnlyResponseToOversight`: assert `times(1)` dispatch,
+  oversight RESPONSE; work channel never touched
+- `dispatch_rejected_noContext_sendsOnlyDeclineToOversight`: assert `times(1)` dispatch,
+  oversight DECLINE; work channel never touched
 
 ### `@QuarkusTest`
 
@@ -320,7 +343,7 @@ Multi-tenant support for both plugins deferred to openclaw#33 (requires auth ret
 | Issue | Scope |
 |-------|-------|
 | casehubio/openclaw#33 | TypeScript plugin + Python SDK tenancyId propagation (both L4 and L5; requires auth retrofit) |
-| casehubio/openclaw#34 | Gate crash recovery / upgrade note for pre-#29 persisted gates (absent GateContext.tenancyId) |
+| casehubio/openclaw#34 | Pre-#29 gate multi-tenancy: absent GateContext.tenancyId → ALL fulfill() dispatches land under DEFAULT_TENANT_ID (not just work channel skip). Drain open gates before upgrading in multi-tenant, or implement CrossTenantChannelStore fallback using oversightChannelId |
 | casehubio/engine#475 | `terminate()` SPI add `tenancyId` parameter |
 
 ---
