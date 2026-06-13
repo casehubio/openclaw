@@ -163,14 +163,23 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
         String channelName = CaseChannel.channelName(caseId, purpose);
         ChannelSpec spec = LAYOUT.get(purpose);
         String description = spec != null ? spec.description() : purpose;
-        String allowedTypes = spec != null ? spec.allowedTypes() : null;
-        String deniedTypes = spec != null ? spec.deniedTypes() : null;
+        // ReactiveChannelService.create() requires Set<MessageType> — parse from ChannelSpec strings
+        java.util.Set<io.casehub.qhorus.api.message.MessageType> allowedSet =
+                spec != null && spec.allowedTypes() != null
+                ? java.util.Set.of(io.casehub.qhorus.api.message.MessageType.valueOf(spec.allowedTypes()))
+                : null;
+        java.util.Set<io.casehub.qhorus.api.message.MessageType> deniedSet =
+                spec != null && spec.deniedTypes() != null
+                ? java.util.Set.of(io.casehub.qhorus.api.message.MessageType.valueOf(spec.deniedTypes()))
+                : null;
 
         return channelService.findByName(channelName)
                 .flatMap(opt -> opt.isPresent()
                         ? Uni.createFrom().item(opt.get())
-                        : channelService.create(channelName, description, ChannelSemantic.APPEND,
-                                null, null, null, null, null, allowedTypes, deniedTypes)
+                        : channelService.create(new io.casehub.qhorus.runtime.channel.ChannelCreateRequest(
+                                channelName, description, ChannelSemantic.APPEND,
+                                null, null, null, null, null, allowedSet, deniedSet,
+                                null, null, null, null))
                                 .invoke(ch -> gateway.initChannel(ch.id, new ChannelRef(ch.id, ch.name))))
                 .invoke(ch -> contextService.bindChannel(caseId, ch.id))
                 .map(ch -> {

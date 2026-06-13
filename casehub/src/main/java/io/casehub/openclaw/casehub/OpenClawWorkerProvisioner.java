@@ -2,7 +2,6 @@ package io.casehub.openclaw.casehub;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -67,12 +66,10 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
     }
 
     @Override
-    public void terminate(String workerId) {
-        Optional<UUID> caseId = registry.findCaseId(workerId);
-        String tenancyId = caseId.flatMap(registry::findTenancyId).orElse(null);
+    public void terminate(String workerId, String tenancyId) {
         registry.deregister(workerId);
-        service.unbindAgent(workerId, tenancyId);  // null-safe: service logs warn and no-ops
-        log.infof("Terminated OpenClaw agent: agentId=%s", workerId);
+        service.unbindAgent(workerId, tenancyId);   // null-safe: service logs warn and no-ops
+        log.infof("Terminated OpenClaw agent: agentId=%s tenancyId=%s", workerId, tenancyId);
     }
 
     @Override

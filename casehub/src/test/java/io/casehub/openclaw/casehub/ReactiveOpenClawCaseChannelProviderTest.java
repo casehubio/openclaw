@@ -17,6 +17,7 @@ import io.casehub.qhorus.api.message.DispatchResult;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.qhorus.runtime.channel.ChannelCreateRequest;
 import io.casehub.qhorus.runtime.channel.ReactiveChannelService;
 import io.casehub.qhorus.runtime.gateway.ChannelGateway;
 import io.casehub.qhorus.runtime.message.ReactiveMessageService;
@@ -69,12 +70,11 @@ class ReactiveOpenClawCaseChannelProviderTest {
     private void stubCreate(UUID caseId) {
         when(channelService.findByName(anyString()))
                 .thenReturn(Uni.createFrom().item(Optional.empty()));
-        when(channelService.create(
-                contains(caseId.toString()), any(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(), any(), any()))
+        when(channelService.create(argThat((ChannelCreateRequest req) ->
+                req != null && req.name().contains(caseId.toString()))))
                 .thenAnswer(inv -> {
-                    String name = inv.getArgument(0);
-                    return Uni.createFrom().item(channel(UUID.randomUUID(), name));
+                    ChannelCreateRequest req = inv.getArgument(0);
+                    return Uni.createFrom().item(channel(UUID.randomUUID(), req.name()));
                 });
     }
 
@@ -106,9 +106,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
         provider.openChannel(caseId, "work").await().indefinitely();
 
         // layout has 3 channels: work, observe, oversight — all created on first touch
-        verify(channelService, times(3)).create(
-                anyString(), any(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(), any(), any());
+        verify(channelService, times(3)).create(any(ChannelCreateRequest.class));
     }
 
     @Test
@@ -149,15 +147,15 @@ class ReactiveOpenClawCaseChannelProviderTest {
         UUID channelId = UUID.randomUUID();
         when(channelService.findByName(anyString()))
                 .thenReturn(Uni.createFrom().item(Optional.empty()));
-        when(channelService.create(eq("case-" + caseId + "/work"), any(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(channelService.create(argThat((ChannelCreateRequest req) ->
+                req != null && req.name().equals("case-" + caseId + "/work"))))
                 .thenReturn(Uni.createFrom().item(channel(channelId, "case-" + caseId + "/work")));
-        when(channelService.create(contains("/observe"), any(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(), any(), any()))
-                .thenAnswer(inv -> Uni.createFrom().item(channel(UUID.randomUUID(), inv.getArgument(0))));
-        when(channelService.create(contains("/oversight"), any(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(), any(), any()))
-                .thenAnswer(inv -> Uni.createFrom().item(channel(UUID.randomUUID(), inv.getArgument(0))));
+        when(channelService.create(argThat((ChannelCreateRequest req) ->
+                req != null && (req.name().contains("/observe") || req.name().contains("/oversight")))))
+                .thenAnswer(inv -> {
+                    ChannelCreateRequest req = inv.getArgument(0);
+                    return Uni.createFrom().item(channel(UUID.randomUUID(), req.name()));
+                });
 
         CaseChannel result = provider.openChannel(caseId, "work").await().indefinitely();
 
@@ -173,10 +171,9 @@ class ReactiveOpenClawCaseChannelProviderTest {
 
         provider.openChannel(caseId, "work").await().indefinitely();
 
-        verify(channelService).create(
-                eq("case-" + caseId + "/work"), anyString(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), isNull());
+        verify(channelService).create(argThat((ChannelCreateRequest req) ->
+                req != null && req.name().equals("case-" + caseId + "/work")
+                && req.allowedTypes() == null && req.deniedTypes() == null));
     }
 
     @Test
@@ -186,11 +183,10 @@ class ReactiveOpenClawCaseChannelProviderTest {
 
         provider.openChannel(caseId, "observe").await().indefinitely();
 
-        verify(channelService).create(
-                contains("/observe"), anyString(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(),
-                eq("EVENT"),  // allowedTypes
-                isNull());    // deniedTypes
+        verify(channelService).create(argThat((ChannelCreateRequest req) ->
+                req != null && req.name().contains("/observe")
+                && req.allowedTypes() != null && req.allowedTypes().contains(MessageType.EVENT)
+                && req.deniedTypes() == null));
     }
 
     @Test
@@ -200,11 +196,10 @@ class ReactiveOpenClawCaseChannelProviderTest {
 
         provider.openChannel(caseId, "oversight").await().indefinitely();
 
-        verify(channelService).create(
-                contains("/oversight"), anyString(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(),        // allowedTypes
-                eq("EVENT"));    // deniedTypes
+        verify(channelService).create(argThat((ChannelCreateRequest req) ->
+                req != null && req.name().contains("/oversight")
+                && req.allowedTypes() == null
+                && req.deniedTypes() != null && req.deniedTypes().contains(MessageType.EVENT)));
     }
 
     // ── openChannel — cache ───────────────────────────────────────────────────
@@ -218,9 +213,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
         CaseChannel observe = provider.openChannel(caseId, "observe").await().indefinitely();
 
         // Still only 3 creates — second call hits the layout cache
-        verify(channelService, times(3)).create(
-                anyString(), any(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(), any(), any());
+        verify(channelService, times(3)).create(any(ChannelCreateRequest.class));
         assertThat(observe.purpose()).isEqualTo("observe");
     }
 
@@ -234,9 +227,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
         provider.openChannel(caseId1, "work").await().indefinitely();
         provider.openChannel(caseId2, "work").await().indefinitely();
 
-        verify(channelService, times(6)).create(
-                anyString(), any(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(), any(), any());
+        verify(channelService, times(6)).create(any(ChannelCreateRequest.class));
     }
 
     @Test
@@ -279,9 +270,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
             assertThat(results[i].purpose()).isEqualTo(purposes[i]);
         }
         // 3 layout channels — should create exactly 3, not 9
-        verify(channelService, times(3)).create(
-                anyString(), any(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(), any(), any());
+        verify(channelService, times(3)).create(any(ChannelCreateRequest.class));
     }
 
     @Test
@@ -297,7 +286,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
 
         provider.openChannel(caseId, "work").await().indefinitely();
 
-        verify(channelService, never()).create(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(channelService, never()).create(any(ChannelCreateRequest.class));
         verify(gateway, never()).initChannel(any(UUID.class), any(ChannelRef.class));
     }
 
@@ -318,8 +307,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
         // First attempt: create fails
         when(channelService.findByName(anyString()))
                 .thenReturn(Uni.createFrom().item(Optional.empty()));
-        when(channelService.create(anyString(), any(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(), any(), any()))
+        when(channelService.create(any(ChannelCreateRequest.class)))
                 .thenReturn(Uni.createFrom().failure(new RuntimeException("transient")));
 
         assertThatThrownBy(() -> provider.openChannel(caseId, "work").await().indefinitely())

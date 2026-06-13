@@ -95,7 +95,7 @@ class OpenClawWorkerProvisionerTest {
     void terminate_deregistersFromRegistry() {
         UUID caseId = UUID.randomUUID();
         provisioner.provision(Set.of("finance"), ctx(caseId));
-        provisioner.terminate("finance-agent");
+        provisioner.terminate("finance-agent", "test-tenant");
         assertThat(registry.findAgentId(caseId)).isEmpty();
     }
 
@@ -110,14 +110,14 @@ class OpenClawWorkerProvisionerTest {
     void terminate_unbindsAgentWithTenancyId() {
         UUID caseId = UUID.randomUUID();
         provisioner.provision(Set.of("finance"), ctx(caseId));
-        provisioner.terminate("finance-agent");
+        provisioner.terminate("finance-agent", "test-tenant");
         verify(mockService).unbindAgent("finance-agent", "test-tenant");
     }
 
     @Test
     void terminate_unknownAgent_stillCallsUnbindAgent() {
-        // never provisioned — tenancyId is null; service must still be called (null-safe)
-        provisioner.terminate("not-registered");
+        // SPI provides tenancyId directly — null means engine didn't know the tenant
+        provisioner.terminate("not-registered", null);
         verify(mockService).unbindAgent(eq("not-registered"), isNull());
     }
 

@@ -13,6 +13,7 @@ import io.casehub.qhorus.api.gateway.ChannelRef;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.qhorus.runtime.channel.ChannelCreateRequest;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.gateway.ChannelGateway;
 import io.casehub.qhorus.runtime.message.MessageService;
@@ -60,7 +61,7 @@ class OpenClawCaseChannelProviderTest {
         UUID channelId = UUID.randomUUID();
         String name = CaseChannel.channelName(caseId, "work");
         when(channelService.findByName(name)).thenReturn(Optional.empty());
-        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(channelService.create(any(ChannelCreateRequest.class)))
                 .thenReturn(channel(channelId, name));
 
         CaseChannel result = provider.openChannel(caseId, "work");
@@ -80,7 +81,7 @@ class OpenClawCaseChannelProviderTest {
         CaseChannel result = provider.openChannel(caseId, "work");
 
         assertThat(result.id()).isEqualTo(channelId.toString());
-        verify(channelService, never()).create(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(channelService, never()).create(any(ChannelCreateRequest.class));
     }
 
     @Test
@@ -89,7 +90,7 @@ class OpenClawCaseChannelProviderTest {
         UUID channelId = UUID.randomUUID();
         String name = CaseChannel.channelName(caseId, "work");
         when(channelService.findByName(name)).thenReturn(Optional.empty());
-        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(channelService.create(any(ChannelCreateRequest.class)))
                 .thenReturn(channel(channelId, name));
 
         provider.openChannel(caseId, "work");
@@ -153,16 +154,15 @@ class OpenClawCaseChannelProviderTest {
         UUID channelId = UUID.randomUUID();
         String name = CaseChannel.channelName(caseId, "oversight");
         when(channelService.findByName(name)).thenReturn(Optional.empty());
-        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(channelService.create(any(ChannelCreateRequest.class)))
                 .thenReturn(channel(channelId, name));
 
         provider.openChannel(caseId, "oversight");
 
-        verify(channelService).create(
-                anyString(), anyString(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(),       // allowedTypes = null
-                eq("EVENT"));   // deniedTypes = "EVENT"
+        verify(channelService).create(argThat(req ->
+                req != null && req.allowedTypes() == null
+                && req.deniedTypes() != null
+                && req.deniedTypes().contains(MessageType.EVENT)));
     }
 
     @Test
@@ -171,15 +171,13 @@ class OpenClawCaseChannelProviderTest {
         UUID channelId = UUID.randomUUID();
         String name = CaseChannel.channelName(caseId, "work");
         when(channelService.findByName(name)).thenReturn(Optional.empty());
-        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(channelService.create(any(ChannelCreateRequest.class)))
                 .thenReturn(channel(channelId, name));
 
         provider.openChannel(caseId, "work");
 
-        verify(channelService).create(
-                anyString(), anyString(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), isNull());
+        verify(channelService).create(argThat(req ->
+                req != null && req.allowedTypes() == null && req.deniedTypes() == null));
     }
 
     @Test
@@ -188,16 +186,15 @@ class OpenClawCaseChannelProviderTest {
         UUID channelId = UUID.randomUUID();
         String name = CaseChannel.channelName(caseId, "observe");
         when(channelService.findByName(name)).thenReturn(Optional.empty());
-        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(channelService.create(any(ChannelCreateRequest.class)))
                 .thenReturn(channel(channelId, name));
 
         provider.openChannel(caseId, "observe");
 
-        verify(channelService).create(
-                anyString(), anyString(), any(),
-                isNull(), isNull(), isNull(), isNull(), isNull(),
-                eq("EVENT"),  // allowedTypes = "EVENT"
-                isNull());    // deniedTypes = null
+        verify(channelService).create(argThat(req ->
+                req != null && req.allowedTypes() != null
+                && req.allowedTypes().contains(MessageType.EVENT)
+                && req.deniedTypes() == null));
     }
 
     @Test
@@ -206,7 +203,7 @@ class OpenClawCaseChannelProviderTest {
         UUID channelId = UUID.randomUUID();
         String name = CaseChannel.channelName(caseId, "work");
         when(channelService.findByName(name)).thenReturn(Optional.empty());
-        when(channelService.create(anyString(), anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(channelService.create(any(ChannelCreateRequest.class)))
                 .thenReturn(channel(channelId, name));
 
         provider.openChannel(caseId, "work");

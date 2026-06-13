@@ -125,7 +125,7 @@ class ReactiveOpenClawWorkerProvisionerTest {
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
 
-        provisioner.terminate("finance-agent")
+        provisioner.terminate("finance-agent", "test-tenant")
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
 
@@ -147,7 +147,7 @@ class ReactiveOpenClawWorkerProvisionerTest {
         provisioner.provision(Set.of("finance"), ctx(caseId))
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
-        provisioner.terminate("finance-agent")
+        provisioner.terminate("finance-agent", "test-tenant")
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
         verify(mockService).unbindAgent("finance-agent", "test-tenant");
@@ -156,7 +156,7 @@ class ReactiveOpenClawWorkerProvisionerTest {
     @Test
     void terminate_unknownAgent_stillCallsUnbindAgent() {
         // never provisioned — tenancyId is null; service must still be called (null-safe)
-        provisioner.terminate("not-registered")
+        provisioner.terminate("not-registered", null)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
         verify(mockService).unbindAgent(eq("not-registered"), isNull());

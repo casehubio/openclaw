@@ -2,7 +2,6 @@ package io.casehub.openclaw.casehub;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -73,13 +72,11 @@ public class ReactiveOpenClawWorkerProvisioner implements ReactiveWorkerProvisio
     }
 
     @Override
-    public Uni<Void> terminate(String workerId) {
+    public Uni<Void> terminate(String workerId, String tenancyId) {
         return Uni.createFrom().<Void>item(() -> {
-            Optional<UUID> caseId = registry.findCaseId(workerId);
-            String tenancyId = caseId.flatMap(registry::findTenancyId).orElse(null);
             registry.deregister(workerId);
-            service.unbindAgent(workerId, tenancyId);  // null-safe: service logs warn and no-ops
-            log.infof("Terminated OpenClaw agent (reactive): agentId=%s", workerId);
+            service.unbindAgent(workerId, tenancyId);   // null-safe: service logs warn and no-ops
+            log.infof("Terminated OpenClaw agent (reactive): agentId=%s tenancyId=%s", workerId, tenancyId);
             return null;
         });
     }

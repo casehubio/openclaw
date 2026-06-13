@@ -74,13 +74,18 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
         String channelName = CaseChannel.channelName(caseId, purpose);
         ChannelSpec spec = LAYOUT.get(purpose);
         String description = spec != null ? spec.description() : purpose;
-        String allowedTypes = spec != null ? spec.allowedTypes() : null;
-        String deniedTypes = spec != null ? spec.deniedTypes() : null;
+        // ChannelService.create() requires Set<MessageType> — parse from ChannelSpec strings
+        java.util.Set<MessageType> allowedSet = spec != null && spec.allowedTypes() != null
+                ? java.util.Set.of(MessageType.valueOf(spec.allowedTypes())) : null;
+        java.util.Set<MessageType> deniedSet = spec != null && spec.deniedTypes() != null
+                ? java.util.Set.of(MessageType.valueOf(spec.deniedTypes())) : null;
 
         Channel channel = channelService.findByName(channelName)
                 .orElseGet(() -> {
-                    Channel created = channelService.create(channelName, description,
-                            ChannelSemantic.APPEND, null, null, null, null, null, allowedTypes, deniedTypes);
+                    Channel created = channelService.create(new io.casehub.qhorus.runtime.channel.ChannelCreateRequest(
+                            channelName, description, ChannelSemantic.APPEND,
+                            null, null, null, null, null, allowedSet, deniedSet,
+                            null, null, null, null));
                     gateway.initChannel(created.id, new ChannelRef(created.id, created.name));
                     return created;
                 });
