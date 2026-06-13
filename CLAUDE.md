@@ -264,6 +264,7 @@ These protocols from the casehub garden apply directly to this repo. Read the re
 | `message-service-dispatch-enforcement-gate.md` | Any code that writes to a Qhorus channel — `dispatch()` is the only write gate |
 | `auth-retrofit-readiness.md` | Any auth or gateway topology question — Claudony is the auth entry point, not this repo |
 | `alternative-extension-patterns.md` | Any `@Alternative` CDI wiring |
+| `PP-20260612-520281` — delivery-webhook-cross-tenant-reads.md | Any `/openclaw/delivery/*` endpoint reading Qhorus entities — use `@CrossTenant` stores only |
 
 Protocol files live at: `../garden/docs/protocols/casehub/`
 

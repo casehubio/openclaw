@@ -189,6 +189,14 @@ OpenClaw executes → generates output → POSTs to Qhorus channel endpoint via 
 Qhorus `dispatch()` skips `commitmentService.acknowledge()` — purely archival). The STATUS records
 the agent's text output for audit; the DONE from the tool call is the authoritative completion record.
 
+**Multi-tenancy note — delivery webhook path:** Webhook callbacks arrive without a casehub
+principal (`CurrentPrincipal = MockCurrentPrincipal = DEFAULT_TENANT_ID`). `OpenClawDeliveryResource`
+resolves `tenancyId` by looking up the channel entity cross-tenant via
+`@CrossTenant CrossTenantChannelStore.findById(channelId)` and passing it explicitly to
+`evaluate()`. Do not use `ChannelService.findById()` (tenant-scoped — returns empty for
+non-default tenants, causing silent 404 and OpenClaw retries). See protocol
+`PP-20260612-520281`.
+
 ### 3.3 Read Path — Active (Qhorus to OpenClaw LLM)
 
 When a COMMAND arrives on a Qhorus channel, `ChannelBackend.post()` (implemented by
@@ -392,6 +400,13 @@ Per-channel ring buffer of recent messages. Configurable:
 Returns messages on channels associated with the agent since the specified cursor, structured
 as JSON. `since` defaults to `0` (all buffered messages). Single call, pre-filtered; the SDK
 formats for the system prompt.
+
+**Multi-tenancy:** The endpoint uses `currentPrincipal.tenancyId()` internally — the
+`agentId` alone is no longer unique across tenants. Internally, `ChannelContextWindowService`
+keys on `AgentKey(agentId, tenancyId)`. In single-tenant deployments `MockCurrentPrincipal`
+returns `DEFAULT_TENANT_ID` — correct behaviour. In multi-tenant deployments, the Python SDK
+and TypeScript plugin must carry a casehub principal (via auth retrofit, openclaw#33) for
+the correct tenant window to be returned.
 
 **`since` cursor — internal `windowSeq`, not Qhorus `sequenceNumber`:**
 
