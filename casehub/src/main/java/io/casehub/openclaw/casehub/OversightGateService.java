@@ -28,6 +28,7 @@ import io.casehub.qhorus.runtime.message.Commitment;
 import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.runtime.store.CrossTenantChannelStore;
 import io.casehub.qhorus.runtime.store.CrossTenantMessageStore;
 import io.casehub.qhorus.runtime.store.query.MessageQuery;
 
@@ -61,6 +62,7 @@ public class OversightGateService {
     private final OversightGateDispatcher gateDispatcher;
     private final Instance<ActionRiskClassifier> classifiers;
     private final CrossTenantMessageStore crossTenantMessageStore;
+    private final CrossTenantChannelStore crossTenantChannelStore;
 
     @Inject
     public OversightGateService(final ChannelService channelService,
@@ -68,13 +70,15 @@ public class OversightGateService {
                                  final CommitmentStore commitmentStore,
                                  final OversightGateDispatcher gateDispatcher,
                                  @RiskClassifier final Instance<ActionRiskClassifier> classifiers,
-                                 @CrossTenant final CrossTenantMessageStore crossTenantMessageStore) {
+                                 @CrossTenant final CrossTenantMessageStore crossTenantMessageStore,
+                                 @CrossTenant final CrossTenantChannelStore crossTenantChannelStore) {
         this.channelService = channelService;
         this.messageService = messageService;
         this.commitmentStore = commitmentStore;
         this.gateDispatcher = gateDispatcher;
         this.classifiers = classifiers;
         this.crossTenantMessageStore = crossTenantMessageStore;
+        this.crossTenantChannelStore = crossTenantChannelStore;
     }
 
     /**
@@ -210,6 +214,16 @@ public class OversightGateService {
             long commandMessageId = gateCmd.id;
             Optional<GateContext> gateContext = parseGateContent(gateCmd.content);
             String tenancyId = gateContext.map(GateContext::tenancyId).orElse(null);
+
+            if (tenancyId == null) {
+                tenancyId = crossTenantChannelStore.findById(oversightChannelId)
+                        .map(ch -> ch.tenancyId)
+                        .orElse(null);
+                if (tenancyId != null)
+                    log.infof("fulfill(): recovered tenancyId from channel for pre-#29 gate %s", gateId);
+                else
+                    log.warnf("fulfill(): cannot recover tenancyId for gate %s — oversight channel not found", gateId);
+            }
 
             boolean approved = parseApproval(gateId, rawOutput);
             gateDispatcher.dispatch(approved, oversightChannelId, commandMessageId,

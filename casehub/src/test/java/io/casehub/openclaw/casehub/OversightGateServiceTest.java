@@ -26,6 +26,7 @@ import io.casehub.qhorus.runtime.message.Commitment;
 import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.runtime.store.CrossTenantChannelStore;
 import io.casehub.qhorus.runtime.store.CrossTenantMessageStore;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +36,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -48,6 +50,7 @@ class OversightGateServiceTest {
     CommitmentStore commitmentStore;
     OversightGateDispatcher gateDispatcher;
     CrossTenantMessageStore crossTenantMessageStore;
+    CrossTenantChannelStore crossTenantChannelStore;
     OversightGateService service;
 
     @SuppressWarnings("unchecked")
@@ -72,6 +75,9 @@ class OversightGateServiceTest {
         crossTenantMessageStore = mock(CrossTenantMessageStore.class);
         // default: return empty list (no gate COMMAND found)
         when(crossTenantMessageStore.scan(any())).thenReturn(java.util.List.of());
+
+        crossTenantChannelStore = mock(CrossTenantChannelStore.class);
+        when(crossTenantChannelStore.findById(any())).thenReturn(Optional.empty()); // default: not found
 
         workChannel = new Channel();
         workChannel.id = workChannelId;
@@ -98,7 +104,7 @@ class OversightGateServiceTest {
         when(classifiers.isUnsatisfied()).thenReturn(true);
 
         service = new OversightGateService(channelService, messageService, commitmentStore,
-                gateDispatcher, classifiers, crossTenantMessageStore);
+                gateDispatcher, classifiers, crossTenantMessageStore, crossTenantChannelStore);
     }
 
     // ── evaluate() — archival STATUS ──────────────────────────────────────────
@@ -334,6 +340,71 @@ class OversightGateServiceTest {
                 argThat(opt -> opt.isPresent() && tenancyId.equals(opt.get().tenancyId())),
                 eq(tenancyId)
         );
+    }
+
+    // ── fulfill() — tenancyId crash recovery (pre-#29 gates) ─────────────────
+
+    @Test
+    void fulfill_missingTenancyIdInGateContent_recoversFromChannel() {
+        UUID gateId = UUID.randomUUID();
+        // Build gate command content WITHOUT tenancyId key
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("originalCommitmentId", commitmentId);
+        props.setProperty("workChannelId", workChannelId.toString());
+        props.setProperty("commandMessageId", String.valueOf(commandMsgId));
+        props.setProperty("reason", "test risk");
+        // deliberately omit tenancyId
+        java.io.StringWriter sw = new java.io.StringWriter();
+        try { props.store(sw, null); } catch (Exception e) { throw new RuntimeException(e); }
+
+        Message cmd = new Message();
+        cmd.id = 42L;
+        cmd.channelId = oversightChannelId;
+        cmd.messageType = MessageType.COMMAND;
+        cmd.content = sw.toString();
+        cmd.correlationId = gateId.toString();
+        when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
+
+        // Recovery: channel lookup returns a channel with tenancyId = "tenant-A"
+        Channel oversight = new Channel();
+        oversight.id = oversightChannelId;
+        oversight.tenancyId = "tenant-A";
+        when(crossTenantChannelStore.findById(oversightChannelId)).thenReturn(Optional.of(oversight));
+
+        service.fulfill(gateId, "approved");
+
+        // Recovered tenancyId passed to dispatcher
+        verify(crossTenantChannelStore).findById(oversightChannelId);
+        verify(gateDispatcher).dispatch(
+                eq(true), any(), anyLong(), any(), any(), any(), eq("tenant-A"));
+    }
+
+    @Test
+    void fulfill_missingTenancyIdAndChannelNotFound_dispatchesWithNullTenancyId() {
+        UUID gateId = UUID.randomUUID();
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("originalCommitmentId", commitmentId);
+        props.setProperty("workChannelId", workChannelId.toString());
+        props.setProperty("commandMessageId", String.valueOf(commandMsgId));
+        props.setProperty("reason", "test risk");
+        java.io.StringWriter sw = new java.io.StringWriter();
+        try { props.store(sw, null); } catch (Exception e) { throw new RuntimeException(e); }
+
+        Message cmd = new Message();
+        cmd.id = 42L;
+        cmd.channelId = oversightChannelId;
+        cmd.messageType = MessageType.COMMAND;
+        cmd.content = sw.toString();
+        cmd.correlationId = gateId.toString();
+        when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
+        // crossTenantChannelStore returns Optional.empty() by default from setup()
+
+        service.fulfill(gateId, "approved");
+
+        verify(crossTenantChannelStore).findById(oversightChannelId);
+        // dispatcher still called with null tenancyId — fail-open behaviour
+        verify(gateDispatcher).dispatch(
+                eq(true), any(), anyLong(), any(), any(), any(), (String) isNull());
     }
 
     // ── openGate() ────────────────────────────────────────────────────────────
