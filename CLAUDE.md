@@ -171,7 +171,7 @@ skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, caseh
 - OpenClaw hook API client: `POST /hooks/agent` with fields `{message, agentId, deliver, to, model, timeoutSeconds}`
 - `deliver: webhook` configuration — OpenClaw POSTs the agent result back to a Qhorus channel endpoint
 - `ChannelContextWindow` — ring buffer, TTL eviction, global `windowSeq` cursor, overflow signal via `lastEvictionWindowSeq`
-- `ChannelContextWindowService` — manages the buffer per agent (`associate`/`add`/`query`/`evictExpired`); exposed via REST in `app/`
+- `ChannelContextWindowService` — manages the buffer per agent (`bindAgent(agentId, caseId)`, `bindChannel`, `add`, `query(agentId, since)`, `evictExpired`); uses plain agentId as the map key (consistent with `OpenClawAgentRegistry`); exposed via REST in `app/`
 - `ContextMessage` record, `WindowContent` record, `ChannelRingBuffer` (package-private)
 
 **`casehub/`** owns:
@@ -265,6 +265,7 @@ These protocols from the casehub garden apply directly to this repo. Read the re
 | `auth-retrofit-readiness.md` | Any auth or gateway topology question — Claudony is the auth entry point, not this repo |
 | `alternative-extension-patterns.md` | Any `@Alternative` CDI wiring |
 | `PP-20260612-520281` — delivery-webhook-cross-tenant-reads.md | Any `/openclaw/delivery/*` endpoint reading Qhorus entities — use `@CrossTenant` stores only |
+| `PP-20260615-11b9d2` — normative-layout-single-source.md | Any code creating or configuring Qhorus channels per case — changes to the normative layout go through `OpenClawNormativeLayout` only |
 
 Protocol files live at: `../garden/docs/protocols/casehub/`
 

@@ -17,8 +17,6 @@ import io.casehub.platform.api.identity.CurrentPrincipal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -61,7 +59,7 @@ class OpenClawWorkerProvisionerTest {
     void provision_callsBindAgent_onContextWindowService() {
         UUID caseId = UUID.randomUUID();
         provisioner.provision(Set.of("code-review"), ctx(caseId));
-        verify(mockService).bindAgent("code-review-agent", "test-tenant", caseId);
+        verify(mockService).bindAgent("code-review-agent", caseId);
     }
 
     @Test
@@ -111,14 +109,13 @@ class OpenClawWorkerProvisionerTest {
         UUID caseId = UUID.randomUUID();
         provisioner.provision(Set.of("finance"), ctx(caseId));
         provisioner.terminate("finance-agent", "test-tenant");
-        verify(mockService).unbindAgent("finance-agent", "test-tenant");
+        verify(mockService).unbindAgent("finance-agent");
     }
 
     @Test
     void terminate_unknownAgent_stillCallsUnbindAgent() {
-        // SPI provides tenancyId directly — null means engine didn't know the tenant
         provisioner.terminate("not-registered", null);
-        verify(mockService).unbindAgent(eq("not-registered"), isNull());
+        verify(mockService).unbindAgent("not-registered");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

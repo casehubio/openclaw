@@ -401,12 +401,13 @@ Returns messages on channels associated with the agent since the specified curso
 as JSON. `since` defaults to `0` (all buffered messages). Single call, pre-filtered; the SDK
 formats for the system prompt.
 
-**Multi-tenancy:** The endpoint uses `currentPrincipal.tenancyId()` internally — the
-`agentId` alone is no longer unique across tenants. Internally, `ChannelContextWindowService`
-keys on `AgentKey(agentId, tenancyId)`. In single-tenant deployments `MockCurrentPrincipal`
-returns `DEFAULT_TENANT_ID` — correct behaviour. In multi-tenant deployments, the Python SDK
-and TypeScript plugin must carry a casehub principal (via auth retrofit, openclaw#33) for
-the correct tenant window to be returned.
+**Multi-tenancy:** The endpoint requires no principal. `ChannelContextWindowService` uses a
+plain `agentId` key (consistent with `OpenClawAgentRegistry` — ARC42 §2 documents the
+single-agentId-per-deployment constraint). The tenancyId is resolved internally from the
+`bindAgent(agentId, caseId)` registration made at provision time — the resource reads no
+principal and carries no `CurrentPrincipal` injection. In multi-tenant deployments, correct
+scoping is guaranteed as long as the provisioner calls `bindAgent` with the right caseId for
+each agent (openclaw#33).
 
 **`since` cursor — internal `windowSeq`, not Qhorus `sequenceNumber`:**
 

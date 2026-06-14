@@ -57,7 +57,7 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
         String tenancyId = currentPrincipal.tenancyId();
 
         registry.register(agentId, tenancyId, caseId, sessionKey);
-        service.bindAgent(agentId, tenancyId, caseId);
+        service.bindAgent(agentId, caseId);
 
         log.infof("Provisioned OpenClaw agent: agentId=%s caseId=%s tenancyId=%s capabilities=%s",
                 agentId, caseId, tenancyId, capabilities);
@@ -68,7 +68,7 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
     @Override
     public void terminate(String workerId, String tenancyId) {
         registry.deregister(workerId);
-        service.unbindAgent(workerId, tenancyId);   // null-safe: service logs warn and no-ops
+        service.unbindAgent(workerId);
         log.infof("Terminated OpenClaw agent: agentId=%s tenancyId=%s", workerId, tenancyId);
     }
 

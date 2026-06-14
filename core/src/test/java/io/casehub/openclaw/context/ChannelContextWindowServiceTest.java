@@ -38,14 +38,14 @@ class ChannelContextWindowServiceTest {
 
     @Test
     void query_unknownAgent_returnsNoAssociation() {
-        assertThat(service.query("unknown-agent", "test-tenant", 0L).agentHasAssociation()).isFalse();
+        assertThat(service.query("unknown-agent", 0L).agentHasAssociation()).isFalse();
     }
 
     @Test
     void add_unregisteredChannel_silentlyIgnored() {
         UUID channelId = UUID.randomUUID();
         service.add(event(channelId, "case-x/work", MessageType.STATUS));
-        assertThat(service.query("any-agent", "test-tenant", 0L).agentHasAssociation()).isFalse();
+        assertThat(service.query("any-agent", 0L).agentHasAssociation()).isFalse();
     }
 
     // ── bindChannel before bindAgent (channel first) ──────────────────────────
@@ -57,8 +57,8 @@ class ChannelContextWindowServiceTest {
         service.bindChannel(caseId, channelId);
         service.add(event(channelId, "case-x/work", MessageType.STATUS)); // captured before agent bound
 
-        service.bindAgent("agent-1", "test-tenant", caseId);
-        WindowContent result = service.query("agent-1", "test-tenant", 0L);
+        service.bindAgent("agent-1", caseId);
+        WindowContent result = service.query("agent-1", 0L);
         assertThat(result.agentHasAssociation()).isTrue();
         assertThat(result.messages()).hasSize(1);
     }
@@ -66,8 +66,8 @@ class ChannelContextWindowServiceTest {
     @Test
     void bindAgent_withoutBindChannel_returnsEmptyWindow_notNoAssociation() {
         UUID caseId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
-        WindowContent result = service.query("agent-1", "test-tenant", 0L);
+        service.bindAgent("agent-1", caseId);
+        WindowContent result = service.query("agent-1", 0L);
         assertThat(result.agentHasAssociation()).isTrue();
         assertThat(result.messages()).isEmpty();
     }
@@ -78,11 +78,11 @@ class ChannelContextWindowServiceTest {
     void bindAgent_bindChannel_add_query_roundTrip() {
         UUID caseId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, channelId);
         service.add(event(channelId, "case-x/work", MessageType.COMMAND));
 
-        WindowContent result = service.query("agent-1", "test-tenant", 0L);
+        WindowContent result = service.query("agent-1", 0L);
         assertThat(result.agentHasAssociation()).isTrue();
         assertThat(result.messages()).hasSize(1);
         assertThat(result.messages().get(0).messageType()).isEqualTo(MessageType.COMMAND);
@@ -92,26 +92,26 @@ class ChannelContextWindowServiceTest {
     void bindChannel_twice_samePair_idempotent() {
         UUID caseId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, channelId);
         service.bindChannel(caseId, channelId); // idempotent — no duplicate buffer
         service.add(event(channelId, "case-x/work", MessageType.STATUS));
 
-        assertThat(service.query("agent-1", "test-tenant", 0L).messages()).hasSize(1);
+        assertThat(service.query("agent-1", 0L).messages()).hasSize(1);
     }
 
     @Test
     void query_withSince_filtersCorrectly() {
         UUID caseId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, channelId);
         service.add(event(channelId, "case-x/work", MessageType.COMMAND)); // seq=1
         service.add(event(channelId, "case-x/work", MessageType.STATUS));  // seq=2
         service.add(event(channelId, "case-x/work", MessageType.DONE));    // seq=3
 
-        long firstSeq = service.query("agent-1", "test-tenant", 0L).messages().get(0).windowSeq();
-        WindowContent result = service.query("agent-1", "test-tenant", firstSeq);
+        long firstSeq = service.query("agent-1", 0L).messages().get(0).windowSeq();
+        WindowContent result = service.query("agent-1", firstSeq);
         assertThat(result.messages()).hasSize(2);
         assertThat(result.messages())
                 .extracting(ContextMessage::messageType)
@@ -123,7 +123,7 @@ class ChannelContextWindowServiceTest {
         UUID caseId = UUID.randomUUID();
         UUID ch1 = UUID.randomUUID();
         UUID ch2 = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, ch1);
         service.bindChannel(caseId, ch2);
 
@@ -131,7 +131,7 @@ class ChannelContextWindowServiceTest {
         service.add(event(ch2, "observe", MessageType.STATUS));
         service.add(event(ch1, "work", MessageType.DONE));
 
-        List<Long> seqs = service.query("agent-1", "test-tenant", 0L).messages()
+        List<Long> seqs = service.query("agent-1", 0L).messages()
                 .stream().map(ContextMessage::windowSeq).toList();
         assertThat(seqs).isSorted();
         assertThat(seqs).hasSize(3);
@@ -143,29 +143,29 @@ class ChannelContextWindowServiceTest {
     void unbindAgent_subsequentQuery_returnsNoAssociation() {
         UUID caseId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, channelId);
         service.add(event(channelId, "case-x/work", MessageType.STATUS));
-        assertThat(service.query("agent-1", "test-tenant", 0L).agentHasAssociation()).isTrue();
+        assertThat(service.query("agent-1", 0L).agentHasAssociation()).isTrue();
 
-        service.unbindAgent("agent-1", "test-tenant");
-        assertThat(service.query("agent-1", "test-tenant", 0L).agentHasAssociation()).isFalse();
+        service.unbindAgent("agent-1");
+        assertThat(service.query("agent-1", 0L).agentHasAssociation()).isFalse();
     }
 
     @Test
     void unbindAgent_doesNotClearCaseChannels_bufferStillWritable() {
         UUID caseId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, channelId);
-        service.unbindAgent("agent-1", "test-tenant");
+        service.unbindAgent("agent-1");
 
         // Buffer retained — add() still writes (channel not cleaned up)
         service.add(event(channelId, "case-x/work", MessageType.STATUS));
 
         // Re-bind agent — message written after unbind is available
-        service.bindAgent("agent-1", "test-tenant", caseId);
-        assertThat(service.query("agent-1", "test-tenant", 0L).messages()).hasSize(1);
+        service.bindAgent("agent-1", caseId);
+        assertThat(service.query("agent-1", 0L).messages()).hasSize(1);
     }
 
     // ── sequence / cursor semantics ───────────────────────────────────────────
@@ -174,24 +174,24 @@ class ChannelContextWindowServiceTest {
     void currentWindowSeq_reflectsGlobalCounter() {
         UUID caseId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, channelId);
         service.add(event(channelId, "work", MessageType.STATUS));
         service.add(event(channelId, "work", MessageType.STATUS));
 
-        assertThat(service.query("agent-1", "test-tenant", 0L).currentWindowSeq()).isEqualTo(2L);
+        assertThat(service.query("agent-1", 0L).currentWindowSeq()).isEqualTo(2L);
     }
 
     @Test
     void lastWindowSeq_isMaxReturnedSeq() {
         UUID caseId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, channelId);
         service.add(event(channelId, "work", MessageType.STATUS)); // seq=1
         service.add(event(channelId, "work", MessageType.STATUS)); // seq=2
 
-        assertThat(service.query("agent-1", "test-tenant", 0L).lastWindowSeq()).isEqualTo(2L);
+        assertThat(service.query("agent-1", 0L).lastWindowSeq()).isEqualTo(2L);
     }
 
     @Test
@@ -199,20 +199,20 @@ class ChannelContextWindowServiceTest {
         service.maxMessagesPerChannel = 2;
         UUID caseId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, channelId);
         service.add(event(channelId, "work", MessageType.COMMAND)); // seq=1
         service.add(event(channelId, "work", MessageType.STATUS));  // seq=2
         service.add(event(channelId, "work", MessageType.DONE));    // seq=3 → evicts seq=1
 
-        assertThat(service.query("agent-1", "test-tenant", 0L).lastEvictionWindowSeq()).isEqualTo(1L);
+        assertThat(service.query("agent-1", 0L).lastEvictionWindowSeq()).isEqualTo(1L);
     }
 
     @Test
     void restartDetection_staleClientCursor_greaterThanCurrentWindowSeq() {
         UUID caseId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, channelId);
         service.add(event(channelId, "work", MessageType.STATUS)); // seq=1
         service.add(event(channelId, "work", MessageType.STATUS)); // seq=2
@@ -222,12 +222,12 @@ class ChannelContextWindowServiceTest {
         ChannelContextWindowService restarted = new ChannelContextWindowService();
         restarted.maxMessagesPerChannel = 100;
         restarted.ttl = Duration.ofMinutes(30);
-        restarted.bindAgent("agent-1", "test-tenant", caseId);
+        restarted.bindAgent("agent-1", caseId);
         restarted.bindChannel(caseId, channelId);
         restarted.add(event(channelId, "work", MessageType.STATUS)); // new seq=1
 
         // Client sends stale cursor=3; currentWindowSeq=1 → restart detected
-        WindowContent result = restarted.query("agent-1", "test-tenant", 3L);
+        WindowContent result = restarted.query("agent-1", 3L);
         assertThat(result.currentWindowSeq()).isEqualTo(1L);
         assertThat(3L).isGreaterThan(result.currentWindowSeq()); // SDK resets cursor
         assertThat(result.agentHasAssociation()).isTrue();
@@ -240,7 +240,7 @@ class ChannelContextWindowServiceTest {
         service.maxMessagesPerChannel = 10;
         UUID caseId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, channelId);
 
         int threads = 10;
@@ -257,7 +257,7 @@ class ChannelContextWindowServiceTest {
         latch.await(10, TimeUnit.SECONDS);
         executor.shutdown();
 
-        assertThat(service.query("agent-1", "test-tenant", 0L).messages()).hasSizeLessThanOrEqualTo(10);
+        assertThat(service.query("agent-1", 0L).messages()).hasSizeLessThanOrEqualTo(10);
     }
 
     @Test
@@ -265,7 +265,7 @@ class ChannelContextWindowServiceTest {
         UUID caseId = UUID.randomUUID();
         UUID ch1 = UUID.randomUUID();
         UUID ch2 = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, ch1);
         service.bindChannel(caseId, ch2);
 
@@ -274,7 +274,7 @@ class ChannelContextWindowServiceTest {
             service.add(event(i % 2 == 0 ? ch1 : ch2, "chan", MessageType.STATUS));
         }
 
-        List<Long> seqs = service.query("agent-1", "test-tenant", 0L).messages().stream()
+        List<Long> seqs = service.query("agent-1", 0L).messages().stream()
                 .map(ContextMessage::windowSeq).toList();
         for (int i = 1; i < seqs.size(); i++) {
             assertThat(seqs.get(i)).isGreaterThan(seqs.get(i - 1));
@@ -286,15 +286,15 @@ class ChannelContextWindowServiceTest {
         UUID caseId = UUID.randomUUID();
         UUID ch1 = UUID.randomUUID();
         UUID ch2 = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, ch1);
 
         ExecutorService executor = Executors.newFixedThreadPool(4);
         CountDownLatch latch = new CountDownLatch(4);
         executor.submit(() -> { try { for (int i=0;i<50;i++) service.bindChannel(caseId,ch2); } finally { latch.countDown(); } });
         executor.submit(() -> { try { for (int i=0;i<50;i++) service.add(event(ch1,"work",MessageType.STATUS)); } finally { latch.countDown(); } });
-        executor.submit(() -> { try { for (int i=0;i<100;i++) service.query("agent-1","test-tenant",0L); } finally { latch.countDown(); } });
-        executor.submit(() -> { try { for (int i=0;i<50;i++) { service.unbindAgent("agent-1","test-tenant"); service.bindAgent("agent-1","test-tenant",caseId); } } finally { latch.countDown(); } });
+        executor.submit(() -> { try { for (int i=0;i<100;i++) service.query("agent-1",0L); } finally { latch.countDown(); } });
+        executor.submit(() -> { try { for (int i=0;i<50;i++) { service.unbindAgent("agent-1"); service.bindAgent("agent-1",caseId); } } finally { latch.countDown(); } });
         latch.await(10, TimeUnit.SECONDS);
         executor.shutdown();
         // Asserts no exceptions thrown — concurrent bind/unbind/query must be safe
@@ -305,14 +305,14 @@ class ChannelContextWindowServiceTest {
         UUID caseId = UUID.randomUUID();
         UUID ch1 = UUID.randomUUID();
         UUID ch2 = UUID.randomUUID();
-        service.bindAgent("agent-1", "test-tenant", caseId);
+        service.bindAgent("agent-1", caseId);
         service.bindChannel(caseId, ch1);
         service.bindChannel(caseId, ch2);
 
         // Add a message so the buffer is non-empty
         service.add(event(ch1, "case-" + caseId + "/work", MessageType.STATUS));
 
-        service.unbindAgent("agent-1", "test-tenant");
+        service.unbindAgent("agent-1");
         service.closeCase(caseId);
 
         // After closeCase: query returns noAssociation (agent unbound + caseChannels removed)
@@ -326,44 +326,24 @@ class ChannelContextWindowServiceTest {
         assertThatCode(() -> service.closeCase(UUID.randomUUID())).doesNotThrowAnyException();
     }
 
-    // ── tenancyId isolation ───────────────────────────────────────────────────
+    // ── last-write-wins (AgentKey removed) ───────────────────────────────────────
 
     @Test
-    void bindAgent_sameAgentId_differentTenants_independentWindows() {
+    void bindAgent_sameAgentId_secondCallOverwritesFirst() {
         UUID caseA = UUID.randomUUID(), caseB = UUID.randomUUID();
         UUID channelA = UUID.randomUUID(), channelB = UUID.randomUUID();
-        service.bindAgent("bot", "tenant-A", caseA);
-        service.bindAgent("bot", "tenant-B", caseB);
+        service.bindAgent("bot", caseA);
         service.bindChannel(caseA, channelA);
+        service.add(event(channelA, "case-a/work", MessageType.STATUS)); // seq=1
+
+        service.bindAgent("bot", caseB);  // overwrites — caseA binding gone
         service.bindChannel(caseB, channelB);
-        service.add(event(channelA, "case-x/work", MessageType.STATUS));
+        service.add(event(channelB, "case-b/work", MessageType.COMMAND)); // seq=2
 
-        assertThat(service.query("bot", "tenant-A", 0L).messages()).hasSize(1);
-        assertThat(service.query("bot", "tenant-B", 0L).messages()).isEmpty();
-    }
-
-    @Test
-    void query_wrongTenant_returnsNoAssociation() {
-        UUID caseId = UUID.randomUUID();
-        service.bindAgent("bot", "tenant-A", caseId);
-        assertThat(service.query("bot", "tenant-B", 0L).agentHasAssociation()).isFalse();
-    }
-
-    @Test
-    void unbindAgent_oneTenant_doesNotAffectOther() {
-        UUID caseA = UUID.randomUUID(), caseB = UUID.randomUUID();
-        service.bindAgent("bot", "tenant-A", caseA);
-        service.bindAgent("bot", "tenant-B", caseB);
-        service.unbindAgent("bot", "tenant-A");
-        assertThat(service.query("bot", "tenant-B", 0L).agentHasAssociation()).isTrue();
-    }
-
-    @Test
-    void unbindAgent_nullTenancyId_logsAndNoOps() {
-        UUID caseId = UUID.randomUUID();
-        service.bindAgent("bot", "tenant-A", caseId);
-        assertThatCode(() -> service.unbindAgent("bot", null)).doesNotThrowAnyException();
-        // tenant-A entry untouched
-        assertThat(service.query("bot", "tenant-A", 0L).agentHasAssociation()).isTrue();
+        WindowContent result = service.query("bot", 0L);
+        assertThat(result.agentHasAssociation()).isTrue();
+        // Only caseB's channel content visible
+        assertThat(result.messages()).hasSize(1);
+        assertThat(result.messages().get(0).messageType()).isEqualTo(MessageType.COMMAND);
     }
 }

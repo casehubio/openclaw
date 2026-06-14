@@ -49,11 +49,10 @@ public class OpenClawWorkerStatusListener implements WorkerStatusListener {
     @Override
     public void onWorkerCompleted(String workerId, WorkResult result) {
         log.infof("OpenClaw agent completed: agentId=%s status=%s", workerId, result.status());
-        // Capture caseId and tenancyId before deregistering — registry removes the mappings on deregister()
+        // Capture caseId before deregistering — registry removes the mappings on deregister()
         UUID caseId = registry.findCaseId(workerId).orElse(null);
-        String tenancyId = caseId != null ? registry.findTenancyId(caseId).orElse(null) : null;
         registry.deregister(workerId);
-        service.unbindAgent(workerId, tenancyId);
+        service.unbindAgent(workerId);
         if (caseId != null) {
             service.closeCase(caseId);
         }

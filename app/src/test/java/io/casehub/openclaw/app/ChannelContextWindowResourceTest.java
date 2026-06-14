@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import io.casehub.openclaw.context.ChannelContextWindowService;
 import io.casehub.openclaw.context.ContextMessage;
 import io.casehub.openclaw.context.WindowContent;
-import io.casehub.platform.api.identity.CurrentPrincipal;
 import io.casehub.qhorus.api.message.MessageType;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
@@ -26,13 +25,8 @@ import static org.mockito.Mockito.when;
 @QuarkusTest
 class ChannelContextWindowResourceTest {
 
-    private static final String TEST_TENANCY_ID = "test-tenant-99";
-
     @InjectMock
     ChannelContextWindowService service;
-
-    @InjectMock
-    CurrentPrincipal currentPrincipal;
 
     private WindowContent contentWithOneMessage() {
         ContextMessage msg = new ContextMessage(
@@ -45,8 +39,7 @@ class ChannelContextWindowResourceTest {
 
     @Test
     void get_knownAgent_returns200WithMessages() {
-        when(currentPrincipal.tenancyId()).thenReturn(TEST_TENANCY_ID);
-        when(service.query("test-agent", TEST_TENANCY_ID, 0L)).thenReturn(contentWithOneMessage());
+        when(service.query("test-agent", 0L)).thenReturn(contentWithOneMessage());
 
         given()
                 .when().get("/channel-context/test-agent")
@@ -62,8 +55,7 @@ class ChannelContextWindowResourceTest {
 
     @Test
     void get_unknownAgent_returns200NotAssociated() {
-        when(currentPrincipal.tenancyId()).thenReturn(TEST_TENANCY_ID);
-        when(service.query(anyString(), anyString(), anyLong()))
+        when(service.query(anyString(), anyLong()))
                 .thenReturn(WindowContent.noAssociation());
 
         given()
@@ -76,41 +68,37 @@ class ChannelContextWindowResourceTest {
 
     @Test
     void get_sinceParamPassedThrough() {
-        when(currentPrincipal.tenancyId()).thenReturn(TEST_TENANCY_ID);
-        when(service.query("agent-1", TEST_TENANCY_ID, 42L)).thenReturn(WindowContent.noAssociation());
+        when(service.query("agent-1", 42L)).thenReturn(WindowContent.noAssociation());
 
         given()
                 .when().get("/channel-context/agent-1?since=42")
                 .then()
                 .statusCode(200);
 
-        verify(service).query("agent-1", TEST_TENANCY_ID, 42L);
+        verify(service).query("agent-1", 42L);
     }
 
     @Test
     void get_sinceDefaultsToZero() {
-        when(currentPrincipal.tenancyId()).thenReturn(TEST_TENANCY_ID);
-        when(service.query("agent-1", TEST_TENANCY_ID, 0L)).thenReturn(WindowContent.noAssociation());
+        when(service.query("agent-1", 0L)).thenReturn(WindowContent.noAssociation());
 
         given()
                 .when().get("/channel-context/agent-1")
                 .then()
                 .statusCode(200);
 
-        verify(service).query("agent-1", TEST_TENANCY_ID, 0L);
+        verify(service).query("agent-1", 0L);
     }
 
     @Test
-    void get_tenancyIdFromPrincipalPassedToService() {
-        String customTenancy = "tenant-xyz";
-        when(currentPrincipal.tenancyId()).thenReturn(customTenancy);
-        when(service.query("agent-1", customTenancy, 0L)).thenReturn(WindowContent.noAssociation());
+    void get_queryCallsServiceWithAgentIdAndSince_noPrincipalInteraction() {
+        when(service.query("agent-1", 0L)).thenReturn(WindowContent.noAssociation());
 
         given()
                 .when().get("/channel-context/agent-1")
                 .then()
                 .statusCode(200);
 
-        verify(service).query("agent-1", customTenancy, 0L);
+        verify(service).query("agent-1", 0L);
     }
 }

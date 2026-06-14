@@ -64,7 +64,7 @@ public class ReactiveOpenClawWorkerProvisioner implements ReactiveWorkerProvisio
             String sessionKey = config.agents().get(agentId).sessionKey();
             UUID caseId = context.caseId();
             registry.register(agentId, tenancyId, caseId, sessionKey);
-            service.bindAgent(agentId, tenancyId, caseId);
+            service.bindAgent(agentId, caseId);
             log.infof("Provisioned OpenClaw agent (reactive): agentId=%s caseId=%s tenancyId=%s capabilities=%s",
                     agentId, caseId, tenancyId, capabilities);
             return ProvisionResult.empty();
@@ -75,7 +75,7 @@ public class ReactiveOpenClawWorkerProvisioner implements ReactiveWorkerProvisio
     public Uni<Void> terminate(String workerId, String tenancyId) {
         return Uni.createFrom().<Void>item(() -> {
             registry.deregister(workerId);
-            service.unbindAgent(workerId, tenancyId);   // null-safe: service logs warn and no-ops
+            service.unbindAgent(workerId);
             log.infof("Terminated OpenClaw agent (reactive): agentId=%s tenancyId=%s", workerId, tenancyId);
             return null;
         });

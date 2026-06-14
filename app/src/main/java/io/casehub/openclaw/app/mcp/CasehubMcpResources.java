@@ -11,7 +11,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.casehub.openclaw.context.ChannelContextWindowService;
 import io.casehub.openclaw.context.WindowContent;
-import io.casehub.platform.api.identity.CurrentPrincipal;
 import io.casehub.qhorus.api.message.CommitmentState;
 import io.casehub.qhorus.runtime.message.Commitment;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
@@ -38,15 +37,12 @@ public class CasehubMcpResources {
 
     private final CommitmentStore commitmentStore;
     private final ChannelContextWindowService contextWindowService;
-    private final CurrentPrincipal currentPrincipal;
 
     @Inject
     public CasehubMcpResources(CommitmentStore commitmentStore,
-                                ChannelContextWindowService contextWindowService,
-                                CurrentPrincipal currentPrincipal) {
+                                ChannelContextWindowService contextWindowService) {
         this.commitmentStore = commitmentStore;
         this.contextWindowService = contextWindowService;
-        this.currentPrincipal = currentPrincipal;
     }
 
     @ResourceTemplate(
@@ -94,7 +90,7 @@ public class CasehubMcpResources {
 
         // MCP resources return current full window (since=0) — LLMs don't track cursors.
         // Incremental fetching is the plugin's concern, handled via the before_prompt_build hook.
-        WindowContent window = contextWindowService.query(agentId, currentPrincipal.tenancyId(), 0L);
+        WindowContent window = contextWindowService.query(agentId, 0L);
 
         String json;
         try {

@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 
 import io.casehub.openclaw.context.ChannelContextWindowService;
 import io.casehub.openclaw.context.WindowContent;
-import io.casehub.platform.api.identity.CurrentPrincipal;
 import io.casehub.qhorus.api.message.CommitmentState;
 import io.casehub.qhorus.runtime.message.Commitment;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
@@ -29,18 +28,13 @@ class McpResourcesTest {
 
     CommitmentStore commitmentStore;
     ChannelContextWindowService contextWindowService;
-    CurrentPrincipal currentPrincipal;
     CasehubMcpResources resources;
-
-    static final String TEST_TENANCY_ID = "test-tenant-mcp";
 
     @BeforeEach
     void setUp() {
         commitmentStore = mock(CommitmentStore.class);
         contextWindowService = mock(ChannelContextWindowService.class);
-        currentPrincipal = mock(CurrentPrincipal.class);
-        when(currentPrincipal.tenancyId()).thenReturn(TEST_TENANCY_ID);
-        resources = new CasehubMcpResources(commitmentStore, contextWindowService, currentPrincipal);
+        resources = new CasehubMcpResources(commitmentStore, contextWindowService);
     }
 
     // ---- casehub://agent/{agentId}/commitments ----
@@ -101,7 +95,7 @@ class McpResourcesTest {
         String agentId = "finance-agent";
         WindowContent window = new WindowContent(
                 List.of(), 0L, 0L, 0L, true, Instant.now());
-        when(contextWindowService.query(eq(agentId), eq(TEST_TENANCY_ID), eq(0L))).thenReturn(window);
+        when(contextWindowService.query(eq(agentId), eq(0L))).thenReturn(window);
 
         ResourceResponse response = resources.channelRecent(agentId);
 

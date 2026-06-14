@@ -13,10 +13,7 @@ import jakarta.enterprise.event.Event;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 class OpenClawWorkerStatusListenerTest {
@@ -52,23 +49,15 @@ class OpenClawWorkerStatusListenerTest {
 
         listener.onWorkerCompleted("agent-1", WorkResult.completed("key", Map.of(), "agent-1", caseId));
 
-        verify(mockService).unbindAgent("agent-1", "test-tenant");
+        verify(mockService).unbindAgent("agent-1");
     }
 
     @Test
-    void onWorkerCompleted_readsTenancyIdBeforeDeregister() {
-        UUID caseId = UUID.randomUUID();
-        registry.register("agent-1", "tenant-X", caseId, "sk");
-        listener.onWorkerCompleted("agent-1", WorkResult.completed("key", Map.of(), "agent-1", caseId));
-        verify(mockService).unbindAgent("agent-1", "tenant-X");
-    }
-
-    @Test
-    void onWorkerCompleted_unknownAgent_unbindAgentWithNullTenancyId() {
+    void onWorkerCompleted_unknownAgent_callsUnbindAgent() {
         assertThatCode(() ->
             listener.onWorkerCompleted("unknown", WorkResult.completed("key", Map.of(), "unknown", UUID.randomUUID()))
         ).doesNotThrowAnyException();
-        verify(mockService).unbindAgent(eq("unknown"), isNull());
+        verify(mockService).unbindAgent("unknown");
     }
 
     @Test

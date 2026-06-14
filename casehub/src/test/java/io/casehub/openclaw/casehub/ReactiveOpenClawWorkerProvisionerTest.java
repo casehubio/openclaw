@@ -16,8 +16,6 @@ import io.casehub.platform.api.identity.CurrentPrincipal;
 import io.smallrye.mutiny.helpers.test.UniAssertSubscriber;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -74,7 +72,7 @@ class ReactiveOpenClawWorkerProvisionerTest {
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
 
-        verify(mockService).bindAgent("code-review-agent", "test-tenant", caseId);
+        verify(mockService).bindAgent("code-review-agent", caseId);
     }
 
     @Test
@@ -150,16 +148,16 @@ class ReactiveOpenClawWorkerProvisionerTest {
         provisioner.terminate("finance-agent", "test-tenant")
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
-        verify(mockService).unbindAgent("finance-agent", "test-tenant");
+        verify(mockService).unbindAgent("finance-agent");
     }
 
     @Test
     void terminate_unknownAgent_stillCallsUnbindAgent() {
-        // never provisioned — tenancyId is null; service must still be called (null-safe)
+        // never provisioned — service must still be called
         provisioner.terminate("not-registered", null)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem();
-        verify(mockService).unbindAgent(eq("not-registered"), isNull());
+        verify(mockService).unbindAgent("not-registered");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
