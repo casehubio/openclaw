@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -51,15 +52,6 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
 
     private static final Logger log = Logger.getLogger(ReactiveOpenClawCaseChannelProvider.class);
     private static final String QHORUS_NAME_KEY = "qhorus-name";
-
-    private record ChannelSpec(String description, String allowedTypes, String deniedTypes) {}
-
-    // Normative channel layout — same as OpenClawCaseChannelProvider. Source of truth: PLATFORM.md §Agent Communication Mesh.
-    private static final Map<String, ChannelSpec> LAYOUT = Map.of(
-            "observe",   new ChannelSpec("Telemetry — EVENT only, no obligations created", "EVENT", null),
-            "oversight", new ChannelSpec("Human governance — agent actions pending human approval", null, "EVENT"),
-            "work",      new ChannelSpec("Primary coordination — all obligation-carrying message types", null, null)
-    );
 
     private final ReactiveChannelService channelService;
     private final ReactiveMessageService messageService;
@@ -140,7 +132,7 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
      * and context window. Called at most once per caseId per process lifetime (memoized).
      */
     private Uni<Map<String, CaseChannel>> initializeLayout(UUID caseId) {
-        List<String> purposes = LAYOUT.keySet().stream().sorted().toList();
+        List<String> purposes = OpenClawNormativeLayout.LAYOUT.keySet().stream().sorted().toList();
 
         // Seed with empty accumulator; flatMap each purpose sequentially
         Uni<ConcurrentHashMap<String, CaseChannel>> seed =
@@ -161,17 +153,10 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
      */
     private Uni<CaseChannel> openOrCreate(UUID caseId, String purpose) {
         String channelName = CaseChannel.channelName(caseId, purpose);
-        ChannelSpec spec = LAYOUT.get(purpose);
+        OpenClawNormativeLayout.ChannelSpec spec = OpenClawNormativeLayout.LAYOUT.get(purpose);
         String description = spec != null ? spec.description() : purpose;
-        // ReactiveChannelService.create() requires Set<MessageType> — parse from ChannelSpec strings
-        java.util.Set<io.casehub.qhorus.api.message.MessageType> allowedSet =
-                spec != null && spec.allowedTypes() != null
-                ? java.util.Set.of(io.casehub.qhorus.api.message.MessageType.valueOf(spec.allowedTypes()))
-                : null;
-        java.util.Set<io.casehub.qhorus.api.message.MessageType> deniedSet =
-                spec != null && spec.deniedTypes() != null
-                ? java.util.Set.of(io.casehub.qhorus.api.message.MessageType.valueOf(spec.deniedTypes()))
-                : null;
+        Set<MessageType> allowedSet = spec != null ? spec.allowedTypes() : null;
+        Set<MessageType> deniedSet = spec != null ? spec.deniedTypes() : null;
 
         return channelService.findByName(channelName)
                 .flatMap(opt -> opt.isPresent()

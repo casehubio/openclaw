@@ -3,6 +3,7 @@ package io.casehub.openclaw.casehub;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import jakarta.enterprise.context.ApplicationScoped;
@@ -41,18 +42,6 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
     private static final Logger log = Logger.getLogger(OpenClawCaseChannelProvider.class);
     private static final String QHORUS_NAME_KEY = "qhorus-name";
 
-    private record ChannelSpec(String description, String allowedTypes, String deniedTypes) {}
-
-    // Normative channel layout. Source of truth: PLATFORM.md §Agent Communication Mesh.
-    // oversight uses deniedTypes=EVENT (no telemetry on governance channel; all obligation
-    // types allowed). observe uses allowedTypes=EVENT (telemetry only, no obligations).
-    // work is unrestricted. Consolidation of NormativeChannelLayout: parent#93.
-    private static final Map<String, ChannelSpec> LAYOUT = Map.of(
-            "work",     new ChannelSpec("Primary coordination — all obligation-carrying message types", null, null),
-            "observe",  new ChannelSpec("Telemetry — EVENT only, no obligations created", "EVENT", null),
-            "oversight",new ChannelSpec("Human governance — agent actions pending human approval", null, "EVENT")
-    );
-
     private final ChannelService channelService;
     private final MessageService messageService;
     private final ChannelContextWindowService contextService;
@@ -72,13 +61,10 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
     @Override
     public CaseChannel openChannel(UUID caseId, String purpose) {
         String channelName = CaseChannel.channelName(caseId, purpose);
-        ChannelSpec spec = LAYOUT.get(purpose);
+        OpenClawNormativeLayout.ChannelSpec spec = OpenClawNormativeLayout.LAYOUT.get(purpose);
         String description = spec != null ? spec.description() : purpose;
-        // ChannelService.create() requires Set<MessageType> — parse from ChannelSpec strings
-        java.util.Set<MessageType> allowedSet = spec != null && spec.allowedTypes() != null
-                ? java.util.Set.of(MessageType.valueOf(spec.allowedTypes())) : null;
-        java.util.Set<MessageType> deniedSet = spec != null && spec.deniedTypes() != null
-                ? java.util.Set.of(MessageType.valueOf(spec.deniedTypes())) : null;
+        Set<MessageType> allowedSet = spec != null ? spec.allowedTypes() : null;
+        Set<MessageType> deniedSet = spec != null ? spec.deniedTypes() : null;
 
         Channel channel = channelService.findByName(channelName)
                 .orElseGet(() -> {
