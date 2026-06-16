@@ -1,5 +1,6 @@
 package io.casehub.openclaw.casehub;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -120,6 +121,6 @@ class OversightGateDispatcherTest {
 
     private DispatchResult dispatchResult(Long messageId) {
         return new DispatchResult(messageId, oversightChannelId, OversightGateService.GATE_SENDER,
-                MessageType.RESPONSE, null, null, null, null, null, null, null, 0);
+                MessageType.RESPONSE, null, null, null, null, null, null, null, 0, List.of());
     }
 }

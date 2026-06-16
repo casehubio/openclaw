@@ -645,6 +645,6 @@ class OversightGateServiceTest {
 
     private DispatchResult dispatchResult(Long messageId) {
         return new DispatchResult(messageId, oversightChannelId, "agent",
-                MessageType.COMMAND, null, null, null, null, null, null, null, 0);
+                MessageType.COMMAND, null, null, null, null, null, null, null, 0, List.of());
     }
 }

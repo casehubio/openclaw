@@ -1,0 +1,47 @@
+services:
+  casehub-openclaw:
+    extends:
+      file: ../docker-compose.base.yml
+      service: casehub-openclaw
+    # depends_on must be re-declared — Docker Compose extends does not propagate it
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openclaw-gateway:
+        condition: service_started
+      mock-github:
+        condition: service_started
+      mock-ci:
+        condition: service_started
+    environment:
+      CASEHUB_EXAMPLE_GATE_AGENTID: reviewer
+      CASEHUB_OPENCLAW_AGENTS_PLANNER_SESSION__KEY: planner
+      CASEHUB_OPENCLAW_AGENTS_PLANNER_CAPABILITIES: planning
+      CASEHUB_OPENCLAW_AGENTS_CODER_SESSION__KEY: coder
+      CASEHUB_OPENCLAW_AGENTS_CODER_CAPABILITIES: coding
+      CASEHUB_OPENCLAW_AGENTS_REVIEWER_SESSION__KEY: reviewer
+      CASEHUB_OPENCLAW_AGENTS_REVIEWER_CAPABILITIES: code-review
+
+  mock-github:
+    build:
+      context: ./mocks
+      dockerfile: Dockerfile
+    command: python github_mock.py
+    ports: ["5001:5001"]
+
+  mock-ci:
+    build:
+      context: ./mocks
+      dockerfile: Dockerfile
+    command: python ci_mock.py
+    ports: ["5002:5002"]
+
+  postgres:
+    extends:
+      file: ../docker-compose.base.yml
+      service: postgres
+
+  openclaw-gateway:
+    extends:
+      file: ../docker-compose.base.yml
+      service: openclaw-gateway

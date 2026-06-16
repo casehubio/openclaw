@@ -843,7 +843,7 @@ class CommitmentToolsTest {
     private static DispatchResult dispatchResult(long messageId, UUID channelId, String sender,
                                                   MessageType type, String correlationId) {
         return new DispatchResult(messageId, channelId, sender, type, correlationId,
-                null, List.of(), null, null, null, null, 0);
+                null, List.of(), null, null, null, null, 0, List.of());
     }
 
     private static String text(ToolResponse response) {

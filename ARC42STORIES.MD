@@ -798,6 +798,10 @@ Not closed here: *(all known gaps closed — #15 atomicity and #16 DONE dispatch
 - `app/src/main/java/.../app/mcp/WorkitemTools.java` — `@ApplicationScoped`; `casehub_create_workitem`, `casehub_queue` MCP tools
 - `app/src/main/java/.../app/mcp/QueryTools.java` — `@ApplicationScoped`; `casehub_status` MCP tool
 - `app/src/main/java/.../app/mcp/CasehubMcpResources.java` — `@ApplicationScoped`; `casehub://agent/{agentId}/commitments` and `casehub://channel/{agentId}/recent` MCP resources
+- `app/src/main/java/.../app/example/ExampleController.java` — `@ApplicationScoped @Blocking`; `POST /example/{exampleId}/start`; demo scenario orchestrator; inert when `casehub.example.enabled=false` (default); closes #35
+- `app/src/main/java/.../app/example/ExampleSetup.java` — `@ApplicationScoped @Transactional`; channel creation, agent registration, COMMAND dispatch for demo scenarios
+- `app/src/main/java/.../app/example/ExamplePoller.java` — `@ApplicationScoped @Transactional`; JPA polling delegate for ExampleController (null = not yet visible, keep polling; isTerminal() = stop)
+- `app/src/main/java/.../app/example/DemoGateClassifier.java` — `@ApplicationScoped @RiskClassifier`; gates on agentId match from `casehub.example.gate.agentid` (Optional<String>); inert when absent
 
 #### Key wiring
 

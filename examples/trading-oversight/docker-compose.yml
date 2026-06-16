@@ -1,0 +1,46 @@
+services:
+  casehub-openclaw:
+    extends:
+      file: ../docker-compose.base.yml
+      service: casehub-openclaw
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openclaw-gateway:
+        condition: service_started
+      mock-broker:
+        condition: service_started
+      mock-feed:
+        condition: service_started
+    environment:
+      CASEHUB_EXAMPLE_GATE_AGENTID: execution
+      CASEHUB_OPENCLAW_AGENTS_SIGNAL_SESSION__KEY: signal
+      CASEHUB_OPENCLAW_AGENTS_SIGNAL_CAPABILITIES: market-analysis
+      CASEHUB_OPENCLAW_AGENTS_RISK_SESSION__KEY: risk
+      CASEHUB_OPENCLAW_AGENTS_RISK_CAPABILITIES: risk-assessment
+      CASEHUB_OPENCLAW_AGENTS_EXECUTION_SESSION__KEY: execution
+      CASEHUB_OPENCLAW_AGENTS_EXECUTION_CAPABILITIES: trade-execution
+
+  mock-broker:
+    build:
+      context: ./mocks
+      dockerfile: Dockerfile
+    command: python broker_mock.py
+    ports: ["5001:5001"]
+
+  mock-feed:
+    build:
+      context: ./mocks
+      dockerfile: Dockerfile
+    command: python feed_mock.py
+    ports: ["5002:5002"]
+
+  postgres:
+    extends:
+      file: ../docker-compose.base.yml
+      service: postgres
+
+  openclaw-gateway:
+    extends:
+      file: ../docker-compose.base.yml
+      service: openclaw-gateway

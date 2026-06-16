@@ -159,10 +159,11 @@ Three Maven modules plus an independent Python component:
 ```
 core/       — OpenClaw hook API client; ChannelContextWindow ring buffer + REST service
 casehub/    — CaseHub SPI implementations (WorkerProvisioner, ChannelBackend, etc.)
-app/        — Quarkus deployment (MCP endpoint, delivery webhook, ChannelContextWindow REST API, plugin REST API)
+app/        — Quarkus deployment (MCP endpoint, delivery webhook, ChannelContextWindow REST API, plugin REST API, example demo endpoints)
 python/     — before_prompt_build hook + channel client (NOT a Maven module)
 plugin/     — TypeScript OpenClaw plugin (before_prompt_build, commitment lifecycle hooks)
 skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, casehub-case, casehub-queue, casehub-status, casehub-reject, casehub-block, casehub-delegate)
+examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight, incident-response); docker-compose + Python mocks + scripts; NOT a Maven module
 ```
 
 ### Module Detail
@@ -191,6 +192,7 @@ skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, caseh
 - `POST /openclaw/plugin/commit` — plugin auto-commit REST endpoint (called by TypeScript plugin `before_tool_call` hook; not for LLM use)
 - `POST /openclaw/plugin/done` — plugin auto-done REST endpoint (called by `agent_end` hook)
 - `GET /openclaw/plugin/commitments/{agentId}` — open commitment query for `session_start` injection
+- `POST /example/{exampleId}/start` — demo scenario orchestrator (`@Blocking`; inert when `casehub.example.enabled=false`); lives in `app/example/` subpackage with `DemoGateClassifier`, `ExampleSetup`, `ExamplePoller`
 
 **`python/`** owns:
 - `before_prompt_build` hook implementation

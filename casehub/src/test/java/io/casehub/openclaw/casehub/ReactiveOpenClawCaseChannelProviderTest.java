@@ -80,7 +80,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
 
     private DispatchResult dr(UUID channelId) {
         return new DispatchResult(1L, channelId, "sender", MessageType.STATUS,
-                null, null, List.of(), null, null, null, null, 0);
+                null, null, List.of(), null, null, null, null, 0, List.of());
     }
 
     // ── openChannel — create path ─────────────────────────────────────────────

@@ -164,7 +164,7 @@ class WorkitemToolsTest {
             long messageId, UUID channelId, String sender, MessageType type, String correlationId) {
         return new io.casehub.qhorus.api.message.DispatchResult(
                 messageId, channelId, sender, type, correlationId,
-                null, List.of(), null, null, null, null, 0);
+                null, List.of(), null, null, null, null, 0, List.of());
     }
 
     private static String text(ToolResponse response) {
