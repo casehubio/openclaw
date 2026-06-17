@@ -158,7 +158,8 @@ Two `@DefaultBean @ApplicationScoped` implementations in `io.casehub.engine.inte
 **`NoOpReactiveOversightGateService`**
 - `openGate()` → `Uni.createFrom().item(new GateDecision.Autonomous())`
 - `fulfill()` → `Uni.createFrom().voidItem()`
-- Same startup WARN via `@Observes StartupEvent`.
+- No startup observer — the blocking `NoOpOversightGateService` already signals the misconfiguration.
+  Two WARNs for the same absent configuration would be noise. One signal is unambiguous.
 
 ---
 
@@ -200,9 +201,24 @@ implementation details, not SPI surface.
 
 **`ReactiveOpenClawOversightGateService implements ReactiveOversightGateService`** — new class,
 using the **thin delegate pattern**: injects `OpenClawOversightGateService` (not the interface —
-the concrete class, which carries `evaluate()`) and wraps each call:
-- `openGate()` → `Uni.createFrom().item(() -> delegate.openGate(...))` — offloads to worker pool
-- `fulfill()` → `Uni.createFrom().item(() -> { delegate.fulfill(...); return null; }).replaceWithVoid()`
+the concrete class, which carries `evaluate()`) and wraps each call with explicit worker-pool
+offloading, following the same pattern as `ChainedReactiveActionRiskClassifier`:
+
+```java
+// openGate
+return Uni.createFrom().item(() -> delegate.openGate(agentId, commitmentId, outcome, tenancyId))
+         .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+
+// fulfill
+return Uni.createFrom().item(() -> { delegate.fulfill(gateId, rawOutput); return null; })
+         .replaceWithVoid()
+         .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+```
+
+`Uni.createFrom().item(Supplier)` is lazy but NOT offloaded — without `.runSubscriptionOn()` the
+supplier executes synchronously on the subscribing thread. If that thread is a Vert.x IO thread,
+the blocking delegate call deadlocks or throws `BlockingNotAllowedException`. `.runSubscriptionOn()`
+is what makes the reactive interface actually safe on IO threads, not just a type boundary.
 
 This is NOT the split-class pattern of `ReactiveOpenClawWorkerProvisioner` (which injects its own
 deps and re-implements logic independently). A full reactive re-implementation here would require
@@ -272,6 +288,11 @@ All references: `io.casehub.openclaw.casehub.GateDecision` → `io.casehub.api.s
 - `OversightGateDispatcherTest`: one reference `OversightGateService.GATE_SENDER` →
   `OpenClawOversightGateService.GATE_SENDER`
 - `OversightGateDispatcherCdiTest`: unaffected
+- **`ReactiveOpenClawOversightGateServiceTest`** (new): two unit tests using a mock delegate:
+  1. `openGate()` — assert returns a `Uni` that emits the same `GateDecision` as `delegate.openGate()`
+  2. `fulfill()` — assert returns a `Uni<Void>` that completes without error and invokes `delegate.fulfill()`
+  Both run `.await().atMost(Duration.ofSeconds(1))` — the worker-pool offload is a real thread hop,
+  so `indefinitely()` is inappropriate in tests.
 
 ---
 
