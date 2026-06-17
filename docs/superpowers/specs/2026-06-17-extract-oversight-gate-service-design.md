@@ -20,6 +20,11 @@ integration repo.
 The `ActionRiskClassifier`, `PlannedAction`, and `RiskDecision` types are already in
 `casehub-engine-api`. The classification surface is present; the gate service surface is not.
 
+Additionally, the current `OversightGateService.classifyMostRestrictive()` is a partial
+re-implementation of `ChainedReactiveActionRiskClassifier` (engine runtime) that silently drops
+all `ReactiveActionRiskClassifier` beans registered in the deployment. This is corrected as part
+of this extraction.
+
 ---
 
 ## Decision
@@ -40,9 +45,9 @@ Rejected alternatives:
 
 ## engine-api Additions
 
-Three new types in `io.casehub.api.spi` (same package as `ActionRiskClassifier`, `RiskDecision`):
-
 ### `GateDecision`
+
+New type in `io.casehub.api.spi`:
 
 ```java
 public sealed interface GateDecision permits GateDecision.Autonomous, GateDecision.GatePending {
@@ -55,24 +60,33 @@ Pure Java, no deps. Moved from `io.casehub.openclaw.casehub.GateDecision`.
 
 ### `OversightGateService` (blocking)
 
+New type in `io.casehub.api.spi`:
+
 ```java
 public interface OversightGateService {
+    /**
+     * Evaluates the proposed action for risk and returns a gate decision.
+     * Returns {@link GateDecision.Autonomous} when the action may proceed without human review.
+     * Returns {@link GateDecision.GatePending} when the action requires human approval before
+     * the commitment can be fulfilled. Implementations must fail-open on infrastructure errors.
+     */
     GateDecision openGate(String agentId, String commitmentId, String outcome, String tenancyId);
+
+    /**
+     * Processes a human response to a pending oversight gate identified by {@code gateId}.
+     * The raw output is interpreted by the implementation to determine approval or rejection.
+     * Implementations must fail-open on errors — an unprocessable response must not block the case.
+     */
     void fulfill(UUID gateId, String rawOutput);
 }
 ```
-
-`openGate()` — classifies the proposed action via `@RiskClassifier` beans. If `GateRequired`,
-dispatches a COMMAND to the oversight channel and returns `GatePending`. If `Autonomous` (or no
-classifiers registered), returns `Autonomous`. Fail-open on infrastructure errors.
-
-`fulfill()` — processes the oversight agent's response. Dispatches RESPONSE (approve) or DECLINE
-(reject) to the oversight channel, and DONE or DECLINE to the original work channel commitment.
 
 `evaluate()` (OpenClaw webhook archiving) is NOT in the SPI — it is OpenClaw-specific and has no
 equivalent in other harnesses.
 
 ### `ReactiveOversightGateService` (Mutiny)
+
+New type in `io.casehub.api.spi`:
 
 ```java
 public interface ReactiveOversightGateService {
@@ -81,45 +95,102 @@ public interface ReactiveOversightGateService {
 }
 ```
 
-Follows reactive parity pattern established by `ReactiveWorkerProvisioner`,
-`ReactiveActionRiskClassifier`.
+Follows reactive parity established by `ReactiveWorkerProvisioner`, `ReactiveActionRiskClassifier`.
+No identified consumer in the current openclaw deployment — both `CommitmentTools` (MCP, blocking)
+and `OpenClawOversightDeliveryResource` (JAX-RS, blocking) call the blocking interface. Added on
+parity grounds: every operational SPI in engine-api has a reactive variant so consumers can evolve
+without an API break. openclaw provides a `ReactiveOpenClawOversightGateService` following the same
+split-class pattern as `ReactiveOpenClawWorkerProvisioner`.
 
-No new qualifier annotation — `OversightGateService` is a singleton SPI, not a multi-implementation
-chain. `@DefaultBean` CDI discovery is sufficient.
+No qualifier annotation — `OversightGateService` is a singleton SPI, not a `@RiskClassifier`-style
+multi-implementation chain.
+
+### `ChainedReactiveActionRiskClassifier` — move to engine-api
+
+**This is a new requirement for the engine session.**
+
+`ChainedReactiveActionRiskClassifier` currently lives in `casehub-engine` runtime
+(`io.casehub.engine.internal.worker`). It must be moved to `casehub-engine-api` so harnesses that
+depend only on engine-api (not engine runtime) can inject `ReactiveActionRiskClassifier`.
+
+Rationale: casehub-openclaw-casehub depends on `casehub-engine-api` only, deliberately avoiding
+engine runtime because engine beans require `WorkerExecutionManager`, `JobScheduler`, and
+`RoutingCursorStore` SPIs that openclaw does not provide. Without this move, injecting
+`ReactiveActionRiskClassifier` in openclaw would cause an `UnsatisfiedResolutionException` — there
+is no `@DefaultBean NoOpReactiveActionRiskClassifier` anywhere.
+
+`ChainedReactiveActionRiskClassifier` has no engine-runtime-specific deps:
+- `@ApplicationScoped`, `@Inject`, `Instance<T>` — CDI (jakarta.enterprise.cdi-api, Tier-1-acceptable per PLATFORM.md)
+- `Uni`, `Infrastructure` — Mutiny (already in engine-api)
+- `Logger` — JBoss logging (transitive via Mutiny)
+
+Moving it to `io.casehub.api.spi` (or a new `io.casehub.api.spi.internal` package if the concrete
+class doesn't belong in the same package as interfaces) is clean. The `internal` package precedent
+exists in engine; alternatively it can sit in `io.casehub.api.spi` as the only non-interface type
+alongside `NoOpWorkerProvisioner`.
+
+**Consequence:** the engine session must publish a new engine-api snapshot before openclaw
+implements the changes in this spec.
 
 ---
 
 ## engine Runtime Additions
 
-Two `@DefaultBean @ApplicationScoped` implementations in
-`io.casehub.engine.internal.worker` (same package as `NoOpWorkerProvisioner`):
+Two `@DefaultBean @ApplicationScoped` implementations in `io.casehub.engine.internal.worker`
+(same package as `NoOpWorkerProvisioner`):
 
 **`NoOpOversightGateService`**
 - `openGate()` → returns `new GateDecision.Autonomous()`
 - `fulfill()` → no-op
+- Observes `StartupEvent` and logs a single `WARN`: *"OversightGateService: no implementation
+  configured — all actions proceed autonomously. Deploy an @ApplicationScoped OversightGateService
+  implementation to enable oversight gating."* The observer only fires when the NoOp is the active
+  bean, making misconfigured deployments observable without per-call noise. Fail-open semantics:
+  a deployment without a harness gate service works correctly — oversight is simply absent, not
+  broken.
 
 **`NoOpReactiveOversightGateService`**
 - `openGate()` → `Uni.createFrom().item(new GateDecision.Autonomous())`
 - `fulfill()` → `Uni.createFrom().voidItem()`
-
-Neither throws. Neither logs. Fail-open semantics: a deployment without a harness gate
-implementation proceeds autonomously rather than failing. This is correct for operational SPI
-semantics.
+- Same startup WARN via `@Observes StartupEvent`.
 
 ---
 
 ## casehub-openclaw Changes
 
-### Rename and implement
+### New classes
 
-`OversightGateService` → `OpenClawOversightGateService implements OversightGateService`.
+**`OpenClawOversightGateService implements OversightGateService`** — rename of the existing
+`OversightGateService`. The constructor changes to inject `ReactiveActionRiskClassifier` (resolved
+by CDI to the `ChainedReactiveActionRiskClassifier` moved to engine-api) instead of
+`@RiskClassifier Instance<ActionRiskClassifier>`.
 
-- `openGate()` and `fulfill()` implement the SPI contract. Behaviour unchanged.
-- `evaluate()` stays as a method on `OpenClawOversightGateService` — not in the interface.
-- `GATE_SENDER` constant remains on `OpenClawOversightGateService`.
-- `OversightGateDispatcher` updated to reference `OpenClawOversightGateService.GATE_SENDER`.
-- `GateContext` and `OversightGateDispatcher` remain package-private in openclaw — implementation
-  details, not SPI surface.
+**`openGate()` implementation change (critical):**
+The three private methods `classifyMostRestrictive()`, `mostRestrictive()`, and `narrower()` are
+**deleted**. Classification delegates to the injected `ReactiveActionRiskClassifier`:
+
+```java
+RiskDecision decision = reactiveClassifier.classify(action).await().indefinitely();
+```
+
+`await().indefinitely()` is valid — the MCP tool handler (`CommitmentTools`) runs in a
+`@Blocking` Quarkus worker thread. This single line replaces all three private methods and
+correctly handles both blocking and reactive domain classifiers, including fail-safe semantics
+already implemented in `ChainedReactiveActionRiskClassifier`.
+
+**`evaluate()` stays** as a method on `OpenClawOversightGateService` — not in the interface.
+
+**`GATE_SENDER`** constant remains on `OpenClawOversightGateService`. `OversightGateDispatcher`
+updated to reference `OpenClawOversightGateService.GATE_SENDER`.
+
+**`OversightGateDispatcher`** and **`GateContext`** remain package-private in openclaw —
+implementation details, not SPI surface.
+
+**`ReactiveOpenClawOversightGateService implements ReactiveOversightGateService`** — new class,
+following the split-class pattern of `ReactiveOpenClawWorkerProvisioner`. Wraps
+`OpenClawOversightGateService` calls in `Uni.createFrom().item(() -> ...)` /
+`Uni.createFrom().voidItem()`. Has no current injection caller but is required for reactive
+parity completeness.
 
 ### Caller injection changes
 
@@ -139,15 +210,16 @@ All references: `io.casehub.openclaw.casehub.GateDecision` → `io.casehub.api.s
 
 ### CaseChannelNames removal
 
-`CaseChannelNames` is deleted. It duplicates `CaseChannel` static methods already in engine-api:
+`CaseChannelNames` is deleted. `CaseChannelNamesTest` is deleted. Production callers migrate:
 
-| Old | Replacement |
-|---|---|
-| `CaseChannelNames.extractCaseId(name)` | `CaseChannel.parseCaseId(name)` |
-| `CaseChannelNames.oversightChannelName(caseId)` | `CaseChannel.oversightChannelName(caseId)` |
-| `CaseChannelNames.workChannelName(caseId)` | `CaseChannel.channelName(caseId, "work")` |
+| Old | Replacement | Production callers |
+|---|---|---|
+| `CaseChannelNames.extractCaseId(name)` | `CaseChannel.parseCaseId(name)` | `OversightGateService`, `OpenClawChannelBackend` |
+| `CaseChannelNames.oversightChannelName(caseId)` | `CaseChannel.oversightChannelName(caseId)` | `OversightGateService` |
+| `CaseChannelNames.workChannelName(caseId)` | *(no replacement needed)* | none — dead code, test-only callers |
 
-`CaseChannelNamesTest` deleted — equivalent coverage exists in engine-api's `CaseChannel` tests.
+`workChannelName()` has no production callers (confirmed with `ide_find_references` — only
+`CaseChannelNamesTest` round-trip test uses it). Deleted without substitution.
 
 ---
 
@@ -156,46 +228,59 @@ All references: `io.casehub.openclaw.casehub.GateDecision` → `io.casehub.api.s
 ### engine (engine session's responsibility)
 
 - Unit tests for `GateDecision` record construction and sealed interface exhaustiveness
-- Unit tests for `NoOpOversightGateService`: `openGate()` returns `Autonomous`, `fulfill()` is silent
-- Unit tests for `NoOpReactiveOversightGateService`: same assertions via `.await().indefinitely()`
+- Unit test for `NoOpOversightGateService`: `openGate()` returns `Autonomous`, `fulfill()` is silent
+- Unit test for `NoOpReactiveOversightGateService`: same assertions via `.await().indefinitely()`
+- Integration test confirming `ChainedReactiveActionRiskClassifier` satisfies `ReactiveActionRiskClassifier`
+  injection in openclaw-equivalent CDI context (no engine-runtime-specific beans present)
 
 ### casehub-openclaw
 
 - `OversightGateServiceTest` → `OpenClawOversightGateServiceTest` (rename + import updates)
-- All existing test cases retained intact — behaviour is unchanged
-- `CommitmentToolsTest`, `OpenClawDeliveryResourceTest`: mock type changes from class to interface
-  for `OversightGateService` fields — no behavioural difference with Mockito
+- Constructor update: `@RiskClassifier Instance<ActionRiskClassifier>` replaced with
+  `ReactiveActionRiskClassifier`; mock type in test setup changes accordingly
+- Existing test cases for `classifyMostRestrictive()` behaviour (single classifier, multiple,
+  fail-safe, most-restrictive selection) — deleted, as this logic now lives in
+  `ChainedReactiveActionRiskClassifier` (tested in engine)
+- Remaining test cases retained intact: `evaluate()`, `fulfill()`, channel/commitment lookup
+  fail-open paths, tenancyId recovery
+- `CommitmentToolsTest`, `OpenClawOversightDeliveryResourceTest`: mock type changes from class to
+  interface for `OversightGateService` fields — no behavioural difference with Mockito
 - `OpenClawDeliveryResourceTest`: injects `OpenClawOversightGateService` (concrete) for
   `evaluate()` tests — no change
-- `OversightGateDispatcherTest`: one reference to `OversightGateService.GATE_SENDER` (line 123)
-  → `OpenClawOversightGateService.GATE_SENDER`; otherwise unaffected
+- `OversightGateDispatcherTest`: one reference `OversightGateService.GATE_SENDER` →
+  `OpenClawOversightGateService.GATE_SENDER`
 - `OversightGateDispatcherCdiTest`: unaffected
-
-No new test cases required — behaviour does not change, only the type boundary moves.
 
 ---
 
 ## Cross-Repo Sequencing
 
-1. **engine session** — adds `GateDecision`, `OversightGateService`, `ReactiveOversightGateService`
-   to `casehub-engine/api/`; adds `NoOp*` implementations to `casehub-engine/runtime/`; publishes
-   `casehub-engine-api` snapshot
-2. **openclaw session** — updates `casehub-openclaw` pom to consume new engine-api snapshot;
-   renames `OversightGateService` → `OpenClawOversightGateService implements OversightGateService`;
-   removes `CaseChannelNames`; updates all callers and tests; verifies full build green
+1. **engine session — engine-api additions** (blocking dependency for openclaw)
+   - Move `ChainedReactiveActionRiskClassifier` from engine runtime to engine-api
+   - Add `GateDecision`, `OversightGateService`, `ReactiveOversightGateService` to engine-api
+   - Publish new `casehub-engine-api` snapshot
 
-The openclaw changes are blocked on engine publishing the new snapshot. No partial implementation
-should be merged until the engine-api snapshot is available.
+2. **engine session — engine runtime additions**
+   - Add `NoOpOversightGateService @DefaultBean` with startup WARN
+   - Add `NoOpReactiveOversightGateService @DefaultBean` with startup WARN
+
+3. **openclaw session** (blocked on step 1)
+   - Update pom to consume new engine-api snapshot
+   - Rename `OversightGateService` → `OpenClawOversightGateService implements OversightGateService`
+   - Delete `classifyMostRestrictive()`, `mostRestrictive()`, `narrower()`; inject
+     `ReactiveActionRiskClassifier`; call `.classify(action).await().indefinitely()`
+   - Add `ReactiveOpenClawOversightGateService implements ReactiveOversightGateService`
+   - Remove `CaseChannelNames`; update all callers
+   - Update all callers and tests per tables above
+   - Verify full build green
 
 ---
 
-## PLATFORM.md Update
+## PLATFORM.md Update (casehubio/parent — file issue, never commit directly)
 
-After both sessions complete, `PLATFORM.md` Known Placement Violations table entry for
-`OversightGateService` is removed. Capability Ownership table entry updated:
-
-> **Oversight gate lifecycle** | `casehub-engine-api` (interface) / `casehub-openclaw` (impl) |
-> `OversightGateService`, `ReactiveOversightGateService`, `GateDecision`
-
-This update goes to `casehubio/parent` (file a GitHub issue from the openclaw session —
-never commit to parent directly).
+- Remove `OversightGateService` from Known Placement Violations table
+- Update Capability Ownership table:
+  > **Oversight gate lifecycle** | `casehub-engine-api` (interface) / `casehub-openclaw` (impl) |
+  > `OversightGateService`, `ReactiveOversightGateService`, `GateDecision`
+- Update cross-repo dependency map: `casehub-engine-api` → `casehub-openclaw casehub` now includes
+  `OversightGateService`, `ReactiveOversightGateService`, `GateDecision`
