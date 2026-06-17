@@ -97,10 +97,12 @@ public interface ReactiveOversightGateService {
 
 Follows reactive parity established by `ReactiveWorkerProvisioner`, `ReactiveActionRiskClassifier`.
 No identified consumer in the current openclaw deployment — both `CommitmentTools` (MCP, blocking)
-and `OpenClawOversightDeliveryResource` (JAX-RS, blocking) call the blocking interface. Added on
-parity grounds: every operational SPI in engine-api has a reactive variant so consumers can evolve
-without an API break. openclaw provides a `ReactiveOpenClawOversightGateService` following the same
-split-class pattern as `ReactiveOpenClawWorkerProvisioner`.
+and `OpenClawOversightDeliveryResource` (JAX-RS, blocking) call the blocking interface. Parity is
+one reason to add it; the concrete technical justification is stronger: `OpenClawOversightGateService.openGate()`
+calls `reactiveClassifier.classify(action).await().indefinitely()`, making it unsafe to call from a
+Vert.x IO thread (deadlock or `BlockingNotAllowedException`). Reactive callers — including any
+future engine consumer — MUST use `ReactiveOversightGateService.openGate()`. The interface exists
+to enforce this boundary explicitly rather than letting callers discover it at runtime.
 
 No qualifier annotation — `OversightGateService` is a singleton SPI, not a `@RiskClassifier`-style
 multi-implementation chain.
@@ -124,10 +126,14 @@ is no `@DefaultBean NoOpReactiveActionRiskClassifier` anywhere.
 - `Uni`, `Infrastructure` — Mutiny (already in engine-api)
 - `Logger` — JBoss logging (transitive via Mutiny)
 
-Moving it to `io.casehub.api.spi` (or a new `io.casehub.api.spi.internal` package if the concrete
-class doesn't belong in the same package as interfaces) is clean. The `internal` package precedent
-exists in engine; alternatively it can sit in `io.casehub.api.spi` as the only non-interface type
-alongside `NoOpWorkerProvisioner`.
+**Package:** `io.casehub.api.classification`. Not `io.casehub.api.spi` — that package holds
+interfaces and annotations only; placing a concrete `@ApplicationScoped` bean there would
+immediately break the structural convention. The move to engine-api is a deliberate expansion of
+engine-api's role: from "pure interfaces and annotations" to "interfaces, annotations, and
+canonical default implementations that harnesses cannot access without full engine runtime." This
+is an intentional design decision, not accidental — state it in the engine session commit message.
+The `classification` package name scopes the precedent explicitly; it is not intended as a general
+`impl` home for arbitrary engine-api beans.
 
 **Consequence:** the engine session must publish a new engine-api snapshot before openclaw
 implements the changes in this spec.
@@ -173,10 +179,16 @@ The three private methods `classifyMostRestrictive()`, `mostRestrictive()`, and 
 RiskDecision decision = reactiveClassifier.classify(action).await().indefinitely();
 ```
 
-`await().indefinitely()` is valid — the MCP tool handler (`CommitmentTools`) runs in a
-`@Blocking` Quarkus worker thread. This single line replaces all three private methods and
-correctly handles both blocking and reactive domain classifiers, including fail-safe semantics
-already implemented in `ChainedReactiveActionRiskClassifier`.
+`await().indefinitely()` is valid — the MCP tool handler (`CommitmentTools`) runs in a `@Blocking`
+Quarkus worker thread. This single line replaces all three private methods and correctly handles
+both blocking and reactive domain classifiers, including fail-safe semantics already implemented in
+`ChainedReactiveActionRiskClassifier`.
+
+**Thread constraint:** `await().indefinitely()` makes `OpenClawOversightGateService.openGate()`
+unsafe on Vert.x IO threads. Any caller on an IO thread (reactive JAX-RS, Vert.x handler) must use
+`ReactiveOversightGateService.openGate()` instead. This is the concrete technical justification for
+the reactive interface — not only parity, but a hard thread-safety boundary that future engine
+consumers must respect.
 
 **`evaluate()` stays** as a method on `OpenClawOversightGateService` — not in the interface.
 
@@ -187,10 +199,20 @@ updated to reference `OpenClawOversightGateService.GATE_SENDER`.
 implementation details, not SPI surface.
 
 **`ReactiveOpenClawOversightGateService implements ReactiveOversightGateService`** — new class,
-following the split-class pattern of `ReactiveOpenClawWorkerProvisioner`. Wraps
-`OpenClawOversightGateService` calls in `Uni.createFrom().item(() -> ...)` /
-`Uni.createFrom().voidItem()`. Has no current injection caller but is required for reactive
-parity completeness.
+using the **thin delegate pattern**: injects `OpenClawOversightGateService` (not the interface —
+the concrete class, which carries `evaluate()`) and wraps each call:
+- `openGate()` → `Uni.createFrom().item(() -> delegate.openGate(...))` — offloads to worker pool
+- `fulfill()` → `Uni.createFrom().item(() -> { delegate.fulfill(...); return null; }).replaceWithVoid()`
+
+This is NOT the split-class pattern of `ReactiveOpenClawWorkerProvisioner` (which injects its own
+deps and re-implements logic independently). A full reactive re-implementation here would require
+reactive Qhorus services (`ReactiveMessageService`, `ReactiveChannelService`) which are
+`@IfBuildProperty(name = "casehub.qhorus.reactive.enabled", stringValue = "true")-gated`, coupling
+the reactive gate service to the reactive Qhorus deployment property. The thin delegate avoids that
+coupling: `ReactiveOpenClawOversightGateService` carries no reactive Qhorus deps and requires no
+`@IfBuildProperty` gate — it is always safe to activate.
+
+Has no current injection caller but required for the thread-safety boundary described above.
 
 ### Caller injection changes
 
@@ -255,16 +277,16 @@ All references: `io.casehub.openclaw.casehub.GateDecision` → `io.casehub.api.s
 
 ## Cross-Repo Sequencing
 
-1. **engine session — engine-api additions** (blocking dependency for openclaw)
-   - Move `ChainedReactiveActionRiskClassifier` from engine runtime to engine-api
+1. **engine session** (blocking dependency for openclaw — both engine-api and runtime changes done together)
+   - Move `ChainedReactiveActionRiskClassifier` from engine runtime to `casehub-engine-api`
+     (`io.casehub.api.classification` package)
    - Add `GateDecision`, `OversightGateService`, `ReactiveOversightGateService` to engine-api
+     (`io.casehub.api.spi`)
+   - Add `NoOpOversightGateService @DefaultBean` (with startup WARN) to engine runtime
+   - Add `NoOpReactiveOversightGateService @DefaultBean` (with startup WARN) to engine runtime
    - Publish new `casehub-engine-api` snapshot
 
-2. **engine session — engine runtime additions**
-   - Add `NoOpOversightGateService @DefaultBean` with startup WARN
-   - Add `NoOpReactiveOversightGateService @DefaultBean` with startup WARN
-
-3. **openclaw session** (blocked on step 1)
+2. **openclaw session** (blocked on step 1)
    - Update pom to consume new engine-api snapshot
    - Rename `OversightGateService` → `OpenClawOversightGateService implements OversightGateService`
    - Delete `classifyMostRestrictive()`, `mostRestrictive()`, `narrower()`; inject
