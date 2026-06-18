@@ -281,9 +281,12 @@ All references: `io.casehub.openclaw.casehub.GateDecision` → `io.casehub.api.s
   `ChainedReactiveActionRiskClassifier` (tested in engine)
 - Remaining test cases retained intact: `evaluate()`, `fulfill()`, channel/commitment lookup
   fail-open paths, tenancyId recovery
-- `CommitmentToolsTest`: import `io.casehub.openclaw.casehub.OversightGateService` →
-  `io.casehub.api.spi.OversightGateService`; mock field type and mock creation are unchanged
-  (still the interface — Mockito mocks interfaces without behavioural difference)
+- `CommitmentToolsTest`: two import updates —
+  `io.casehub.openclaw.casehub.OversightGateService` → `io.casehub.api.spi.OversightGateService`;
+  `io.casehub.openclaw.casehub.GateDecision` → `io.casehub.api.spi.GateDecision` (used in mock
+  stubs: `new GateDecision.Autonomous()`, `new GateDecision.GatePending(...)`). Mock field type
+  and mock creation are unchanged (still the interface — Mockito mocks interfaces without
+  behavioural difference)
 - `OpenClawDeliveryResourceTest`: `@InjectMock OversightGateService oversightGateService` →
   `@InjectMock OpenClawOversightGateService oversightGateService`; import changes from
   `io.casehub.openclaw.casehub.OversightGateService` to `io.casehub.openclaw.casehub.OpenClawOversightGateService`.
