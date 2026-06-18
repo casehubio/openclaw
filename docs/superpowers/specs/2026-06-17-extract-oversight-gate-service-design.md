@@ -2,7 +2,7 @@
 
 **Issue:** casehubio/openclaw#31
 **Date:** 2026-06-17
-**Status:** Approved — pending engine implementation
+**Status:** Engine implementation complete — openclaw session pending
 
 ---
 
@@ -281,13 +281,23 @@ All references: `io.casehub.openclaw.casehub.GateDecision` → `io.casehub.api.s
   `ChainedReactiveActionRiskClassifier` (tested in engine)
 - Remaining test cases retained intact: `evaluate()`, `fulfill()`, channel/commitment lookup
   fail-open paths, tenancyId recovery
-- `CommitmentToolsTest`, `OpenClawOversightDeliveryResourceTest`: mock type changes from class to
-  interface for `OversightGateService` fields — no behavioural difference with Mockito
-- `OpenClawDeliveryResourceTest`: injects `OpenClawOversightGateService` (concrete) for
-  `evaluate()` tests — no change
+- `CommitmentToolsTest`: import `io.casehub.openclaw.casehub.OversightGateService` →
+  `io.casehub.api.spi.OversightGateService`; mock field type and mock creation are unchanged
+  (still the interface — Mockito mocks interfaces without behavioural difference)
+- `OpenClawDeliveryResourceTest`: `@InjectMock OversightGateService oversightGateService` →
+  `@InjectMock OpenClawOversightGateService oversightGateService`; import changes from
+  `io.casehub.openclaw.casehub.OversightGateService` to `io.casehub.openclaw.casehub.OpenClawOversightGateService`.
+  The `verify(oversightGateService).evaluate(...)` call is unchanged. Type must match the
+  injection point in `OpenClawDeliveryResource` (concrete class, for `evaluate()`).
+- `OpenClawOversightDeliveryResourceTest`: no changes — `@QuarkusTest` with HTTP-level tests
+  only; no `OversightGateService` mock field
 - `OversightGateDispatcherTest`: one reference `OversightGateService.GATE_SENDER` →
   `OpenClawOversightGateService.GATE_SENDER`
-- `OversightGateDispatcherCdiTest`: unaffected
+- `OversightGateDispatcherCdiTest`: update import `io.casehub.openclaw.casehub.OversightGateService`
+  → `io.casehub.api.spi.OversightGateService`; CDI injects `OpenClawOversightGateService` via
+  the interface — injection field name and type declaration unchanged. Also update the stale
+  comment at the channel-creation block: `// Channel names must match CaseChannelNames exactly`
+  → `// Channel names follow CaseChannel.channelName(caseId, purpose) convention`
 - **`ReactiveOpenClawOversightGateServiceTest`** (new): two unit tests using a mock delegate:
   1. `openGate()` — assert returns a `Uni` that emits the same `GateDecision` as `delegate.openGate()`
   2. `fulfill()` — assert returns a `Uni<Void>` that completes without error and invokes `delegate.fulfill()`
