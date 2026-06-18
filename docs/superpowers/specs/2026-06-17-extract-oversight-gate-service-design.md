@@ -252,8 +252,8 @@ All references: `io.casehub.openclaw.casehub.GateDecision` → `io.casehub.api.s
 
 | Old | Replacement | Production callers |
 |---|---|---|
-| `CaseChannelNames.extractCaseId(name)` | `CaseChannel.parseCaseId(name)` | `OversightGateService`, `OpenClawChannelBackend` |
-| `CaseChannelNames.oversightChannelName(caseId)` | `CaseChannel.oversightChannelName(caseId)` | `OversightGateService` |
+| `CaseChannelNames.extractCaseId(name)` | `CaseChannel.parseCaseId(name)` | `OpenClawOversightGateService`, `OpenClawChannelBackend` |
+| `CaseChannelNames.oversightChannelName(caseId)` | `CaseChannel.oversightChannelName(caseId)` | `OpenClawOversightGateService` |
 | `CaseChannelNames.workChannelName(caseId)` | *(no replacement needed)* | none — dead code, test-only callers |
 
 `workChannelName()` has no production callers (confirmed with `ide_find_references` — only
@@ -304,7 +304,7 @@ All references: `io.casehub.openclaw.casehub.GateDecision` → `io.casehub.api.s
    - Add `GateDecision`, `OversightGateService`, `ReactiveOversightGateService` to engine-api
      (`io.casehub.api.spi`)
    - Add `NoOpOversightGateService @DefaultBean` (with startup WARN) to engine runtime
-   - Add `NoOpReactiveOversightGateService @DefaultBean` (with startup WARN) to engine runtime
+   - Add `NoOpReactiveOversightGateService @DefaultBean` (no startup WARN — blocking NoOp covers this) to engine runtime
    - Publish new `casehub-engine-api` snapshot
 
 2. **openclaw session** (blocked on step 1)
