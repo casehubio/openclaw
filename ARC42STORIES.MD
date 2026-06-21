@@ -111,7 +111,7 @@ C4Context
 
 **Foundation owns:** case lifecycle (casehub-engine); agent communication mesh and Qhorus channels (casehub-qhorus); Merkle audit chain and trust scoring (casehub-ledger); human task lifecycle (casehub-work).
 
-**Not owned here:** ActionRiskClassifier SPI in casehub-engine-api (casehubio/engine#402 — local placeholder only). Oversight channel now uses `deniedTypes=EVENT` per PLATFORM.md (claudony#142 resolved in #25).
+**Not owned here:** ActionRiskClassifier SPI in casehub-engine-api (casehubio/engine#402 — shipped; import swap done in openclaw#30). Oversight channel now uses `deniedTypes=EVENT` per PLATFORM.md (claudony#142 resolved in #25).
 
 See `../parent/docs/PLATFORM.md` Capability Ownership table and `../parent/docs/repos/casehub-openclaw.md`.
 
@@ -556,7 +556,7 @@ Layer 3 skill pack extension — three new SKILL.md files (casehub-reject, caseh
 
 `OversightGateService.evaluate()` now dispatches the correct speech act type (DONE, STATUS, etc.) with `inReplyTo` populated via `commitmentStore.findOpenByObligor()` — restart-resilient, no in-memory state.
 
-`ActionRiskClassifier` local placeholder verified identical to casehubio/engine#402 proposed SPI — import-swap ready.
+`ActionRiskClassifier` local placeholder replaced by casehubio/engine#402 SPI — import swap done in openclaw#30.
 
 **Deferred:** `CommitmentService.extendDeadline()` filed on casehub-qhorus to remove the direct `expiresAt` mutation workaround.
 
@@ -650,7 +650,7 @@ To implement a webhook-delivery client for an agent runtime in a CaseHub integra
 
 1. Define a `@RegisterRestClient(configKey = "runtime-gateway")` interface with `@RegisterProvider(AuthFilter.class)` for authentication. Do not use `RestClientBuilder` — CDI injection is required for provider resolution.
 2. Create an immutable request record with a package-private static factory that enforces `deliver: "webhook"`. No public constructor.
-3. Create an `@ApplicationScoped` client bean that owns an in-memory session registry (`ConcurrentHashMap<String, Session>`). Key by the runtime's agent identifier (not the CaseHub workerId — the workerId is not stable across provisioning calls until casehubio/engine#402 ships).
+3. Create an `@ApplicationScoped` client bean that owns an in-memory session registry (`ConcurrentHashMap<String, Session>`). Key by the runtime's agent identifier (not the CaseHub workerId — the workerId is not stable across provisioning calls; casehubio/engine#402 shipped 2026-06).
 4. Wrap all invocations in `try { ... } catch (WebApplicationException e) { ... } finally { response.close(); }`. The REST client throws on non-2xx; it never returns an error Response.
 5. In `application.properties`, bridge `quarkus.rest-client.{configKey}.url=${casehub.{runtime}.gateway.url}`. Without this bridge, the client uses no base URL.
 6. Write a `@QuarkusTest` with `WireMockServer` as a `QuarkusTestResourceLifecycleManager`. Unit tests that mock the REST client cannot reproduce the throw-on-non-2xx behaviour.
@@ -666,7 +666,7 @@ To implement a webhook-delivery client for an agent runtime in a CaseHub integra
 **Issues:** casehubio/openclaw#4, casehubio/openclaw#6, casehubio/openclaw#10, casehubio/openclaw#15, casehubio/openclaw#16
 **Navigation:** `git log --grep="#4" --oneline`, `git log --grep="#6" --oneline`
 **Blog:** `blog/2026-05-29-mdp01-casehub-spi-implementations.md`, `blog/2026-05-30-mdp01-bidirectional-wiring-oversight-gate.md`
-**Improvement refs:** casehubio/engine#402 (ActionRiskClassifier SPI — Phase 2 gate wiring via openclaw#30), casehubio/openclaw#27 (NliSpeechActClassifier — CLOSED, superseded by openclaw#28 tool-call-first architecture)
+**Improvement refs:** casehubio/engine#402 (ActionRiskClassifier SPI — CLOSED; Phase 2 gate wiring done via openclaw#30 — CLOSED), casehubio/openclaw#27 (NliSpeechActClassifier — CLOSED, superseded by openclaw#28 tool-call-first architecture)
 **Completed:** 2026-05-31 (Phase 1)
 
 #### What it adds
@@ -681,7 +681,7 @@ What this layer adds:
 - **Passive ring buffer population** — `ChannelContextWindowObserver` receives every Qhorus dispatch; must never throw to Qhorus; EVENT messages excluded (not agent-visible)
 - **Durable oversight gate** — `OversightGateService.openGate()` dispatches COMMAND to the oversight channel with `correlationId=gateId`; `fulfill()` looks up the Commitment by correlationId — survives Quarkus restart without in-memory state
 
-Not closed here: REST endpoints for delivery webhooks (L3), ActionRiskClassifier SPI in engine-api (casehubio/engine#402). *(#16 DONE dispatch resolved in Epic 8 Phase 2, 2026-06-04.)*
+Not closed here: REST endpoints for delivery webhooks (L3). *(#16 DONE dispatch resolved in Epic 8 Phase 2, 2026-06-04. ActionRiskClassifier SPI in engine-api — CLOSED casehubio/engine#402, import swap done in openclaw#30.)*
 
 #### Accountability gaps closed
 
@@ -711,11 +711,11 @@ Not closed here: REST endpoints for delivery webhooks (L3), ActionRiskClassifier
 
 **`OversightGateService.fulfill()` uses Commitment lookup (not in-memory map) for durability.** `MessageService.dispatch(COMMAND, correlationId=gateId)` creates a `Commitment` in the database when the gate opens. After a restart, `commitmentStore.findByCorrelationId(gateId)` still resolves the gate. An in-memory map would silently drop open gates on restart.
 
-**`@Alternative @Priority(1)` for SPI overrides.** Override implementations of casehub-openclaw SPIs must use `@Alternative @Priority(1)` (not `@DefaultBean`) — defaults do not use `@DefaultBean`, so any `@ApplicationScoped` alternative would cause CDI ambiguity without the `@Alternative` marker. (Note: `ActionRiskClassifier` and `SpeechActClassifier` were deleted in openclaw#28 — tool-call-first completion; Phase 2 risk classification will use casehub-engine-api engine#402 SPI via openclaw#30.)
+**`@Alternative @Priority(1)` for SPI overrides.** Override implementations of casehub-openclaw SPIs must use `@Alternative @Priority(1)` (not `@DefaultBean`) — defaults do not use `@DefaultBean`, so any `@ApplicationScoped` alternative would cause CDI ambiguity without the `@Alternative` marker. (Note: `ActionRiskClassifier` and `SpeechActClassifier` were deleted in openclaw#28 — tool-call-first completion; Phase 2 risk classification now uses casehub-engine-api engine#402 SPI — done in openclaw#30.)
 
 #### Architectural decisions
 
-**Why `ActionRiskClassifier` is local rather than in casehub-engine-api:** the platform-wide SPI (casehubio/engine#402) was not shipped when this layer was built. A local interface with the same contract allows the gate to be fully wired and tested with a Phase 1 always-Autonomous default. When engine-api ships the SPI, the migration is a pure import swap — the contract is identical by design. Tradeoff: two definitions of the same concept exist until engine-api ships.
+**Why `ActionRiskClassifier` was local rather than in casehub-engine-api (resolved):** the platform-wide SPI (casehubio/engine#402) was not shipped when this layer was built. A local interface with the same contract allowed the gate to be fully wired and tested with a Phase 1 always-Autonomous default. The migration was a pure import swap — done in openclaw#30 (2026-06). No duplicate definitions remain.
 
 **Why `OversightGateService.fulfill()` uses four database queries rather than an in-memory map:** an in-memory map solves the happy path (gate opened and fulfilled in the same process instance) and makes the restart failure mode worse (map is lost; gate hangs until Watchdog). The Commitment created by `openGate()` is already in the database; `findByCorrelationId` is an indexed query. The four queries carry the same persistence guarantee as the rest of the case step. Tradeoff: four DB queries per gate resolution vs O(1) in-memory lookup.
 
@@ -1108,7 +1108,6 @@ To add SKILL.md files to a CaseHub integration tier:
 
 | Risk | Description | Issue | Mitigation |
 |---|---|---|---|
-| `ActionRiskClassifier` SPI not in engine-api | Local placeholder; migration to `casehub-engine-api` import swap depends on casehubio/engine#402 shipping | casehubio/engine#402 | `DefaultActionRiskClassifier` always-Autonomous; no real risk gate until SPI ships |
 | OpenClaw `after_tool_call` not firing | Upstream OpenClaw bug in embedded agent runs; any future use of `after_tool_call` hook depends on this fix | casehubio/openclaw#18 | No current dependency on `after_tool_call`; tracked for future phases |
 | Epic 3 issue (#3) never closed | `ChannelContextWindow` code is complete; the GitHub epic issue was left open after the Flyway migration was dropped from scope | casehubio/openclaw#3 | Close the issue; no code impact |
 
