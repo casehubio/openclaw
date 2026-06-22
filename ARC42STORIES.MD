@@ -1079,6 +1079,14 @@ To add SKILL.md files to a CaseHub integration tier:
 **Consequences:** TypeScript added as a third language in the repo. `npm` and Vitest maintained independently from Maven. Python package stays as a pure HTTP client library. Positive: hook follows OpenClaw's native plugin model; architectural boundary clear (TypeScript = in-process lifecycle, Python = external queries).
 **Source:** `docs/specs/2026-05-29-epic5-python-sdk-design.md §2`, protocol `PP-20260529-7f6b73`.
 
+### ADR-0003 — Channel layout topology moved to engine-api; unknown purposes throw
+
+**Date:** 2026-06-22
+**Context:** openclaw#38 (parent#93). `OpenClawNormativeLayout` in `casehub/` was a private duplicate of `NormativeChannelLayout` in claudony. Both defined the same 3-channel topology (work/observe/oversight) with identical constraints. The local openclaw protocol `normative-layout-single-source.md` mandated `OpenClawNormativeLayout` as the source of truth for openclaw only.
+**Decision:** Delete `OpenClawNormativeLayout`. Use `NormativeChannelLayout` from `io.casehub.api.spi.mesh` in `casehub-engine-api`. Both providers now hold a `private final CaseChannelLayout layout = new NormativeChannelLayout()` field and call `layout.channelsFor(caseId, null)` at runtime. The reactive provider's `openOrCreate` signature changed from `(UUID, String)` to `(UUID, CaseChannelLayout.ChannelSpec)` — the spec is passed directly, eliminating the second `LAYOUT.get(purpose)` lookup. Unknown purposes now throw `IllegalArgumentException` (previously silently created unconstrained channels). The local protocol was deleted and promoted to the garden as a platform-scope protocol.
+**Consequences:** openclaw channel topology is now governed by engine-api test guards (`NormativeChannelLayoutTest`). Any change to the normative layout requires an engine-api PR. openlaw#40 tracks the follow-on: making layout config-driven via a `channelLayout` property (matching claudony's pattern) so operators can switch without recompiling.
+**Source:** `casehub/garden: docs/protocols/casehub/normative-channel-layout-single-source.md`
+
 ### ADR-0002 — Quarkus-Embedded MCP Server
 
 **Date:** 2026-05-31
