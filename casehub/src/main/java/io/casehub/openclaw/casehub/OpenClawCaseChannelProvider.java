@@ -13,6 +13,8 @@ import org.jboss.logging.Logger;
 
 import io.casehub.api.model.CaseChannel;
 import io.casehub.api.spi.CaseChannelProvider;
+import io.casehub.api.spi.mesh.CaseChannelLayout;
+import io.casehub.api.spi.mesh.NormativeChannelLayout;
 import io.casehub.openclaw.context.ChannelContextWindowService;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.channel.ChannelSemantic;
@@ -27,9 +29,9 @@ import io.casehub.qhorus.runtime.message.MessageService;
 /**
  * Creates and manages Qhorus channels per CaseHub case.
  *
- * <p>Three normative channels per case: work, observe, oversight — all APPEND semantic,
- * matching Claudony's NormativeChannelLayout. Channel names follow the CaseChannel convention
- * "case-{caseId}/{purpose}".
+ * <p>Three normative channels per case: work, observe, oversight — all APPEND semantic.
+ * Channel topology is defined by {@link NormativeChannelLayout} from {@code casehub-engine-api}.
+ * Channel names follow the CaseChannel convention "case-{caseId}/{purpose}".
  *
  * <p>openChannel() is idempotent: finds existing channel by name before creating.
  * gateway.initChannel() is called on new channels only — channels that already exist in the
@@ -42,6 +44,7 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
     private static final Logger log = Logger.getLogger(OpenClawCaseChannelProvider.class);
     private static final String QHORUS_NAME_KEY = "qhorus-name";
 
+    private final CaseChannelLayout layout = new NormativeChannelLayout();
     private final ChannelService channelService;
     private final MessageService messageService;
     private final ChannelContextWindowService contextService;
@@ -61,16 +64,16 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
     @Override
     public CaseChannel openChannel(UUID caseId, String purpose) {
         String channelName = CaseChannel.channelName(caseId, purpose);
-        OpenClawNormativeLayout.ChannelSpec spec = OpenClawNormativeLayout.LAYOUT.get(purpose);
-        String description = spec != null ? spec.description() : purpose;
-        Set<MessageType> allowedSet = spec != null ? spec.allowedTypes() : null;
-        Set<MessageType> deniedSet = spec != null ? spec.deniedTypes() : null;
+        CaseChannelLayout.ChannelSpec spec = layout.channelsFor(caseId, null)
+                .stream().filter(s -> s.purpose().equals(purpose)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown channel purpose '" + purpose + "' for case " + caseId));
 
         Channel channel = channelService.findByName(channelName)
                 .orElseGet(() -> {
                     Channel created = channelService.create(new io.casehub.qhorus.runtime.channel.ChannelCreateRequest(
-                            channelName, description, ChannelSemantic.APPEND,
-                            null, null, null, null, null, allowedSet, deniedSet,
+                            channelName, spec.description(), ChannelSemantic.APPEND,
+                            null, null, null, null, null, spec.allowedTypes(), spec.deniedTypes(),
                             null, null, null, null));
                     gateway.initChannel(created.id, new ChannelRef(created.id, created.name));
                     return created;

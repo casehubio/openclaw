@@ -20,6 +20,7 @@ import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.openclaw.context.ChannelContextWindowService;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -221,5 +222,13 @@ class OpenClawCaseChannelProviderTest {
         provider.openChannel(caseId, "work");
 
         verify(gateway, never()).initChannel(any(UUID.class), any(ChannelRef.class));
+    }
+
+    @Test
+    void openChannel_unknownPurpose_throwsIllegalArgumentException() {
+        UUID caseId = UUID.randomUUID();
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> provider.openChannel(caseId, "unknown-purpose"))
+                .withMessageContaining("unknown-purpose");
     }
 }

@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -15,6 +14,8 @@ import org.jboss.logging.Logger;
 
 import io.casehub.api.model.CaseChannel;
 import io.casehub.api.spi.ReactiveCaseChannelProvider;
+import io.casehub.api.spi.mesh.CaseChannelLayout;
+import io.casehub.api.spi.mesh.NormativeChannelLayout;
 import io.casehub.openclaw.context.ChannelContextWindowService;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.channel.ChannelSemantic;
@@ -53,6 +54,7 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
     private static final Logger log = Logger.getLogger(ReactiveOpenClawCaseChannelProvider.class);
     private static final String QHORUS_NAME_KEY = "qhorus-name";
 
+    private final CaseChannelLayout layout = new NormativeChannelLayout();
     private final ReactiveChannelService channelService;
     private final ReactiveMessageService messageService;
     private final ChannelContextWindowService contextService;
@@ -132,17 +134,17 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
      * and context window. Called at most once per caseId per process lifetime (memoized).
      */
     private Uni<Map<String, CaseChannel>> initializeLayout(UUID caseId) {
-        List<String> purposes = OpenClawNormativeLayout.LAYOUT.keySet().stream().sorted().toList();
+        List<CaseChannelLayout.ChannelSpec> specs = layout.channelsFor(caseId, null);
 
-        // Seed with empty accumulator; flatMap each purpose sequentially
+        // Seed with empty accumulator; flatMap each spec sequentially
         Uni<ConcurrentHashMap<String, CaseChannel>> seed =
                 Uni.createFrom().item(new ConcurrentHashMap<>());
 
-        return purposes.stream()
+        return specs.stream()
                 .reduce(seed,
-                        (uni, purpose) -> uni.flatMap(acc ->
-                                openOrCreate(caseId, purpose)
-                                        .map(ch -> { acc.put(purpose, ch); return acc; })),
+                        (uni, spec) -> uni.flatMap(acc ->
+                                openOrCreate(caseId, spec)
+                                        .map(ch -> { acc.put(spec.purpose(), ch); return acc; })),
                         (a, b) -> { throw new UnsupportedOperationException("parallel not supported"); })
                 .map(acc -> (Map<String, CaseChannel>) acc);
     }
@@ -151,25 +153,21 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
      * Finds an existing channel by name, or creates it and fires {@link ChannelGateway#initChannel}.
      * {@code contextService.bindChannel()} runs on all paths (find or create).
      */
-    private Uni<CaseChannel> openOrCreate(UUID caseId, String purpose) {
-        String channelName = CaseChannel.channelName(caseId, purpose);
-        OpenClawNormativeLayout.ChannelSpec spec = OpenClawNormativeLayout.LAYOUT.get(purpose);
-        String description = spec != null ? spec.description() : purpose;
-        Set<MessageType> allowedSet = spec != null ? spec.allowedTypes() : null;
-        Set<MessageType> deniedSet = spec != null ? spec.deniedTypes() : null;
+    private Uni<CaseChannel> openOrCreate(UUID caseId, CaseChannelLayout.ChannelSpec spec) {
+        String channelName = CaseChannel.channelName(caseId, spec.purpose());
 
         return channelService.findByName(channelName)
                 .flatMap(opt -> opt.isPresent()
                         ? Uni.createFrom().item(opt.get())
                         : channelService.create(new io.casehub.qhorus.runtime.channel.ChannelCreateRequest(
-                                channelName, description, ChannelSemantic.APPEND,
-                                null, null, null, null, null, allowedSet, deniedSet,
+                                channelName, spec.description(), ChannelSemantic.APPEND,
+                                null, null, null, null, null, spec.allowedTypes(), spec.deniedTypes(),
                                 null, null, null, null))
                                 .invoke(ch -> gateway.initChannel(ch.id, new ChannelRef(ch.id, ch.name))))
                 .invoke(ch -> contextService.bindChannel(caseId, ch.id))
                 .map(ch -> {
                     log.debugf("Opened channel (reactive): %s (id=%s)", channelName, ch.id);
-                    return new CaseChannel(ch.id.toString(), ch.name, purpose, "qhorus",
+                    return new CaseChannel(ch.id.toString(), ch.name, spec.purpose(), "qhorus",
                             Map.of(QHORUS_NAME_KEY, ch.name));
                 });
     }
