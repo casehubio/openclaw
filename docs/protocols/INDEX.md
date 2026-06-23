@@ -11,5 +11,6 @@ Project-specific rules for the openclaw ↔ CaseHub integration layer.
 | [casehub/mcp-tool-no-instance-cache.md](casehub/mcp-tool-no-instance-cache.md) | No in-memory caches for entity associations in @ApplicationScoped MCP beans | app/mcp/ |
 | [casehub/gate-fail-open-asymmetry.md](casehub/gate-fail-open-asymmetry.md) | Classifier exception → GateRequired fail-safe; infrastructure failure → Autonomous | OversightGateService.openGate() |
 | [casehub/gate-context-sentinel-guard.md](casehub/gate-context-sentinel-guard.md) | Guard commandMessageId < 0 before constructing GateContext | openGate() sentinel guard |
+| [casehub/oidc-cdi-qhorus-exclusion.md](casehub/oidc-cdi-qhorus-exclusion.md) | Exclude QhorusInboundCurrentPrincipal from CDI when casehub-platform-oidc present | app/pom.xml + application.properties |
 
 See [casehub/INDEX.md](casehub/INDEX.md) for the full casehub tier listing.
