@@ -1103,6 +1103,13 @@ To add SKILL.md files to a CaseHub integration tier:
 **Consequences:** MCP endpoint auth (openclaw#43) and plugin endpoint tenant isolation (openclaw#42) are deferred — they require a different auth mechanism (Quarkus MCP server) and upstream OpenClaw support (service-account token) respectively. Auth retrofit for openclaw is complete per parent#251.
 **Source:** `docs/superpowers/specs/2026-06-23-oidc-wiring-design.md`, `docs/protocols/casehub/oidc-cdi-qhorus-exclusion.md`.
 
+### PlannedAction dependency resolution — coding against engine local HEAD (openclaw#46)
+
+**Date:** 2026-06-23
+**Context:** The published `casehub-engine-api` SNAPSHOT was built from an interim state that removed `PlannedAction` from `io.casehub.api.spi` (anticipating spec #543 — worker primitives migration). Local engine `main` still has `io.casehub.api.spi.PlannedAction` as a 5-field record `(workerId, caseId, description, actionType, context)` and `ActionRiskClassifier.classify(PlannedAction)` as a one-arg method. GitHub Packages 401 auth prevented downloading the published SNAPSHOT.
+**Decision:** Code against local engine HEAD. `OversightGateService` constructs `PlannedAction(agentId, caseId, outcome, "COMPLETION", Map.of())` inline and passes it to classifiers. No `casehub-worker-api` dependency; no `ClassificationContext`. Filed engine#565 to re-publish SNAPSHOT from local main. When engine#543 ships (ClassificationContext, worker-api migration), openclaw will need a follow-on adaptation PR.
+**Consequences:** openclaw#46 is closed locally. CI build will fail until engine re-publishes a consistent SNAPSHOT from local HEAD. The `ClassificationContext` separation (tracking workerId/caseId separately from action description) remains a future concern — it will improve classifier context quality when implemented.
+
 ---
 
 ## §11 Quality Requirements

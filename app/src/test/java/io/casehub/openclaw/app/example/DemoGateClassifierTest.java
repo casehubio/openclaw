@@ -45,7 +45,7 @@ class DemoGateClassifierTest {
     @Test
     void nullWorkerId_returnsAutonomous() {
         final var classifier = new DemoGateClassifier("execution");
-        final var action = new PlannedAction(null, UUID.randomUUID(), "outcome", "COMPLETION", Map.of());
+        final var action = PlannedAction.of("outcome", "COMPLETION", Map.of());
         assertThat(classifier.classify(action)).isInstanceOf(RiskDecision.Autonomous.class);
     }
 

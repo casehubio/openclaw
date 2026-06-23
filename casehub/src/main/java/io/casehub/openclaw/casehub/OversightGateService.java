@@ -235,7 +235,7 @@ public class OversightGateService {
         }
     }
 
-    private RiskDecision classifyMostRestrictive(PlannedAction action) {
+    private RiskDecision classifyMostRestrictive(final PlannedAction action) {
         if (classifiers.isUnsatisfied()) return new RiskDecision.Autonomous();
         RiskDecision result = new RiskDecision.Autonomous();
         for (ActionRiskClassifier classifier : classifiers) {
