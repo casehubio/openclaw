@@ -1095,6 +1095,14 @@ To add SKILL.md files to a CaseHub integration tier:
 **Consequences:** Java/TypeScript language split for the MCP layer. mcp4j is less mature than `@modelcontextprotocol/sdk`. MCP tool schema defined in Java annotations. Positive: no network hop between MCP and service layer, single deployment artifact, plugin calls REST directly without triple-hop.
 **Source:** `docs/adr/0002-mcp-server-host-process.md`.
 
+### Auth annotation strategy for integration tier REST resources (openclaw#41)
+
+**Date:** 2026-06-23
+**Context:** casehub-openclaw's REST surface is predominantly system-to-system — OpenClaw webhook callbacks, Python SDK calls, TypeScript plugin calls. None of these callers carry a casehub OIDC token. This is a structural reality of the integration tier, not a configuration gap. Activating `casehub-platform-oidc` raised the question of which endpoints get `@RolesAllowed` vs `@PermitAll`.
+**Decision:** `@PermitAll` on four system-to-system resources (delivery×2, channel-context, plugin); `@RolesAllowed(OpenClawGroups.ADMIN)` on `ExampleController` (the only human-triggered endpoint). `@PermitAll` is preferred over leaving endpoints unannotated — it makes the deliberate absence of auth auditable and survives future `quarkus.security.deny-unauthenticated` policy changes. The CDI exclusion of `QhorusInboundCurrentPrincipal` from `quarkus.arc.exclude-types` resolves the ambiguity between it and `OidcCurrentPrincipal @RequestScoped` — both are unqualified `CurrentPrincipal` implementations with no qualifier disambiguation otherwise.
+**Consequences:** MCP endpoint auth (openclaw#43) and plugin endpoint tenant isolation (openclaw#42) are deferred — they require a different auth mechanism (Quarkus MCP server) and upstream OpenClaw support (service-account token) respectively. Auth retrofit for openclaw is complete per parent#251.
+**Source:** `docs/superpowers/specs/2026-06-23-oidc-wiring-design.md`, `docs/protocols/casehub/oidc-cdi-qhorus-exclusion.md`.
+
 ---
 
 ## §11 Quality Requirements
