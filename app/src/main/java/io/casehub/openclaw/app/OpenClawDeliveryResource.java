@@ -3,6 +3,7 @@ package io.casehub.openclaw.app;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
@@ -33,9 +34,11 @@ import io.casehub.qhorus.runtime.store.CrossTenantChannelStore;
  *
  * <p>Completion signaling (DONE, DECLINE, etc.) is owned by MCP tool calls
  * ({@code casehub_done}, {@code casehub_reject}, etc.) which dispatch typed Qhorus
- * messages during the agent turn (openclaw#28). No auth — follows gateway topology.
- * See auth-retrofit-readiness.md protocol.
+ * messages during the agent turn (openclaw#28). @PermitAll: OpenClaw webhook callbacks
+ * carry no casehub OIDC token — auth is structurally impossible at this call site.
+ * See openclaw#41 spec §2 and auth-retrofit-readiness.md protocol.
  */
+@PermitAll
 @Path("/openclaw/delivery/channel")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)

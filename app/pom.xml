@@ -78,10 +78,22 @@
       <artifactId>quarkus-jdbc-postgresql</artifactId>
     </dependency>
 
+    <!-- casehub-platform-oidc — activates OidcCurrentPrincipal @RequestScoped.
+         Brings quarkus-oidc transitively. CDI wiring: see openclaw#41 spec §4.2. -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-platform-oidc</artifactId>
+    </dependency>
+
     <!-- Test -->
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-junit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-test-security</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

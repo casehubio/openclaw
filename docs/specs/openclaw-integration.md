@@ -190,7 +190,7 @@ Qhorus `dispatch()` skips `commitmentService.acknowledge()` — purely archival)
 the agent's text output for audit; the DONE from the tool call is the authoritative completion record.
 
 **Multi-tenancy note — delivery webhook path:** Webhook callbacks arrive without a casehub
-principal (`CurrentPrincipal = MockCurrentPrincipal = DEFAULT_TENANT_ID`). `OpenClawDeliveryResource`
+principal (`@PermitAll`; `OidcCurrentPrincipal` returns anonymous sentinel `DEFAULT_TENANT_ID` — openclaw#41). `OpenClawDeliveryResource`
 resolves `tenancyId` by looking up the channel entity cross-tenant via
 `@CrossTenant CrossTenantChannelStore.findById(channelId)` and passing it explicitly to
 `evaluate()`. Do not use `ChannelService.findById()` (tenant-scoped — returns empty for

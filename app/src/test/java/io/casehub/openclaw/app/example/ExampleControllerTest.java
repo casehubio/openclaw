@@ -3,9 +3,11 @@ package io.casehub.openclaw.app.example;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import io.casehub.openclaw.app.OpenClawGroups;
 import io.casehub.qhorus.api.message.CommitmentState;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
@@ -27,6 +29,7 @@ class ExampleControllerTest {
     ExamplePoller examplePoller;
 
     @Test
+    @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void unknownExampleId_returns400() {
         given()
             .contentType(JSON)
@@ -39,6 +42,7 @@ class ExampleControllerTest {
     }
 
     @Test
+    @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void multiAgentDevTeam_runsThroughPlannerCoderReviewer() {
         doNothing().when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
         // All agents complete immediately with FULFILLED
@@ -59,6 +63,7 @@ class ExampleControllerTest {
     }
 
     @Test
+    @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void tradingOversight_runsSignalRiskExecution() {
         doNothing().when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
         when(examplePoller.checkState(any())).thenReturn(CommitmentState.FULFILLED);
@@ -77,6 +82,7 @@ class ExampleControllerTest {
     }
 
     @Test
+    @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void incidentResponse_runsInvestigatorResolver() {
         doNothing().when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
         when(examplePoller.checkState(any())).thenReturn(CommitmentState.FULFILLED);
@@ -95,6 +101,7 @@ class ExampleControllerTest {
     }
 
     @Test
+    @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void declined_stops_doesNotRunNextAgent() {
         doNothing().when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
         // Signal completes, Risk declines
@@ -115,6 +122,7 @@ class ExampleControllerTest {
     }
 
     @Test
+    @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void delegated_stops_doesNotRunNextAgent() {
         doNothing().when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
         // Investigator escalates → DELEGATED

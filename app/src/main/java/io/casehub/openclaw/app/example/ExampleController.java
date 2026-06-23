@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -19,6 +20,7 @@ import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
+import io.casehub.openclaw.app.OpenClawGroups;
 import io.casehub.openclaw.casehub.OpenClawCasehubConfig;
 import io.casehub.qhorus.api.message.CommitmentState;
 import io.smallrye.common.annotation.Blocking;
@@ -35,6 +37,7 @@ import io.smallrye.common.annotation.Blocking;
  * When casehub.example.enabled=false (default), it returns 503. Set it to true in the
  * docker-compose environment for each example.
  */
+@RolesAllowed(OpenClawGroups.ADMIN)
 @ApplicationScoped
 @Path("/example")
 @Produces(MediaType.APPLICATION_JSON)

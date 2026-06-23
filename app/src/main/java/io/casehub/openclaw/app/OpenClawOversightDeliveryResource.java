@@ -2,6 +2,7 @@ package io.casehub.openclaw.app;
 
 import java.util.UUID;
 
+import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
@@ -21,7 +22,9 @@ import io.casehub.openclaw.casehub.OversightGateService;
  *
  * <p>Stays thin: validates gateId, delegates to {@link OversightGateService#fulfill(UUID, String)}.
  * Always returns 200 — OpenClaw must not retry oversight deliveries.
+ * @PermitAll: OpenClaw callbacks carry no casehub OIDC token. See openclaw#41 spec §2.
  */
+@PermitAll
 @Path("/openclaw/delivery/oversight")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)

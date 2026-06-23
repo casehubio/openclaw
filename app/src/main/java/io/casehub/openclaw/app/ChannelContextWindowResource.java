@@ -1,5 +1,6 @@
 package io.casehub.openclaw.app;
 
+import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
@@ -20,7 +21,9 @@ import io.casehub.openclaw.context.WindowContent;
  * as a silent skip. 404 would be semantically wrong.
  *
  * <p>{@code since} defaults to 0 when omitted — returns all buffered messages.
+ * @PermitAll: Python SDK before_prompt_build hook carries no casehub OIDC token. See openclaw#41.
  */
+@PermitAll
 @Path("/channel-context")
 @Produces(MediaType.APPLICATION_JSON)
 public class ChannelContextWindowResource {
