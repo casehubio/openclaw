@@ -20,6 +20,7 @@ import io.casehub.qhorus.api.channel.ChannelSemantic;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.qhorus.runtime.channel.ChannelCreateRequest;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
@@ -106,11 +107,11 @@ class OversightGateDispatcherCdiTest {
         caseId = UUID.randomUUID();
         gateId = UUID.randomUUID();
 
-        // Channel names must match CaseChannelNames exactly — fulfill() looks them up by name
+        // Channel names follow CaseChannel.channelName(caseId, purpose) convention
         oversightChannel = channelService.create(
-                "case-" + caseId + "/oversight", "Oversight", ChannelSemantic.APPEND, null);
+                ChannelCreateRequest.builder("case-" + caseId + "/oversight").description("Oversight").semantic(ChannelSemantic.APPEND).build());
         workChannel = channelService.create(
-                "case-" + caseId + "/work", "Work", ChannelSemantic.APPEND, null);
+                ChannelCreateRequest.builder("case-" + caseId + "/work").description("Work").semantic(ChannelSemantic.APPEND).build());
 
         // Default gateway mock: return 200 for all invocations. OpenClawHookClient is an
         // @ApplicationScoped CDI bean in the test context; the gateway client it injects

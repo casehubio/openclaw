@@ -8,9 +8,10 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import io.casehub.api.spi.ActionRiskClassifier;
-import io.casehub.api.spi.PlannedAction;
+import io.casehub.api.spi.ClassificationContext;
 import io.casehub.api.spi.RiskClassifier;
 import io.casehub.api.spi.RiskDecision;
+import io.casehub.worker.api.PlannedAction;
 
 /**
  * Demo-only ActionRiskClassifier. Gates when action.workerId() matches the configured
@@ -42,18 +43,18 @@ class DemoGateClassifier implements ActionRiskClassifier {
     }
 
     @Override
-    public RiskDecision classify(final PlannedAction action) {
+    public RiskDecision classify(final PlannedAction action, final ClassificationContext context) {
         if (gateAgentId.isEmpty()) {
             return new RiskDecision.Autonomous();
         }
-        if (action.workerId() == null) {
+        if (context.workerId() == null) {
             return new RiskDecision.Autonomous();
         }
-        if (!gateAgentId.get().equalsIgnoreCase(action.workerId())) {
+        if (!gateAgentId.get().equalsIgnoreCase(context.workerId())) {
             return new RiskDecision.Autonomous();
         }
         return new RiskDecision.GateRequired(
-                "Demo gate — agent '" + action.workerId() + "' requires oversight approval",
+                "Demo gate — agent '" + context.workerId() + "' requires oversight approval",
                 true, null, null, null);
     }
 }

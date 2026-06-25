@@ -140,6 +140,13 @@ This is **not** an application layer and **not** a framework. It is the wiring b
 - `OversightGateService` — `evaluate()` archives agent webhook output as a non-resolving STATUS message (no correlationId, no commitment state change); `fulfill()` processes human responses to oversight gates (see openclaw#30 for Phase 2 gate wiring via `CommitmentTools.done()`)
 - `CaseChannelNames` — package-private utility for case channel name operations shared across the `casehub/` module
 
+**Direct-call bridge (Java — `core/` + `casehub/` modules):**
+- `OpenClawHookClient.invokeDirect()` — sessionless overload for per-invocation delivery URLs; no registered session needed
+- `DirectCallBridge` — `@ApplicationScoped` `ConcurrentHashMap<String, CompletableFuture<String>>` keyed by correlationId; submit/complete/cancel lifecycle
+- `DirectCallDeliveryResource` — `POST /openclaw/direct-call/{correlationId}`; receives webhook callbacks, completes bridge future, always returns 200
+- `OpenClawAgentProvider` — implements `AgentProvider` (platform SPI); fires `/hooks/agent`, registers CompletableFuture, emits `Multi<AgentEvent>` on webhook completion
+- `OpenClawChatModel` — thin langchain4j `ChatModel` bridge; extracts system prompt, user text, and JSON schema from `ChatRequest`, delegates to `AgentProvider.invoke()`
+
 **ChannelContextWindow service (`core/` module):**
 A short-term, TTL-evicting ring buffer of Qhorus channel activity. Exposed as a REST API. Consumed by the Python SDK hook at agent turn start to inject channel context into the agent's system prompt. Provides best-effort intelligence enrichment — not correctness — so it is allowed to fail open.
 
@@ -180,6 +187,8 @@ examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight
 - `ChannelContextWindowObserver` — implements `MessageObserver` SPI; synchronously receives every Qhorus dispatch and feeds the ring buffer; must never throw to Qhorus
 - `OversightGateService` — `evaluate()` archives webhook text as archival STATUS; `fulfill()` processes human oversight gate responses (openclaw#30 wires gate entry via `CommitmentTools.done()`)
 - `CaseChannelNames` — package-private channel name utility
+- `DirectCallBridge` — `CompletableFuture` registry for synchronous webhook bridge; `DirectCallDeliveryResource` — receives callbacks at `POST /openclaw/direct-call/{correlationId}`
+- `OpenClawAgentProvider` — implements `AgentProvider` (platform SPI); `OpenClawChatModel` — thin langchain4j bridge
 
 **`app/`** owns:
 - `POST /openclaw/delivery/channel/{channelId}` — receives `deliver:webhook` callbacks from OpenClaw; delegates to `OversightGateService.evaluate()` (always 200)

@@ -84,6 +84,20 @@ public class OpenClawHookClient {
         invokeInternal(agentId, message, model, timeoutSeconds, deliveryUrl, session.sessionKey());
     }
 
+    /**
+     * Invokes an OpenClaw agent via the hook API without requiring a registered session.
+     * Auth is handled by the gateway bearer token from {@link OpenClawClientConfig}.
+     * {@code sessionName} is null — OpenClaw accepts this ({@code @JsonInclude(NON_NULL)}).
+     *
+     * <p>Designed for the direct-call pattern where each invocation uses a unique
+     * delivery URL (including a correlationId). Persistent sessions are a category
+     * mismatch for per-invocation URLs.
+     */
+    public void invokeDirect(String agentId, String message, String model,
+                              int timeoutSeconds, String deliveryUrl) {
+        invokeInternal(agentId, message, model, timeoutSeconds, deliveryUrl, null);
+    }
+
     private void invokeInternal(String agentId, String message, String model, int timeoutSeconds,
                                 String deliveryUrl, String sessionKey) {
         String effectiveModel = (model == null || model.isBlank())

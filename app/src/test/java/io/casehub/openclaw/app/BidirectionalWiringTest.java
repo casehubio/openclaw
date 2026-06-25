@@ -17,6 +17,7 @@ import io.casehub.openclaw.casehub.OpenClawChannelBackend;
 import io.casehub.openclaw.client.AgentInvocationRequest;
 import io.casehub.openclaw.client.OpenClawGatewayClient;
 import io.casehub.qhorus.api.channel.ChannelSemantic;
+import io.casehub.qhorus.runtime.channel.ChannelCreateRequest;
 import io.casehub.qhorus.api.gateway.ChannelInitialisedEvent;
 import io.casehub.qhorus.api.gateway.ChannelRef;
 import io.casehub.qhorus.api.gateway.OutboundMessage;
@@ -97,10 +98,10 @@ class BidirectionalWiringTest {
         oversightChannelName = "case-" + caseId + "/oversight";
 
         // Create channels via real ChannelService (InMemory store)
-        var workChannel = channelService.create(workChannelName, "Work channel", ChannelSemantic.APPEND, null);
+        var workChannel = channelService.create(ChannelCreateRequest.builder(workChannelName).description("Work channel").semantic(ChannelSemantic.APPEND).build());
         workChannelId = workChannel.id;
 
-        var oversightChannel = channelService.create(oversightChannelName, "Oversight channel", ChannelSemantic.APPEND, null);
+        var oversightChannel = channelService.create(ChannelCreateRequest.builder(oversightChannelName).description("Oversight channel").semantic(ChannelSemantic.APPEND).build());
         oversightChannelId = oversightChannel.id;
 
         // Register agent in the routing registry (tenancyId: default tenant)

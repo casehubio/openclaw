@@ -46,6 +46,18 @@
       <artifactId>casehub-platform-api</artifactId>
     </dependency>
 
+    <!-- Platform Agent API — AgentProvider SPI, AgentSessionConfig, AgentEvent -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-platform-agent-api</artifactId>
+    </dependency>
+
+    <!-- langchain4j core — ChatModel bridge for OpenClawChatModel -->
+    <dependency>
+      <groupId>dev.langchain4j</groupId>
+      <artifactId>langchain4j-core</artifactId>
+    </dependency>
+
     <!-- Ledger API — optional: for speech act type ledger integration -->
     <dependency>
       <groupId>io.casehub</groupId>

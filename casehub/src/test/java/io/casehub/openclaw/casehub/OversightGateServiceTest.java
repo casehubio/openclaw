@@ -529,9 +529,9 @@ class OversightGateServiceTest {
     void openGate_mostRestrictive_picksSmallerCandidateGroupsAsMoreRestrictive() {
         ActionRiskClassifier narrowClassifier = mock(ActionRiskClassifier.class);
         ActionRiskClassifier broadClassifier = mock(ActionRiskClassifier.class);
-        when(narrowClassifier.classify(any()))
+        when(narrowClassifier.classify(any(), any()))
                 .thenReturn(new RiskDecision.GateRequired("narrow", true, List.of("admin"), null, null));
-        when(broadClassifier.classify(any()))
+        when(broadClassifier.classify(any(), any()))
                 .thenReturn(new RiskDecision.GateRequired("broad", true, List.of("admin", "member"), null, null));
         when(classifiers.isUnsatisfied()).thenReturn(false);
         when(classifiers.iterator()).thenReturn(List.of(narrowClassifier, broadClassifier).iterator());
@@ -547,8 +547,8 @@ class OversightGateServiceTest {
     void openGate_twoClassifiersOneAutonomousOneGateRequired_returnsGatePending() {
         ActionRiskClassifier autonomousClassifier = mock(ActionRiskClassifier.class);
         ActionRiskClassifier gateClassifier = mock(ActionRiskClassifier.class);
-        when(autonomousClassifier.classify(any())).thenReturn(new RiskDecision.Autonomous());
-        when(gateClassifier.classify(any()))
+        when(autonomousClassifier.classify(any(), any())).thenReturn(new RiskDecision.Autonomous());
+        when(gateClassifier.classify(any(), any()))
                 .thenReturn(new RiskDecision.GateRequired("risk", true, null, null, null));
         when(classifiers.isUnsatisfied()).thenReturn(false);
         when(classifiers.iterator()).thenReturn(List.of(autonomousClassifier, gateClassifier).iterator());
@@ -597,13 +597,13 @@ class OversightGateServiceTest {
     }
 
     private void stubSingleClassifier(RiskDecision decision) {
-        when(mockClassifier.classify(any())).thenReturn(decision);
+        when(mockClassifier.classify(any(), any())).thenReturn(decision);
         when(classifiers.isUnsatisfied()).thenReturn(false);
         when(classifiers.iterator()).thenReturn(List.of(mockClassifier).iterator());
     }
 
     private void stubSingleClassifier_throws(RuntimeException ex) {
-        when(mockClassifier.classify(any())).thenThrow(ex);
+        when(mockClassifier.classify(any(), any())).thenThrow(ex);
         when(classifiers.isUnsatisfied()).thenReturn(false);
         when(classifiers.iterator()).thenReturn(List.of(mockClassifier).iterator());
     }

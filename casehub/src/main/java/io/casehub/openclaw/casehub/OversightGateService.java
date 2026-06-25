@@ -15,9 +15,10 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import io.casehub.api.spi.ActionRiskClassifier;
-import io.casehub.api.spi.PlannedAction;
+import io.casehub.api.spi.ClassificationContext;
 import io.casehub.api.spi.RiskClassifier;
 import io.casehub.api.spi.RiskDecision;
+import io.casehub.worker.api.PlannedAction;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
@@ -140,8 +141,10 @@ public class OversightGateService {
                 return new GateDecision.Autonomous();
             }
 
-            PlannedAction action = new PlannedAction(agentId, caseId, outcome, "COMPLETION", Map.of());
-            RiskDecision decision = classifyMostRestrictive(action);
+            PlannedAction action = PlannedAction.of(outcome, "COMPLETION");
+            ClassificationContext classCtx = new ClassificationContext(
+                    agentId, caseId, tenancyId, null, null, null);
+            RiskDecision decision = classifyMostRestrictive(action, classCtx);
 
             if (decision instanceof RiskDecision.Autonomous) {
                 return new GateDecision.Autonomous();
@@ -235,12 +238,13 @@ public class OversightGateService {
         }
     }
 
-    private RiskDecision classifyMostRestrictive(final PlannedAction action) {
+    private RiskDecision classifyMostRestrictive(final PlannedAction action,
+                                                    final ClassificationContext classCtx) {
         if (classifiers.isUnsatisfied()) return new RiskDecision.Autonomous();
         RiskDecision result = new RiskDecision.Autonomous();
         for (ActionRiskClassifier classifier : classifiers) {
             try {
-                result = mostRestrictive(result, classifier.classify(action));
+                result = mostRestrictive(result, classifier.classify(action, classCtx));
             } catch (Exception e) {
                 log.warnf("ActionRiskClassifier %s threw for action '%s': %s — applying fail-safe GateRequired",
                         classifier.getClass().getSimpleName(), action.description(), e.getMessage());

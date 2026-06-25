@@ -117,6 +117,20 @@
         <scope>test</scope>
       </dependency>
 
+      <!-- Foundation — Platform Agent (AgentProvider SPI, AgentSessionConfig, AgentEvent) -->
+      <dependency>
+        <groupId>io.casehub</groupId>
+        <artifactId>casehub-platform-agent-api</artifactId>
+        <version>${version.io.casehub}</version>
+      </dependency>
+
+      <!-- langchain4j core — ChatModel bridge -->
+      <dependency>
+        <groupId>dev.langchain4j</groupId>
+        <artifactId>langchain4j-core</artifactId>
+        <version>1.14.1</version>
+      </dependency>
+
       <!-- Foundation — Ledger (optional: tamper-evident record of OpenClaw interactions) -->
       <dependency>
         <groupId>io.casehub</groupId>

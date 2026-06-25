@@ -170,6 +170,52 @@ class OpenClawHookClientTest {
         assertThat(captor.getValue().deliver()).isEqualTo("webhook");
     }
 
+    // ── invokeDirect ──────────────────────────────────────────────────────────
+
+    @Test
+    void invokeDirect_noSessionRequired() {
+        Response ok = mockResponse(200);
+        when(gatewayClient.invokeAgent(any())).thenReturn(ok);
+
+        hookClient.invokeDirect("health-agent", "Book appointment", null, 30,
+                "https://casehub.internal/openclaw/direct-call/abc-123");
+
+        ArgumentCaptor<AgentInvocationRequest> captor =
+                ArgumentCaptor.forClass(AgentInvocationRequest.class);
+        verify(gatewayClient).invokeAgent(captor.capture());
+        AgentInvocationRequest req = captor.getValue();
+        assertThat(req.agentId()).isEqualTo("health-agent");
+        assertThat(req.message()).isEqualTo("Book appointment");
+        assertThat(req.deliver()).isEqualTo("webhook");
+        assertThat(req.to()).isEqualTo("https://casehub.internal/openclaw/direct-call/abc-123");
+        assertThat(req.sessionName()).isNull();
+    }
+
+    @Test
+    void invokeDirect_nullModel_usesConfigDefault() {
+        Response ok = mockResponse(200);
+        when(gatewayClient.invokeAgent(any())).thenReturn(ok);
+
+        hookClient.invokeDirect("health-agent", "msg", null, 30,
+                "https://casehub.internal/openclaw/direct-call/corr-1");
+
+        ArgumentCaptor<AgentInvocationRequest> captor =
+                ArgumentCaptor.forClass(AgentInvocationRequest.class);
+        verify(gatewayClient).invokeAgent(captor.capture());
+        assertThat(captor.getValue().model()).isEqualTo("claude-opus-4-5");
+    }
+
+    @Test
+    void invokeDirect_gatewayReturns5xx_throwsInvocationException() {
+        Response err = mockResponse(503);
+        when(gatewayClient.invokeAgent(any())).thenReturn(err);
+
+        assertThatThrownBy(() -> hookClient.invokeDirect("health-agent", "msg", null, 30,
+                "https://casehub.internal/openclaw/direct-call/corr-1"))
+                .isInstanceOf(OpenClawInvocationException.class)
+                .hasMessageContaining("503");
+    }
+
     // ── wake ─────────────────────────────────────────────────────────────────
 
     @Test
