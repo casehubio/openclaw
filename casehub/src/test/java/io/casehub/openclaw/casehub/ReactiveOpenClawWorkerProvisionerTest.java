@@ -25,19 +25,19 @@ class ReactiveOpenClawWorkerProvisionerTest {
     ChannelContextWindowService mockService;
     OpenClawAgentRegistry registry;
     ReactiveOpenClawWorkerProvisioner provisioner;
-    OpenClawCasehubConfig config;
+    AgentProviderConfigSource configSource;
     CurrentPrincipal mockPrincipal;
 
     @BeforeEach
     void setup() {
         mockService = mock(ChannelContextWindowService.class);
         registry = new OpenClawAgentRegistry();
-        config = buildConfig(Map.of(
-                "finance-agent",     entry(List.of("finance", "banking"), "finance-agent"),
-                "code-review-agent", entry(List.of("code-review"), "cr-agent-main")));
+        configSource = buildConfigSource(Map.of(
+                "finance-agent",     new AgentProviderConfigSource.AgentConfig("finance-agent", List.of("finance", "banking")),
+                "code-review-agent", new AgentProviderConfigSource.AgentConfig("cr-agent-main", List.of("code-review"))));
         mockPrincipal = mock(CurrentPrincipal.class);
         when(mockPrincipal.tenancyId()).thenReturn("test-tenant");
-        provisioner = new ReactiveOpenClawWorkerProvisioner(mockService, registry, config, mockPrincipal);
+        provisioner = new ReactiveOpenClawWorkerProvisioner(mockService, registry, configSource, mockPrincipal);
     }
 
     // ── provision ────────────────────────────────────────────────────────────
@@ -166,17 +166,7 @@ class ReactiveOpenClawWorkerProvisionerTest {
         return new ProvisionContext(caseId, "finance", null, null, null, null, null);
     }
 
-    private OpenClawCasehubConfig buildConfig(Map<String, OpenClawCasehubConfig.AgentEntry> agents) {
-        return new OpenClawCasehubConfig() {
-            @Override public Map<String, AgentEntry> agents() { return agents; }
-            @Override public Oversight oversight() { return java.util.Optional::empty; }
-        };
-    }
-
-    private OpenClawCasehubConfig.AgentEntry entry(List<String> caps, String sk) {
-        return new OpenClawCasehubConfig.AgentEntry() {
-            @Override public List<String> capabilities() { return caps; }
-            @Override public String sessionKey() { return sk; }
-        };
+    private AgentProviderConfigSource buildConfigSource(Map<String, AgentProviderConfigSource.AgentConfig> agents) {
+        return () -> agents;
     }
 }

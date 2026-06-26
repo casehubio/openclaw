@@ -21,7 +21,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 import io.casehub.openclaw.app.OpenClawGroups;
-import io.casehub.openclaw.casehub.OpenClawCasehubConfig;
+import io.casehub.openclaw.casehub.AgentProviderConfigSource;
 import io.casehub.qhorus.api.message.CommitmentState;
 import io.smallrye.common.annotation.Blocking;
 
@@ -78,7 +78,7 @@ class ExampleController {
 
     private final ExampleSetup exampleSetup;
     private final ExamplePoller examplePoller;
-    private final OpenClawCasehubConfig config;
+    private final AgentProviderConfigSource configSource;
 
     @ConfigProperty(name = "casehub.example.enabled", defaultValue = "false")
     boolean enabled;
@@ -92,10 +92,10 @@ class ExampleController {
     @Inject
     ExampleController(final ExampleSetup exampleSetup,
                       final ExamplePoller examplePoller,
-                      final OpenClawCasehubConfig config) {
+                      final AgentProviderConfigSource configSource) {
         this.exampleSetup = exampleSetup;
         this.examplePoller = examplePoller;
-        this.config = config;
+        this.configSource = configSource;
     }
 
     @POST
@@ -123,8 +123,8 @@ class ExampleController {
 
         for (final AgentStep step : def.steps()) {
             final String agentId = step.agentId();
-            final OpenClawCasehubConfig.AgentEntry agentEntry = config.agents().get(agentId);
-            if (agentEntry == null) {
+            final AgentProviderConfigSource.AgentConfig agentConfig = configSource.allAgents().get(agentId);
+            if (agentConfig == null) {
                 return Response.status(500)
                         .entity("{\"error\": \"Agent not configured: \\\"" + agentId
                                 + "\\\". Add CASEHUB_OPENCLAW_AGENTS_"
@@ -134,7 +134,7 @@ class ExampleController {
 
             final String correlationId = UUID.randomUUID().toString();
             exampleSetup.setupAndDispatch(def.caseId(), tenancyId, agentId,
-                    agentEntry.sessionKey(), correlationId, step.commandContent());
+                    agentConfig.sessionKey(), correlationId, step.commandContent());
 
             log.infof("Dispatched COMMAND to %s (correlationId=%s) — waiting for completion",
                     agentId, correlationId);

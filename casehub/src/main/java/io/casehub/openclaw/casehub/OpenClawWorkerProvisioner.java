@@ -35,24 +35,24 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
 
     private final ChannelContextWindowService service;
     private final OpenClawAgentRegistry registry;
-    private final OpenClawCasehubConfig config;
+    private final AgentProviderConfigSource configSource;
     private final CurrentPrincipal currentPrincipal;
 
     @Inject
     public OpenClawWorkerProvisioner(ChannelContextWindowService service,
                                       OpenClawAgentRegistry registry,
-                                      OpenClawCasehubConfig config,
+                                      AgentProviderConfigSource configSource,
                                       CurrentPrincipal currentPrincipal) {
         this.service = service;
         this.registry = registry;
-        this.config = config;
+        this.configSource = configSource;
         this.currentPrincipal = currentPrincipal;
     }
 
     @Override
     public ProvisionResult provision(Set<String> capabilities, ProvisionContext context) {
         String agentId = resolveAgentId(capabilities);
-        String sessionKey = config.agents().get(agentId).sessionKey();
+        String sessionKey = configSource.allAgents().get(agentId).sessionKey();
         UUID caseId = context.caseId();
         String tenancyId = currentPrincipal.tenancyId();
 
@@ -74,7 +74,7 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
 
     @Override
     public Set<String> getCapabilities() {
-        return config.agents().values().stream()
+        return configSource.allAgents().values().stream()
                 .flatMap(e -> e.capabilities().stream())
                 .collect(Collectors.toSet());
     }
@@ -86,7 +86,7 @@ public class OpenClawWorkerProvisioner implements WorkerProvisioner {
      * @throws ProvisioningException if no agent covers all requested capabilities
      */
     private String resolveAgentId(Set<String> requested) {
-        List<String> candidates = config.agents().entrySet().stream()
+        List<String> candidates = configSource.allAgents().entrySet().stream()
                 .filter(e -> e.getValue().capabilities().containsAll(requested))
                 .map(Map.Entry::getKey)
                 .sorted()
