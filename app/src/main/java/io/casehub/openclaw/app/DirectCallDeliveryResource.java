@@ -1,4 +1,4 @@
-package io.casehub.openclaw.casehub;
+package io.casehub.openclaw.app;
 
 import jakarta.annotation.security.PermitAll;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -11,6 +11,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
+import io.casehub.openclaw.casehub.DirectCallBridge;
 import io.smallrye.common.annotation.Blocking;
 
 import org.jboss.logging.Logger;

@@ -84,4 +84,11 @@ class OpenClawRestSecurityTest {
             .when().get("/openclaw/plugin/commitments/test-agent")
             .then().statusCode(not(in(List.of(401, 403))));
     }
+
+    @Test
+    void permitAll_directCallDelivery_noAuthRequired() {
+        given().contentType(JSON).body("{\"output\":\"test\"}")
+            .when().post("/openclaw/direct-call/" + UUID.randomUUID())
+            .then().statusCode(not(in(List.of(401, 403))));
+    }
 }

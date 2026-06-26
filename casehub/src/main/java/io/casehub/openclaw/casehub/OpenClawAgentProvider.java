@@ -9,6 +9,7 @@ import io.casehub.platform.agent.AgentSessionConfig;
 import io.casehub.platform.agent.AgentSessionInit;
 import io.smallrye.mutiny.Multi;
 
+import java.time.Duration;
 import java.util.UUID;
 
 public class OpenClawAgentProvider implements AgentProvider {
@@ -33,7 +34,9 @@ public class OpenClawAgentProvider implements AgentProvider {
         return Multi.createFrom().emitter(emitter -> {
             String correlationId = config.correlationId() != null
                     ? config.correlationId() : UUID.randomUUID().toString();
-            var future = bridge.submit(correlationId);
+            Duration effectiveTimeout = config.timeout() != null
+                    ? config.timeout() : Duration.ofSeconds(120);
+            var future = bridge.submit(correlationId, effectiveTimeout);
             String deliveryUrl = deliveryBaseUrl
                     + "/openclaw/direct-call/" + correlationId;
 

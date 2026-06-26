@@ -140,10 +140,10 @@ This is **not** an application layer and **not** a framework. It is the wiring b
 - `OversightGateService` — `evaluate()` archives agent webhook output as a non-resolving STATUS message (no correlationId, no commitment state change); `fulfill()` processes human responses to oversight gates (see openclaw#30 for Phase 2 gate wiring via `CommitmentTools.done()`)
 - `CaseChannelNames` — package-private utility for case channel name operations shared across the `casehub/` module
 
-**Direct-call bridge (Java — `core/` + `casehub/` modules):**
+**Direct-call bridge (Java — `core/` + `casehub/` + `app/` modules):**
 - `OpenClawHookClient.invokeDirect()` — sessionless overload for per-invocation delivery URLs; no registered session needed
-- `DirectCallBridge` — `@ApplicationScoped` `ConcurrentHashMap<String, CompletableFuture<String>>` keyed by correlationId; submit/complete/cancel lifecycle
-- `DirectCallDeliveryResource` — `POST /openclaw/direct-call/{correlationId}`; receives webhook callbacks, completes bridge future, always returns 200
+- `DirectCallBridge` — `@ApplicationScoped` `ConcurrentHashMap<String, CompletableFuture<String>>` keyed by correlationId; self-evicting via `orTimeout` + `whenComplete`
+- `DirectCallDeliveryResource` — `POST /openclaw/direct-call/{correlationId}` in `app/`; receives webhook callbacks, completes bridge future, always returns 200
 - `OpenClawAgentProvider` — implements `AgentProvider` (platform SPI); fires `/hooks/agent`, registers CompletableFuture, emits `Multi<AgentEvent>` on webhook completion
 - `OpenClawChatModel` — thin langchain4j `ChatModel` bridge; extracts system prompt, user text, and JSON schema from `ChatRequest`, delegates to `AgentProvider.invoke()`
 
@@ -187,7 +187,8 @@ examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight
 - `ChannelContextWindowObserver` — implements `MessageObserver` SPI; synchronously receives every Qhorus dispatch and feeds the ring buffer; must never throw to Qhorus
 - `OversightGateService` — `evaluate()` archives webhook text as archival STATUS; `fulfill()` processes human oversight gate responses (openclaw#30 wires gate entry via `CommitmentTools.done()`)
 - `CaseChannelNames` — package-private channel name utility
-- `DirectCallBridge` — `CompletableFuture` registry for synchronous webhook bridge; `DirectCallDeliveryResource` — receives callbacks at `POST /openclaw/direct-call/{correlationId}`
+- `DirectCallBridge` — `CompletableFuture` registry for synchronous webhook bridge; self-evicting via `orTimeout` + `whenComplete`
+- `AgentProviderConfigSource` — SPI for pluggable agent configuration; `@DefaultBean` impl in `app/` reads from `OpenClawCasehubConfig`
 - `OpenClawAgentProvider` — implements `AgentProvider` (platform SPI); `OpenClawChatModel` — thin langchain4j bridge
 
 **`app/`** owns:
@@ -195,7 +196,9 @@ examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight
 - `POST /openclaw/delivery/oversight/{gateId}` — receives human oversight responses from OpenClaw; delegates to `OversightGateService.fulfill()` (always 200)
 - `GET /channel-context/{agentId}?since={windowSeq}` — ChannelContextWindow REST API (always 200; `since` defaults to 0)
 - `EvictionScheduler` — `@Scheduled` bean that calls `service.evictExpired()` at the TTL interval
-- `POST /mcp` — Quarkus MCP endpoint (`quarkus-mcp-server-http:1.11.1`); exposes commitment tools and resources via MCPorter streamable-HTTP transport
+- `POST /openclaw/direct-call/{correlationId}` — receives direct-call webhook callbacks, completes `DirectCallBridge` future (always 200, `@PermitAll`)
+- `ConfigFileAgentProviderConfigSource` — `@DefaultBean` impl of `AgentProviderConfigSource`; reads from `OpenClawCasehubConfig`
+- `POST /mcp` — Quarkus MCP endpoint (`quarkus-mcp-server-http:1.11.1`); OIDC-authenticated (`quarkus.http.auth.permission.mcp`); exposes commitment tools and resources via MCPorter streamable-HTTP transport
   - Tools: `casehub_commit`, `casehub_done`, `casehub_reject`, `casehub_checkpoint`, `casehub_escalate`, `casehub_block`, `casehub_delegate`, `casehub_create_workitem`, `casehub_queue`, `casehub_status`
   - Resources: `casehub://agent/{agentId}/commitments`, `casehub://channel/{agentId}/recent`
 - `POST /openclaw/plugin/commit` — plugin auto-commit REST endpoint (called by TypeScript plugin `before_tool_call` hook; not for LLM use)
