@@ -711,7 +711,7 @@ Not closed here: REST endpoints for delivery webhooks (L3), ActionRiskClassifier
 
 **`OversightGateService.fulfill()` uses Commitment lookup (not in-memory map) for durability.** `MessageService.dispatch(COMMAND, correlationId=gateId)` creates a `Commitment` in the database when the gate opens. After a restart, `commitmentStore.findByCorrelationId(gateId)` still resolves the gate. An in-memory map would silently drop open gates on restart.
 
-**`@Alternative @Priority(1)` for SPI overrides.** Override implementations of casehub-openclaw SPIs must use `@Alternative @Priority(1)` (not `@DefaultBean`) — defaults do not use `@DefaultBean`, so any `@ApplicationScoped` alternative would cause CDI ambiguity without the `@Alternative` marker. (Note: `ActionRiskClassifier` and `SpeechActClassifier` were deleted in openclaw#28 — tool-call-first completion; Phase 2 risk classification will use casehub-engine-api engine#402 SPI via openclaw#30.)
+**`@Alternative @Priority(1)` for SPI overrides.** Override implementations of casehub-openclaw SPIs must use `@Alternative @Priority(1)` (not `@DefaultBean`) — defaults do not use `@DefaultBean`, so any `@ApplicationScoped` alternative would cause CDI ambiguity without the `@Alternative` marker. (Note: `ActionRiskClassifier` and `SpeechActClassifier` were deleted in openclaw#28 — tool-call-first completion; Phase 2 risk classification used casehub-engine-api engine#402 SPI (openclaw#30, engine#402 — both closed).)
 
 #### Architectural decisions
 
@@ -1084,7 +1084,7 @@ To add SKILL.md files to a CaseHub integration tier:
 **Date:** 2026-06-22
 **Context:** openclaw#38 (parent#93). `OpenClawNormativeLayout` in `casehub/` was a private duplicate of `NormativeChannelLayout` in claudony. Both defined the same 3-channel topology (work/observe/oversight) with identical constraints. The local openclaw protocol `normative-layout-single-source.md` mandated `OpenClawNormativeLayout` as the source of truth for openclaw only.
 **Decision:** Delete `OpenClawNormativeLayout`. Use `NormativeChannelLayout` from `io.casehub.api.spi.mesh` in `casehub-engine-api`. Both providers now hold a `private final CaseChannelLayout layout = new NormativeChannelLayout()` field and call `layout.channelsFor(caseId, null)` at runtime. The reactive provider's `openOrCreate` signature changed from `(UUID, String)` to `(UUID, CaseChannelLayout.ChannelSpec)` — the spec is passed directly, eliminating the second `LAYOUT.get(purpose)` lookup. Unknown purposes now throw `IllegalArgumentException` (previously silently created unconstrained channels). The local protocol was deleted and promoted to the garden as a platform-scope protocol.
-**Consequences:** openclaw channel topology is now governed by engine-api test guards (`NormativeChannelLayoutTest`). Any change to the normative layout requires an engine-api PR. openlaw#40 tracks the follow-on: making layout config-driven via a `channelLayout` property (matching claudony's pattern) so operators can switch without recompiling.
+**Consequences:** openclaw channel topology is now governed by engine-api test guards (`NormativeChannelLayoutTest`). Any change to the normative layout requires an engine-api PR. openclaw#40 (closed) made layout config-driven via a `channelLayout` property (matching claudony's pattern) so operators can switch without recompiling.
 **Source:** `casehub/garden: docs/protocols/casehub/normative-channel-layout-single-source.md`
 
 ### ADR-0002 — Quarkus-Embedded MCP Server
@@ -1107,8 +1107,8 @@ To add SKILL.md files to a CaseHub integration tier:
 
 **Date:** 2026-06-23
 **Context:** The published `casehub-engine-api` SNAPSHOT was built from an interim state that removed `PlannedAction` from `io.casehub.api.spi` (anticipating spec #543 — worker primitives migration). Local engine `main` still has `io.casehub.api.spi.PlannedAction` as a 5-field record `(workerId, caseId, description, actionType, context)` and `ActionRiskClassifier.classify(PlannedAction)` as a one-arg method. GitHub Packages 401 auth prevented downloading the published SNAPSHOT.
-**Decision:** Code against local engine HEAD. `OversightGateService` constructs `PlannedAction(agentId, caseId, outcome, "COMPLETION", Map.of())` inline and passes it to classifiers. No `casehub-worker-api` dependency; no `ClassificationContext`. Filed engine#565 to re-publish SNAPSHOT from local main. When engine#543 ships (ClassificationContext, worker-api migration), openclaw will need a follow-on adaptation PR.
-**Consequences:** openclaw#46 is closed locally. CI build will fail until engine re-publishes a consistent SNAPSHOT from local HEAD. The `ClassificationContext` separation (tracking workerId/caseId separately from action description) remains a future concern — it will improve classifier context quality when implemented.
+**Decision:** Code against local engine HEAD. `OversightGateService` constructs `PlannedAction(agentId, caseId, outcome, "COMPLETION", Map.of())` inline and passes it to classifiers. No `casehub-worker-api` dependency; no `ClassificationContext`. Filed engine#565 to re-publish SNAPSHOT from local main. engine#543 shipped (ClassificationContext, worker-api migration); openclaw adaptation was completed in openclaw#46.
+**Consequences:** openclaw#46 closed. The `ClassificationContext` separation (tracking workerId/caseId separately from action description) remains a future concern — it will improve classifier context quality when implemented.
 
 ---
 
