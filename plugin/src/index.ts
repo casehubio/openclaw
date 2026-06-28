@@ -92,10 +92,11 @@ export function register(api: OpenClawPluginApi): void {
   const baseUrl = cfg.baseUrl ?? "http://localhost:8080";
   const timeoutMs = cfg.timeoutMs ?? 3000;
   const autoCommit = cfg.casehub?.autoCommit ?? false;
+  const pluginToken = cfg.casehub?.pluginToken as string | undefined;
 
   new ChannelContextPlugin(baseUrl, timeoutMs).register(api);
 
-  const commitmentMgr = new CommitmentManager(baseUrl, timeoutMs, autoCommit);
+  const commitmentMgr = new CommitmentManager(baseUrl, timeoutMs, autoCommit, pluginToken);
   api.on("before_tool_call", (event) => commitmentMgr.onBeforeToolCall(event));
   api.on("agent_end", (event) => commitmentMgr.onAgentEnd(event));
   api.on("session_start", (event) => commitmentMgr.onSessionStart(event));

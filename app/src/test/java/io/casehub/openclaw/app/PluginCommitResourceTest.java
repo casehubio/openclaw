@@ -12,6 +12,7 @@ import io.casehub.qhorus.runtime.message.CommitmentService;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
@@ -25,6 +26,7 @@ import static org.mockito.Mockito.when;
  * for auto-commit lifecycle management.
  */
 @QuarkusTest
+@TestSecurity(user = "plugin", roles = {OpenClawGroups.PLUGIN})
 class PluginCommitResourceTest {
 
     @InjectMock

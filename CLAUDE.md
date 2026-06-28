@@ -201,9 +201,11 @@ examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight
 - `POST /mcp` — Quarkus MCP endpoint (`quarkus-mcp-server-http:1.11.1`); OIDC-authenticated (`quarkus.http.auth.permission.mcp`); exposes commitment tools and resources via MCPorter streamable-HTTP transport
   - Tools: `casehub_commit`, `casehub_done`, `casehub_reject`, `casehub_checkpoint`, `casehub_escalate`, `casehub_block`, `casehub_delegate`, `casehub_create_workitem`, `casehub_queue`, `casehub_status`
   - Resources: `casehub://agent/{agentId}/commitments`, `casehub://channel/{agentId}/recent`
-- `POST /openclaw/plugin/commit` — plugin auto-commit REST endpoint (called by TypeScript plugin `before_tool_call` hook; not for LLM use)
-- `POST /openclaw/plugin/done` — plugin auto-done REST endpoint (called by `agent_end` hook)
-- `GET /openclaw/plugin/commitments/{agentId}` — open commitment query for `session_start` injection
+- `POST /openclaw/plugin/commit` — plugin auto-commit REST endpoint (`@RolesAllowed(PLUGIN)`, authenticated by `PluginTokenBridgeMechanism` via pre-shared bearer token; called by TypeScript plugin `before_tool_call` hook; not for LLM use)
+- `POST /openclaw/plugin/done` — plugin auto-done REST endpoint (`@RolesAllowed(PLUGIN)`)
+- `GET /openclaw/plugin/commitments/{agentId}` — open commitment query for `session_start` injection (`@RolesAllowed(PLUGIN)`)
+- `PluginTokenBridgeMechanism` — custom `HttpAuthenticationMechanism`; validates pre-shared bearer token for `/openclaw/plugin/*`; creates `SecurityIdentity` with `openclaw-plugin` role and `casehub.plugin.bridge` attribute; bridge to OIDC client-credentials (openclaw#52)
+- `OpenClawCurrentPrincipal` — `@Alternative @Priority(150)` `CurrentPrincipal`; handles bridge-authenticated identities by returning default tenancyId (prevents `MissingTenancyException` from `OidcCurrentPrincipal` when `JpaCommitmentStore` queries run under a non-OIDC `SecurityIdentity`); delegates to `OidcCurrentPrincipal` for OIDC/anonymous paths; removable when platform#121 ships
 - `POST /example/{exampleId}/start` — demo scenario orchestrator (`@Blocking`; inert when `casehub.example.enabled=false`); lives in `app/example/` subpackage with `DemoGateClassifier`, `ExampleSetup`, `ExamplePoller`
 
 **`python/`** owns:

@@ -1,0 +1,78 @@
+package io.casehub.openclaw.app.security;
+
+import java.util.Set;
+
+import jakarta.enterprise.context.ApplicationScoped;
+
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import io.casehub.openclaw.app.OpenClawGroups;
+import io.quarkus.security.AuthenticationFailedException;
+import io.quarkus.security.identity.IdentityProviderManager;
+import io.quarkus.security.identity.SecurityIdentity;
+import io.quarkus.security.identity.request.AuthenticationRequest;
+import io.quarkus.security.runtime.QuarkusPrincipal;
+import io.quarkus.security.runtime.QuarkusSecurityIdentity;
+import io.quarkus.vertx.http.runtime.security.ChallengeData;
+import io.quarkus.vertx.http.runtime.security.HttpAuthenticationMechanism;
+import io.quarkus.vertx.http.runtime.security.HttpCredentialTransport;
+import io.smallrye.mutiny.Uni;
+import io.vertx.ext.web.RoutingContext;
+
+@ApplicationScoped
+public class PluginTokenBridgeMechanism implements HttpAuthenticationMechanism {
+
+    @ConfigProperty(name = "casehub.openclaw.plugin.bearer-token")
+    String configuredToken;
+
+    @Override
+    public Uni<SecurityIdentity> authenticate(RoutingContext context,
+                                              IdentityProviderManager identityProviderManager) {
+        // Only handle /openclaw/plugin/* with a valid Bearer token.
+        // Returns null for everything else — non-plugin paths, missing token, wrong token.
+        // @RolesAllowed(PLUGIN) on the resource handles rejection (401 anonymous, 403 wrong role).
+        // Never throw AuthenticationFailedException — it triggers OIDC challenge flow which
+        // connects to the (absent) OIDC server and returns 500 instead of 401.
+        if (!context.request().path().startsWith("/openclaw/plugin/")) {
+            return Uni.createFrom().nullItem();
+        }
+
+        String authHeader = context.request().getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return Uni.createFrom().nullItem();
+        }
+
+        String token = authHeader.substring(7).trim();
+        if (!configuredToken.equals(token)) {
+            return Uni.createFrom().nullItem();
+        }
+
+        SecurityIdentity identity = QuarkusSecurityIdentity.builder()
+                .setPrincipal(new QuarkusPrincipal("openclaw-plugin"))
+                .addRole(OpenClawGroups.PLUGIN)
+                .addAttribute("casehub.plugin.bridge", true)
+                .build();
+
+        return Uni.createFrom().item(identity);
+    }
+
+    @Override
+    public Uni<ChallengeData> getChallenge(RoutingContext context) {
+        return Uni.createFrom().item(
+                new ChallengeData(401, "WWW-Authenticate", "Bearer realm=\"openclaw-plugin\""));
+    }
+
+    @Override
+    public Uni<HttpCredentialTransport> getCredentialTransport(RoutingContext context) {
+        // Return null: "this mechanism cannot interfere with other mechanisms" (Javadoc).
+        // Declaring Type.AUTHORIZATION "bearer" conflicts with OIDC's Bearer transport,
+        // breaking @TestSecurity and causing mechanism-selection ambiguity.
+        // Path guard in authenticate() provides the isolation instead.
+        return Uni.createFrom().nullItem();
+    }
+
+    @Override
+    public Set<Class<? extends AuthenticationRequest>> getCredentialTypes() {
+        return Set.of();
+    }
+}

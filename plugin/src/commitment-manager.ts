@@ -53,14 +53,16 @@ export class CommitmentManager {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
   private readonly autoCommit: boolean;
+  private readonly pluginToken: string | undefined;
 
   // agentId → open commitment for current turn; undefined = no open commitment
   private readonly turnCommitments = new Map<string, OpenCommitment>();
 
-  constructor(baseUrl: string, timeoutMs: number, autoCommit: boolean) {
+  constructor(baseUrl: string, timeoutMs: number, autoCommit: boolean, pluginToken?: string) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.timeoutMs = timeoutMs;
     this.autoCommit = autoCommit;
+    this.pluginToken = pluginToken;
   }
 
   async onBeforeToolCall(event: ToolCallEvent): Promise<void> {
@@ -139,9 +141,13 @@ export class CommitmentManager {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (this.pluginToken) {
+        headers["Authorization"] = `Bearer ${this.pluginToken}`;
+      }
       const resp = await fetch(`${this.baseUrl}${path}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -158,7 +164,12 @@ export class CommitmentManager {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
+      const headers: Record<string, string> = {};
+      if (this.pluginToken) {
+        headers["Authorization"] = `Bearer ${this.pluginToken}`;
+      }
       const resp = await fetch(`${this.baseUrl}${path}`, {
+        headers,
         signal: controller.signal,
       });
       if (!resp.ok) {

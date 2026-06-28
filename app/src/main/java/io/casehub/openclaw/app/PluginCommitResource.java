@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import jakarta.annotation.security.PermitAll;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -39,10 +39,10 @@ import io.casehub.qhorus.runtime.store.CommitmentStore;
  *   <li>{@code GET /openclaw/plugin/commitments/{agentId}} — list open commitments for session_start injection
  * </ul>
  *
- * <p>@PermitAll: TypeScript plugin hooks run inside OpenClaw and carry no casehub OIDC token.
- * Tenant isolation deferred to openclaw#42 (service-account token from OpenClaw).
+ * <p>@RolesAllowed(OpenClawGroups.PLUGIN): authenticated by PluginTokenBridgeMechanism
+ * via pre-shared bearer token. Migrate to OIDC client-credentials when available (openclaw#52).
  */
-@PermitAll
+@RolesAllowed(OpenClawGroups.PLUGIN)
 @ApplicationScoped
 @Path("/openclaw/plugin")
 @Consumes(MediaType.APPLICATION_JSON)
