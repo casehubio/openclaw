@@ -85,6 +85,10 @@ openclaw skills install casehub-workitem casehub-case casehub-queue casehub-stat
       "casehub": {
         "transport": "streamable-http",
         "url": "http://localhost:8080/mcp"
+      },
+      "qhorus": {
+        "transport": "streamable-http",
+        "url": "http://localhost:8080/qhorus"
       }
     }
   },
@@ -93,7 +97,8 @@ openclaw skills install casehub-workitem casehub-case casehub-queue casehub-stat
       "baseUrl": "http://localhost:8080",
       "timeoutMs": 3000,
       "casehub": {
-        "autoCommit": false
+        "autoCommit": false,
+        "pluginToken": "<your-plugin-token>"
       }
     }
   }
