@@ -26,24 +26,12 @@
   </modules>
 
   <properties>
-    <java.version>21</java.version>
-    <maven.compiler.release>${java.version}</maven.compiler.release>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <version.quarkus.platform>3.32.2</version.quarkus.platform>
-    <version.io.casehub>0.2-SNAPSHOT</version.io.casehub>
+    <version.quarkus.platform>${quarkus.platform.version}</version.quarkus.platform>
     <jandex-maven-plugin.version>3.3.1</jandex-maven-plugin.version>
   </properties>
 
   <dependencyManagement>
     <dependencies>
-      <dependency>
-        <groupId>io.quarkus.platform</groupId>
-        <artifactId>quarkus-bom</artifactId>
-        <version>${version.quarkus.platform}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-
       <!-- casehub-openclaw inter-module -->
       <dependency>
         <groupId>io.casehub</groupId>
@@ -56,74 +44,6 @@
         <version>${project.version}</version>
       </dependency>
 
-      <!-- Foundation — Qhorus (mandatory: ChannelBackend, MessageObserver SPIs) -->
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-qhorus-api</artifactId>
-        <version>${version.io.casehub}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-qhorus</artifactId>
-        <version>${version.io.casehub}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-qhorus-testing</artifactId>
-        <version>${version.io.casehub}</version>
-        <scope>test</scope>
-      </dependency>
-
-      <!-- Foundation — Engine (WorkerProvisioner, CaseChannelProvider, WorkerStatusListener SPIs) -->
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-engine-api</artifactId>
-        <version>${version.io.casehub}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-engine</artifactId>
-        <version>${version.io.casehub}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-engine-testing</artifactId>
-        <version>${version.io.casehub}</version>
-        <scope>test</scope>
-      </dependency>
-
-      <!-- Foundation — Platform (CurrentPrincipal, GroupMembershipProvider for permission-aware context) -->
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-platform-api</artifactId>
-        <version>${version.io.casehub}</version>
-      </dependency>
-      <!-- MockPreferenceProvider @DefaultBean — runtime scope in app module (PP-20260524-a8f597) -->
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-platform</artifactId>
-        <version>${version.io.casehub}</version>
-      </dependency>
-      <!-- JQEvaluator required by casehub-engine CDI beans -->
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-platform-expression</artifactId>
-        <version>${version.io.casehub}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-platform-testing</artifactId>
-        <version>${version.io.casehub}</version>
-        <scope>test</scope>
-      </dependency>
-
-      <!-- Foundation — Platform Agent (AgentProvider SPI, AgentSessionConfig, AgentEvent) -->
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-platform-agent-api</artifactId>
-        <version>${version.io.casehub}</version>
-      </dependency>
-
       <!-- langchain4j core — ChatModel bridge -->
       <dependency>
         <groupId>dev.langchain4j</groupId>
@@ -131,24 +51,6 @@
         <version>1.14.1</version>
       </dependency>
 
-      <!-- Foundation — Ledger (optional: tamper-evident record of OpenClaw interactions) -->
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-ledger-api</artifactId>
-        <version>${version.io.casehub}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.casehub</groupId>
-        <artifactId>casehub-ledger</artifactId>
-        <version>${version.io.casehub}</version>
-      </dependency>
-
-      <dependency>
-        <groupId>org.assertj</groupId>
-        <artifactId>assertj-core</artifactId>
-        <version>3.27.7</version>
-        <scope>test</scope>
-      </dependency>
       <dependency>
         <groupId>org.wiremock</groupId>
         <artifactId>wiremock</artifactId>
@@ -189,27 +91,5 @@
     <url>https://github.com/casehubio/openclaw</url>
   </scm>
 
-  <build>
-    <pluginManagement>
-      <plugins>
-        <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-compiler-plugin</artifactId>
-          <version>3.13.0</version>
-          <configuration>
-            <parameters>true</parameters>
-          </configuration>
-        </plugin>
-        <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-surefire-plugin</artifactId>
-          <version>3.2.5</version>
-          <configuration>
-            <rerunFailingTestsCount>2</rerunFailingTestsCount>
-          </configuration>
-        </plugin>
-      </plugins>
-    </pluginManagement>
-  </build>
 
 </project>
