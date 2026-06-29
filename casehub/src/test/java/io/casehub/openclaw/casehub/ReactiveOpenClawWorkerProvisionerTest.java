@@ -16,6 +16,7 @@ import io.casehub.platform.api.identity.CurrentPrincipal;
 import io.smallrye.mutiny.helpers.test.UniAssertSubscriber;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,19 +26,19 @@ class ReactiveOpenClawWorkerProvisionerTest {
     ChannelContextWindowService mockService;
     OpenClawAgentRegistry registry;
     ReactiveOpenClawWorkerProvisioner provisioner;
-    AgentProviderConfigSource configSource;
+    OpenClawAgentConfigResolver resolver;
     CurrentPrincipal mockPrincipal;
 
     @BeforeEach
     void setup() {
         mockService = mock(ChannelContextWindowService.class);
         registry = new OpenClawAgentRegistry();
-        configSource = buildConfigSource(Map.of(
-                "finance-agent",     new AgentProviderConfigSource.AgentConfig("finance-agent", List.of("finance", "banking")),
-                "code-review-agent", new AgentProviderConfigSource.AgentConfig("cr-agent-main", List.of("code-review"))));
+        resolver = buildResolver(Map.of(
+                "finance-agent",     new OpenClawAgentConfigResolver.AgentConfig("finance-agent", List.of("finance", "banking")),
+                "code-review-agent", new OpenClawAgentConfigResolver.AgentConfig("cr-agent-main", List.of("code-review"))));
         mockPrincipal = mock(CurrentPrincipal.class);
         when(mockPrincipal.tenancyId()).thenReturn("test-tenant");
-        provisioner = new ReactiveOpenClawWorkerProvisioner(mockService, registry, configSource, mockPrincipal);
+        provisioner = new ReactiveOpenClawWorkerProvisioner(mockService, registry, resolver, mockPrincipal);
     }
 
     // ── provision ────────────────────────────────────────────────────────────
@@ -166,7 +167,14 @@ class ReactiveOpenClawWorkerProvisionerTest {
         return new ProvisionContext(caseId, "finance", null, null, null, null, null);
     }
 
-    private AgentProviderConfigSource buildConfigSource(Map<String, AgentProviderConfigSource.AgentConfig> agents) {
-        return () -> agents;
+    private OpenClawAgentConfigResolver buildResolver(Map<String, OpenClawAgentConfigResolver.AgentConfig> agents) {
+        OpenClawAgentConfigResolver mock = mock(OpenClawAgentConfigResolver.class);
+        when(mock.allAgents()).thenReturn(agents);
+        when(mock.configFor(anyString())).thenAnswer(inv -> {
+            var cfg = agents.get(inv.getArgument(0));
+            if (cfg == null) throw new IllegalArgumentException("No config for agent: " + inv.getArgument(0));
+            return cfg;
+        });
+        return mock;
     }
 }

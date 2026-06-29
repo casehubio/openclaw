@@ -39,17 +39,17 @@ public class ReactiveOpenClawWorkerProvisioner implements ReactiveWorkerProvisio
 
     private final ChannelContextWindowService service;
     private final OpenClawAgentRegistry registry;
-    private final AgentProviderConfigSource configSource;
+    private final OpenClawAgentConfigResolver resolver;
     private final CurrentPrincipal currentPrincipal;
 
     @Inject
     public ReactiveOpenClawWorkerProvisioner(ChannelContextWindowService service,
                                               OpenClawAgentRegistry registry,
-                                              AgentProviderConfigSource configSource,
+                                              OpenClawAgentConfigResolver resolver,
                                               CurrentPrincipal currentPrincipal) {
         this.service = service;
         this.registry = registry;
-        this.configSource = configSource;
+        this.resolver = resolver;
         this.currentPrincipal = currentPrincipal;
     }
 
@@ -61,7 +61,7 @@ public class ReactiveOpenClawWorkerProvisioner implements ReactiveWorkerProvisio
         final String tenancyId = currentPrincipal.tenancyId();
         return Uni.createFrom().item(() -> {
             String agentId = resolveAgentId(capabilities);
-            String sessionKey = configSource.allAgents().get(agentId).sessionKey();
+            String sessionKey = resolver.configFor(agentId).sessionKey();
             UUID caseId = context.caseId();
             registry.register(agentId, tenancyId, caseId, sessionKey);
             service.bindAgent(agentId, caseId);
@@ -84,7 +84,7 @@ public class ReactiveOpenClawWorkerProvisioner implements ReactiveWorkerProvisio
     @Override
     public Uni<Set<String>> getCapabilities() {
         return Uni.createFrom().item(() ->
-                configSource.allAgents().values().stream()
+                resolver.allAgents().values().stream()
                         .flatMap(e -> e.capabilities().stream())
                         .collect(Collectors.toSet()));
     }
@@ -96,7 +96,7 @@ public class ReactiveOpenClawWorkerProvisioner implements ReactiveWorkerProvisio
      * @throws ProvisioningException if no agent covers all requested capabilities
      */
     private String resolveAgentId(Set<String> requested) {
-        List<String> candidates = configSource.allAgents().entrySet().stream()
+        List<String> candidates = resolver.allAgents().entrySet().stream()
                 .filter(e -> e.getValue().capabilities().containsAll(requested))
                 .map(Map.Entry::getKey)
                 .sorted()

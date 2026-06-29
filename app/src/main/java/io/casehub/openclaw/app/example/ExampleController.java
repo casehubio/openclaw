@@ -21,7 +21,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 import io.casehub.openclaw.app.OpenClawGroups;
-import io.casehub.openclaw.casehub.AgentProviderConfigSource;
+import io.casehub.openclaw.casehub.OpenClawAgentConfigResolver;
 import io.casehub.qhorus.api.message.CommitmentState;
 import io.smallrye.common.annotation.Blocking;
 
@@ -78,7 +78,7 @@ class ExampleController {
 
     private final ExampleSetup exampleSetup;
     private final ExamplePoller examplePoller;
-    private final AgentProviderConfigSource configSource;
+    private final OpenClawAgentConfigResolver resolver;
 
     @ConfigProperty(name = "casehub.example.enabled", defaultValue = "false")
     boolean enabled;
@@ -92,10 +92,10 @@ class ExampleController {
     @Inject
     ExampleController(final ExampleSetup exampleSetup,
                       final ExamplePoller examplePoller,
-                      final AgentProviderConfigSource configSource) {
+                      final OpenClawAgentConfigResolver resolver) {
         this.exampleSetup = exampleSetup;
         this.examplePoller = examplePoller;
-        this.configSource = configSource;
+        this.resolver = resolver;
     }
 
     @POST
@@ -123,7 +123,7 @@ class ExampleController {
 
         for (final AgentStep step : def.steps()) {
             final String agentId = step.agentId();
-            final AgentProviderConfigSource.AgentConfig agentConfig = configSource.allAgents().get(agentId);
+            final OpenClawAgentConfigResolver.AgentConfig agentConfig = resolver.allAgents().get(agentId);
             if (agentConfig == null) {
                 return Response.status(500)
                         .entity("{\"error\": \"Agent not configured: \\\"" + agentId

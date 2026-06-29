@@ -188,7 +188,7 @@ examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight
 - `OversightGateService` — `evaluate()` archives webhook text as archival STATUS; `fulfill()` processes human oversight gate responses (openclaw#30 wires gate entry via `CommitmentTools.done()`)
 - `CaseChannelNames` — package-private channel name utility
 - `DirectCallBridge` — `CompletableFuture` registry for synchronous webhook bridge; self-evicting via `orTimeout` + `whenComplete`
-- `AgentProviderConfigSource` — SPI for pluggable agent configuration; `@DefaultBean` impl in `app/` reads from `OpenClawCasehubConfig`
+- `OpenClawAgentConfigResolver` — resolves agent configuration by delegating to platform `ProvisionerConfigRegistry` SPI; merges local config with registry (registry wins per-agent); wrapped by `OpenClawAgentProvider`
 - `OpenClawAgentProvider` — implements `AgentProvider` (platform SPI); `OpenClawChatModel` — thin langchain4j bridge
 
 **`app/`** owns:
@@ -197,7 +197,7 @@ examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight
 - `GET /channel-context/{agentId}?since={windowSeq}` — ChannelContextWindow REST API (always 200; `since` defaults to 0)
 - `EvictionScheduler` — `@Scheduled` bean that calls `service.evictExpired()` at the TTL interval
 - `POST /openclaw/direct-call/{correlationId}` — receives direct-call webhook callbacks, completes `DirectCallBridge` future (always 200, `@PermitAll`)
-- `ConfigFileAgentProviderConfigSource` — `@DefaultBean` impl of `AgentProviderConfigSource`; reads from `OpenClawCasehubConfig`
+- `OpenClawCasehubConfig` — configuration object read by `OpenClawAgentConfigResolver` to populate local agent config; merged with registry config
 - `POST /mcp` — Quarkus MCP endpoint (`quarkus-mcp-server-http:1.11.1`); OIDC-authenticated (`quarkus.http.auth.permission.mcp`); exposes commitment tools and resources via MCPorter streamable-HTTP transport
   - Tools: `casehub_commit`, `casehub_done`, `casehub_reject`, `casehub_checkpoint`, `casehub_escalate`, `casehub_block`, `casehub_delegate`, `casehub_create_workitem`, `casehub_queue`, `casehub_status`
   - Resources: `casehub://agent/{agentId}/commitments`, `casehub://channel/{agentId}/recent`
