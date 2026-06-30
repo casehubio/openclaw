@@ -88,6 +88,7 @@ ScenarioExecutionService sequences agents (ScenarioEventBroadcaster observes via
   → STATUS on work channel → WS: {op:"append",  dataset:"messages", columns:[...], rows:[[...]]}
   → DONE on work channel   → WS: {op:"replace", dataset:"agents", columns:[...], row:[...], key:"signal"}
   → COMMAND on oversight   → WS: {op:"replace", dataset:"gates", columns:[...], row:[...], key:"gate-456"}
+                          + WS: {op:"event", topic:"gate-pending", payload:{scenarioId, gateId, ...}}
   → user approves via UI   → POST /api/scenarios/{id}/gate/{gateId}/approve
   → DONE on oversight      → WS: {op:"replace", dataset:"gates", columns:[...], row:[...], key:"gate-456"}
 ```
@@ -116,6 +117,7 @@ Multiple datasets share one connection via the PushSource pool (keyed by base UR
 | Gate resolved | `replace` | `gates` | scenarioId, gateId, agentId, action, classification, priorAgents, decision ("approved"/"rejected"), timestamp | gateId |
 | Scenario state change | `replace` | `scenarios` | id, name, status, activeAgent, agentCount | id |
 | Activity event | `append` | `activity` | scenarioId, agentId, event, detail, timestamp | — |
+| Gate pending trigger | `event` | — | topic: `gate-pending`, payload: `{scenarioId, gateId, agentId, action, classification, priorAgents}` | — |
 
 ### Reconnection
 
@@ -138,7 +140,29 @@ interface Scenario {
   gateAgentId: string | null;    // Which agent triggers the oversight gate
   status: "idle" | "running" | "completed" | "failed";
 }
+```
 
+### Scenario Lifecycle State Machine
+
+```
+idle ──POST /start──→ running ──all agents terminal──→ completed
+                        │                                  │
+                        ├──timeout/exception──→ failed     │
+                        │                        │         │
+                        └────── 409 guard ◄──────┘         │
+                                                           │
+  idle ◄──────────── POST /start (restarts) ◄──────────────┘
+```
+
+| Transition | Trigger | Detail |
+|-----------|---------|--------|
+| `idle` → `running` | `POST /api/scenarios/{id}/start` | ScenarioExecutionService begins async agent sequence. ScenarioStateStore marks running. |
+| `running` → `completed` | Last agent reaches terminal CommitmentState | ScenarioExecutionService detects all steps FULFILLED/DECLINED/DELEGATED. |
+| `running` → `failed` | Timeout or unrecoverable error | Inherits `casehub.example.timeout.seconds` (default 300). Executor thread interrupted on timeout. |
+| `completed`/`failed` → `running` | `POST /api/scenarios/{id}/start` | Scenario restarts from step 1. ScenarioStateStore clears prior state. 409 only on `running`. |
+| JVM restart | Process restart | ScenarioStateStore is in-memory — all scenarios reset to `idle`. No persistence required for a demo. |
+
+```typescript
 interface AgentDef {
   agentId: string;               // "signal"
   role: string;                  // "Signal Analyst"
@@ -157,16 +181,20 @@ interface AgentDef {
 
 ### Frontend Datasets
 
-All bound to `ws://localhost:8080/ws/events`. Declared in `data/datasets.ts`:
+All share a single WebSocket connection. Declared in `data/datasets.ts`:
 
 ```typescript
-dataset("scenarios",   "ws://localhost:8080/ws/events", { keyColumn: "id" }),
-dataset("agents",      "ws://localhost:8080/ws/events", { keyColumn: "agentId" }),
-dataset("messages",    "ws://localhost:8080/ws/events"),
-dataset("commitments", "ws://localhost:8080/ws/events", { keyColumn: "commitmentId" }),
-dataset("gates",       "ws://localhost:8080/ws/events", { keyColumn: "gateId" }),
-dataset("activity",    "ws://localhost:8080/ws/events"),
+const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/events`;
+
+dataset("scenarios",   wsUrl, { keyColumn: "id" }),
+dataset("agents",      wsUrl, { keyColumn: "agentId" }),
+dataset("messages",    wsUrl),
+dataset("commitments", wsUrl, { keyColumn: "commitmentId" }),
+dataset("gates",       wsUrl, { keyColumn: "gateId" }),
+dataset("activity",    wsUrl),
 ```
+
+The WebSocket URL is derived from `window.location` — works in `quarkus:dev` (localhost:8080), Docker Compose (any host/port mapping), HTTPS (wss://), and conference demos (remote host).
 
 Datasets receiving `replace` ops must declare `keyColumn` — without it, `processWireMessage` logs a warning and silently drops the message.
 
@@ -291,12 +319,18 @@ function auditTrail(scenarioId: string) {
 
 ### Gate Modal
 
-Custom TypeScript outside the casehub-pages component tree (~50 lines). Subscribes to the `gates` dataset for rows where `decision` is null (pending). Renders a modal overlay with:
+Custom TypeScript outside the casehub-pages component tree (~50 lines). Uses the casehub-pages `pages-event` mechanism for gate notification:
 
-- Action description and risk classification reason (from gate event `action` and `classification` columns)
-- Prior agent summary — `priorAgents` JSON column lists completed agents with their roles and states, assembled by `ScenarioEventBroadcaster` from accumulated DONE messages and STATUS content on work channels
-- Approve / Reject buttons
-- On decision: POST to `/api/scenarios/{id}/gate/{gateId}/approve` or `/reject`, modal closes when the gate row's `decision` column updates
+1. When a gate fires, the backend emits both a `replace` on the `gates` dataset (populates the table) and an `{op:"event", topic:"gate-pending", payload:{...}}` message. `processWireMessage` dispatches this as a `CustomEvent("pages-event")` on the configured `eventTarget` (push-source.ts:54-62, `bubbles: true, composed: true`).
+
+2. The gate modal subscribes via `document.addEventListener("pages-event", handler)` and filters for `detail.topic === "gate-pending"`. No direct WebSocket access, no data pipeline internals, no DOM observation.
+
+3. The modal renders an overlay with:
+   - Action description and risk classification reason (from event payload `action` and `classification`)
+   - Prior agent summary — `priorAgents` lists completed agents with roles and states, assembled by `ScenarioEventBroadcaster` from accumulated Qhorus work channel activity
+   - Approve / Reject buttons
+
+4. On decision: POST to `/api/scenarios/{id}/gate/{gateId}/approve` or `/reject`. The backend emits a `{op:"event", topic:"gate-resolved"}` alongside the `replace` update — the modal closes on receiving this event.
 
 casehub-pages lacks a modal/dialog component — tracked in openclaw#61 for filing on casehub-pages.
 
