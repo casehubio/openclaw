@@ -91,6 +91,7 @@ ScenarioExecutionService sequences agents (ScenarioEventBroadcaster observes via
                           + WS: {op:"event", topic:"gate-pending", payload:{scenarioId, gateId, ...}}
   → user approves via UI   → POST /api/scenarios/{id}/gate/{gateId}/approve
   → DONE on oversight      → WS: {op:"replace", dataset:"gates", columns:[...], row:[...], key:"gate-456"}
+                          + WS: {op:"event", topic:"gate-resolved", payload:{scenarioId, gateId, decision}}
 ```
 
 `ScenarioEventBroadcaster` implements `MessageObserver` (same pattern as `ChannelContextWindowObserver`). It passively observes all Qhorus message dispatches on work/observe/oversight channels, filtering by the fixed demo case IDs. `ScenarioExecutionService` runs the agent sequence asynchronously — the broadcaster sees the resulting Qhorus events transparently, requiring no coupling between the execution service and the broadcast logic. The WebSocket is the observation channel, not the control channel.
@@ -118,10 +119,17 @@ Multiple datasets share one connection via the PushSource pool (keyed by base UR
 | Scenario state change | `replace` | `scenarios` | id, name, status, activeAgent, agentCount | id |
 | Activity event | `append` | `activity` | scenarioId, agentId, event, detail, timestamp | — |
 | Gate pending trigger | `event` | — | topic: `gate-pending`, payload: `{scenarioId, gateId, agentId, action, classification, priorAgents}` | — |
+| Gate resolved trigger | `event` | — | topic: `gate-resolved`, payload: `{scenarioId, gateId, decision}` | — |
 
 ### Reconnection
 
-On WebSocket connect or reconnect, the server sends `snapshot` messages for all datasets with current state from `ScenarioStateStore`. The casehub-pages `WebSocketSource` handles reconnection with exponential backoff automatically — on reconnect it resubscribes and the server delivers fresh snapshots. No HTTP side-channel needed; state is always delivered over the WebSocket itself, eliminating the race condition between HTTP snapshot and WebSocket re-subscription.
+The server sends `snapshot` messages for all datasets in three situations:
+
+1. **WebSocket connect** — new client receives current state from `ScenarioStateStore`
+2. **WebSocket reconnect** — casehub-pages `WebSocketSource` reconnects with exponential backoff automatically; the server delivers fresh snapshots on resubscription
+3. **Scenario restart** — the broadcaster sends snapshots (empty rows for append-only datasets like `messages`/`activity`, initial state for replace datasets) to all existing WebSocket sessions, clearing stale data from the prior run before the new run begins
+
+No HTTP side-channel needed; state is always delivered over the WebSocket itself.
 
 `GET /api/scenarios/{id}/state` serves REST API consumers (e.g. `scenario.sh`) and is not part of the WebSocket reconnection flow.
 
@@ -146,12 +154,12 @@ interface Scenario {
 
 ```
 idle ──POST /start──→ running ──all agents terminal──→ completed
-                        │                                  │
-                        ├──timeout/exception──→ failed     │
-                        │                        │         │
-                        └────── 409 guard ◄──────┘         │
-                                                           │
-  idle ◄──────────── POST /start (restarts) ◄──────────────┘
+                       │  ▲                               │
+                       │  └──── POST /start (restarts) ◄──┘
+                       │  ▲                               │
+                       ├──timeout/exception──→ failed ────┘
+                       │
+                       └──── 409 on POST /start
 ```
 
 | Transition | Trigger | Detail |
@@ -159,7 +167,7 @@ idle ──POST /start──→ running ──all agents terminal──→ compl
 | `idle` → `running` | `POST /api/scenarios/{id}/start` | ScenarioExecutionService begins async agent sequence. ScenarioStateStore marks running. |
 | `running` → `completed` | Last agent reaches terminal CommitmentState | ScenarioExecutionService detects all steps FULFILLED/DECLINED/DELEGATED. |
 | `running` → `failed` | Timeout or unrecoverable error | Inherits `casehub.example.timeout.seconds` (default 300). Executor thread interrupted on timeout. |
-| `completed`/`failed` → `running` | `POST /api/scenarios/{id}/start` | Scenario restarts from step 1. ScenarioStateStore clears prior state. 409 only on `running`. |
+| `completed`/`failed` → `running` | `POST /api/scenarios/{id}/start` | Scenario restarts from step 1. ScenarioStateStore clears prior state, then broadcasts `snapshot` messages (empty for append-only datasets, initial state for replace datasets) to all existing WebSocket sessions — clears client-side data before the new run begins. 409 only on `running`. |
 | JVM restart | Process restart | ScenarioStateStore is in-memory — all scenarios reset to `idle`. No persistence required for a demo. |
 
 ```typescript
