@@ -10,7 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import io.casehub.openclaw.casehub.GateDecision;
+import io.casehub.blocks.oversight.GateOutcome;
 import io.casehub.openclaw.casehub.OversightGateService;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.CommitmentState;
@@ -53,7 +53,7 @@ class CommitmentToolsTest {
         currentPrincipal = mock(io.casehub.platform.api.identity.CurrentPrincipal.class);
         when(currentPrincipal.tenancyId()).thenReturn("test-tenant");
         // Default: Autonomous — normal done() path
-        when(oversightGateService.openGate(any(), any(), any(), any())).thenReturn(new GateDecision.Autonomous());
+        when(oversightGateService.openGate(any(), any(), any(), any())).thenReturn(new GateOutcome.Autonomous());
         tools = new CommitmentTools(messageService, commitmentService, commitmentStore,
                                      oversightGateService, currentPrincipal);
     }
@@ -236,7 +236,7 @@ class CommitmentToolsTest {
         when(messageService.dispatch(any()))
                 .thenReturn(dispatchResult(11L, channelId, agentId, MessageType.DONE, correlationId));
         when(oversightGateService.openGate(eq(agentId), eq(correlationId), eq("Report sent"), any()))
-                .thenReturn(new GateDecision.Autonomous());
+                .thenReturn(new GateOutcome.Autonomous());
 
         ToolResponse response = tools.done(agentId, correlationId, "Report sent");
 
@@ -256,7 +256,7 @@ class CommitmentToolsTest {
                 .thenReturn(Optional.of(commitment(correlationId, channelId, agentId,
                         Instant.now().plus(1, ChronoUnit.HOURS))));
         when(oversightGateService.openGate(eq(agentId), eq(correlationId), eq("Delete old files"), any()))
-                .thenReturn(new GateDecision.GatePending(gateId, "risk: file deletion"));
+                .thenReturn(new GateOutcome.GatePending(gateId, "risk: file deletion"));
 
         ToolResponse response = tools.done(agentId, correlationId, "Delete old files");
 

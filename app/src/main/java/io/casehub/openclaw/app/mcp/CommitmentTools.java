@@ -11,7 +11,7 @@ import jakarta.transaction.Transactional;
 
 import org.jboss.logging.Logger;
 
-import io.casehub.openclaw.casehub.GateDecision;
+import io.casehub.blocks.oversight.GateOutcome;
 import io.casehub.openclaw.casehub.OversightGateService;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.platform.api.identity.CurrentPrincipal;
@@ -163,8 +163,8 @@ public class CommitmentTools {
     private ToolResponse channelBacked_done(String agentId, String correlationId,
                                              UUID channelId, String outcome) {
         String tenancyId = currentPrincipal.tenancyId();
-        GateDecision gate = oversightGateService.openGate(agentId, correlationId, outcome, tenancyId);
-        if (gate instanceof GateDecision.GatePending g) {
+        GateOutcome gate = oversightGateService.openGate(agentId, correlationId, outcome, tenancyId);
+        if (gate instanceof GateOutcome.GatePending g) {
             String escapedReason = g.reason() != null
                     ? g.reason().replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
                     : "";
@@ -174,7 +174,7 @@ public class CommitmentTools {
                     """.formatted(g.gateId(), escapedReason).strip());
         }
 
-        // GateDecision.Autonomous — proceed with normal DONE dispatch
+        // GateOutcome.Autonomous — proceed with normal DONE dispatch
         long commandMessageId = findCommandMessageId(correlationId);
         if (commandMessageId < 0) {
             return ToolResponse.error("COMMAND_NOT_FOUND: no COMMAND message found for correlationId '"

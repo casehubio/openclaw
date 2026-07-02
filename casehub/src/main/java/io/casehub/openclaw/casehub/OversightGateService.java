@@ -14,10 +14,11 @@ import jakarta.inject.Inject;
 
 import org.jboss.logging.Logger;
 
-import io.casehub.api.spi.ActionRiskClassifier;
-import io.casehub.api.spi.ClassificationContext;
-import io.casehub.api.spi.RiskClassifier;
-import io.casehub.api.spi.RiskDecision;
+import io.casehub.blocks.oversight.ActionRiskClassifier;
+import io.casehub.blocks.oversight.ClassificationContext;
+import io.casehub.blocks.oversight.GateOutcome;
+import io.casehub.blocks.oversight.RiskClassifier;
+import io.casehub.blocks.oversight.RiskDecision;
 import io.casehub.worker.api.PlannedAction;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.MessageDispatch;
@@ -41,8 +42,8 @@ import io.casehub.qhorus.runtime.store.query.MessageQuery;
  *
  * <p>{@link #openGate(String, String, String, String)} classifies the proposed action via
  * {@code @RiskClassifier} CDI beans. If {@code GateRequired}, dispatches a COMMAND to
- * the oversight channel and returns {@link GateDecision.GatePending}. If {@code Autonomous}
- * (or no classifiers registered), returns {@link GateDecision.Autonomous} so the caller
+ * the oversight channel and returns {@link GateOutcome.GatePending}. If {@code Autonomous}
+ * (or no classifiers registered), returns {@link GateOutcome.Autonomous} so the caller
  * can proceed with normal DONE dispatch. Fail-open on infrastructure errors.
  *
  * <p>{@link #fulfill(UUID, String)} processes human responses to oversight gates. Parses
@@ -117,28 +118,28 @@ public class OversightGateService {
      * <p>Fail-open: infrastructure failures (channel not found, dispatch error) → Autonomous.
      * Classifier exception → GateRequired fail-safe (not Autonomous — failure ≠ safe).
      */
-    public GateDecision openGate(final String agentId, final String commitmentId,
+    public GateOutcome openGate(final String agentId, final String commitmentId,
                                   final String outcome, final String tenancyId) {
         try {
             Optional<Commitment> cOpt = commitmentStore.findByCorrelationId(commitmentId);
             if (cOpt.isEmpty() || cOpt.get().channelId == null) {
                 log.warnf("openGate: no channel-backed commitment for correlationId=%s — failing open",
                         commitmentId);
-                return new GateDecision.Autonomous();
+                return new GateOutcome.Autonomous();
             }
             UUID workChannelId = cOpt.get().channelId;
 
             Channel workChannel = channelService.findById(workChannelId).orElse(null);
             if (workChannel == null) {
                 log.warnf("openGate: work channel %s not found — failing open", workChannelId);
-                return new GateDecision.Autonomous();
+                return new GateOutcome.Autonomous();
             }
 
             UUID caseId = CaseChannelNames.extractCaseId(workChannel.name);
             if (caseId == null) {
                 log.warnf("openGate: cannot extract caseId from channel name '%s' — failing open",
                         workChannel.name);
-                return new GateDecision.Autonomous();
+                return new GateOutcome.Autonomous();
             }
 
             PlannedAction action = PlannedAction.of(outcome, "COMPLETION");
@@ -147,7 +148,7 @@ public class OversightGateService {
             RiskDecision decision = classifyMostRestrictive(action, classCtx);
 
             if (decision instanceof RiskDecision.Autonomous) {
-                return new GateDecision.Autonomous();
+                return new GateOutcome.Autonomous();
             }
 
             RiskDecision.GateRequired gate = (RiskDecision.GateRequired) decision;
@@ -157,7 +158,7 @@ public class OversightGateService {
             if (oversightChannel == null) {
                 log.warnf("openGate: oversight channel not found for caseId=%s — failing open " +
                         "(oversight not configured)", caseId);
-                return new GateDecision.Autonomous();
+                return new GateOutcome.Autonomous();
             }
 
             long commandMessageId = messageService.findAllByCorrelationId(commitmentId).stream()
@@ -167,7 +168,7 @@ public class OversightGateService {
                     .orElse(-1L);
             if (commandMessageId < 0) {
                 log.warnf("openGate: no COMMAND message found for commitmentId=%s — failing open", commitmentId);
-                return new GateDecision.Autonomous();
+                return new GateOutcome.Autonomous();
             }
 
             UUID gateId = UUID.randomUUID();
@@ -186,11 +187,11 @@ public class OversightGateService {
             log.infof("Gate opened: gateId=%s agentId=%s commitmentId=%s caseId=%s reason=%s",
                     gateId, agentId, commitmentId, caseId, gate.reason());
 
-            return new GateDecision.GatePending(gateId, gate.reason());
+            return new GateOutcome.GatePending(gateId, gate.reason());
         } catch (Exception e) {
             log.errorf("openGate() failed for agentId=%s commitmentId=%s: %s — failing open",
                     agentId, commitmentId, e.getMessage());
-            return new GateDecision.Autonomous();
+            return new GateOutcome.Autonomous();
         }
     }
 

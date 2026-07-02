@@ -4,8 +4,8 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import io.casehub.api.spi.ClassificationContext;
-import io.casehub.api.spi.RiskDecision;
+import io.casehub.blocks.oversight.ClassificationContext;
+import io.casehub.blocks.oversight.RiskDecision;
 import io.casehub.worker.api.PlannedAction;
 
 import static org.assertj.core.api.Assertions.assertThat;

@@ -12,9 +12,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import io.casehub.api.spi.ActionRiskClassifier;
-import io.casehub.api.spi.RiskDecision;
-import io.casehub.openclaw.casehub.GateDecision;
+import io.casehub.blocks.oversight.ActionRiskClassifier;
+import io.casehub.blocks.oversight.RiskDecision;
+import io.casehub.blocks.oversight.GateOutcome;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.CommitmentState;
 import io.casehub.qhorus.api.message.DispatchResult;
@@ -414,9 +414,9 @@ class OversightGateServiceTest {
         when(classifiers.isUnsatisfied()).thenReturn(true);
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "analysis done", "tenant-A");
+        GateOutcome result = service.openGate(agentId, commitmentId, "analysis done", "tenant-A");
 
-        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        assertThat(result).isInstanceOf(GateOutcome.Autonomous.class);
         verify(messageService, never()).dispatch(any());
     }
 
@@ -425,9 +425,9 @@ class OversightGateServiceTest {
         stubSingleClassifier(new RiskDecision.Autonomous());
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "analysis done", "tenant-A");
+        GateOutcome result = service.openGate(agentId, commitmentId, "analysis done", "tenant-A");
 
-        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        assertThat(result).isInstanceOf(GateOutcome.Autonomous.class);
         verify(messageService, never()).dispatch(any());
     }
 
@@ -436,10 +436,10 @@ class OversightGateServiceTest {
         stubSingleClassifier(new RiskDecision.GateRequired("risk: file deletion", true, null, null, null));
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "deleting old reports", "tenant-A");
+        GateOutcome result = service.openGate(agentId, commitmentId, "deleting old reports", "tenant-A");
 
-        assertThat(result).isInstanceOf(GateDecision.GatePending.class);
-        GateDecision.GatePending pending = (GateDecision.GatePending) result;
+        assertThat(result).isInstanceOf(GateOutcome.GatePending.class);
+        GateOutcome.GatePending pending = (GateOutcome.GatePending) result;
         assertThat(pending.reason()).isEqualTo("risk: file deletion");
         assertThat(pending.gateId()).isNotNull();
 
@@ -478,10 +478,10 @@ class OversightGateServiceTest {
         stubSingleClassifier_throws(new RuntimeException("classifier crashed"));
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
+        GateOutcome result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
-        assertThat(result).isInstanceOf(GateDecision.GatePending.class);
-        GateDecision.GatePending pending = (GateDecision.GatePending) result;
+        assertThat(result).isInstanceOf(GateOutcome.GatePending.class);
+        GateOutcome.GatePending pending = (GateOutcome.GatePending) result;
         assertThat(pending.reason()).contains("Classifier error");
     }
 
@@ -492,9 +492,9 @@ class OversightGateServiceTest {
         when(channelService.findByName("case-" + caseId + "/oversight"))
                 .thenReturn(Optional.empty());
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
+        GateOutcome result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
-        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        assertThat(result).isInstanceOf(GateOutcome.Autonomous.class);
         verify(messageService, never()).dispatch(any());
     }
 
@@ -504,9 +504,9 @@ class OversightGateServiceTest {
         stubOpenGateCommitment();
         when(messageService.dispatch(any())).thenThrow(new RuntimeException("channel unavailable"));
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
+        GateOutcome result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
-        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        assertThat(result).isInstanceOf(GateOutcome.Autonomous.class);
     }
 
     @Test
@@ -519,9 +519,9 @@ class OversightGateServiceTest {
         c.state = io.casehub.qhorus.api.message.CommitmentState.OPEN;
         when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
+        GateOutcome result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
-        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        assertThat(result).isInstanceOf(GateOutcome.Autonomous.class);
         verify(messageService, never()).dispatch(any());
     }
 
@@ -537,10 +537,10 @@ class OversightGateServiceTest {
         when(classifiers.iterator()).thenReturn(List.of(narrowClassifier, broadClassifier).iterator());
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
+        GateOutcome result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
-        assertThat(result).isInstanceOf(GateDecision.GatePending.class);
-        assertThat(((GateDecision.GatePending) result).reason()).isEqualTo("narrow");
+        assertThat(result).isInstanceOf(GateOutcome.GatePending.class);
+        assertThat(((GateOutcome.GatePending) result).reason()).isEqualTo("narrow");
     }
 
     @Test
@@ -554,9 +554,9 @@ class OversightGateServiceTest {
         when(classifiers.iterator()).thenReturn(List.of(autonomousClassifier, gateClassifier).iterator());
         stubOpenGateCommitment();
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
+        GateOutcome result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
-        assertThat(result).isInstanceOf(GateDecision.GatePending.class);
+        assertThat(result).isInstanceOf(GateOutcome.GatePending.class);
     }
 
     @Test
@@ -571,9 +571,9 @@ class OversightGateServiceTest {
         // No COMMAND message in history
         when(messageService.findAllByCorrelationId(commitmentId)).thenReturn(List.of());
 
-        GateDecision result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
+        GateOutcome result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
 
-        assertThat(result).isInstanceOf(GateDecision.Autonomous.class);
+        assertThat(result).isInstanceOf(GateOutcome.Autonomous.class);
         verify(messageService, never()).dispatch(any());
     }
 
