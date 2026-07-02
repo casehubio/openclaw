@@ -11,7 +11,7 @@ import jakarta.transaction.Transactional;
 
 import org.jboss.logging.Logger;
 
-import io.casehub.blocks.oversight.GateOutcome;
+import io.casehub.api.spi.GateOutcome;
 import io.casehub.openclaw.casehub.OversightGateService;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.platform.api.identity.CurrentPrincipal;
@@ -23,7 +23,6 @@ import io.casehub.qhorus.runtime.message.CommitmentService;
 import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
 import io.casehub.qhorus.runtime.store.CommitmentStore;
-import io.quarkiverse.mcp.server.TextContent;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
 import io.quarkiverse.mcp.server.ToolResponse;

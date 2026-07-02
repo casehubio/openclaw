@@ -3,7 +3,6 @@ package io.casehub.openclaw.casehub;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
@@ -14,11 +13,11 @@ import jakarta.inject.Inject;
 
 import org.jboss.logging.Logger;
 
-import io.casehub.blocks.oversight.ActionRiskClassifier;
-import io.casehub.blocks.oversight.ClassificationContext;
-import io.casehub.blocks.oversight.GateOutcome;
-import io.casehub.blocks.oversight.RiskClassifier;
-import io.casehub.blocks.oversight.RiskDecision;
+import io.casehub.api.spi.ActionRiskClassifier;
+import io.casehub.api.spi.ClassificationContext;
+import io.casehub.api.spi.GateOutcome;
+import io.casehub.api.spi.RiskClassifier;
+import io.casehub.api.spi.RiskDecision;
 import io.casehub.worker.api.PlannedAction;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.MessageDispatch;

@@ -10,7 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import io.casehub.blocks.oversight.GateOutcome;
+import io.casehub.api.spi.GateOutcome;
 import io.casehub.openclaw.casehub.OversightGateService;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.CommitmentState;

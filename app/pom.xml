@@ -25,12 +25,6 @@
       <artifactId>casehub-openclaw-casehub</artifactId>
     </dependency>
 
-    <!-- Blocks — oversight gate lifecycle, risk classification -->
-    <dependency>
-      <groupId>io.casehub</groupId>
-      <artifactId>casehub-blocks</artifactId>
-    </dependency>
-
     <!-- casehub-platform MockPreferenceProvider @DefaultBean — must be runtime scope.
          Rationale: quarkus:build validates CDI at augmentation time without test classpath.
          runtime scope keeps MockPreferenceProvider visible at augmentation.

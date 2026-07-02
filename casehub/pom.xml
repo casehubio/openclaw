@@ -32,12 +32,6 @@
       <artifactId>casehub-qhorus</artifactId>
     </dependency>
 
-    <!-- Blocks — oversight gate lifecycle, risk classification -->
-    <dependency>
-      <groupId>io.casehub</groupId>
-      <artifactId>casehub-blocks</artifactId>
-    </dependency>
-
     <!-- Engine API — SPI interfaces only (WorkerProvisioner, CaseChannelProvider, etc.).
          Using casehub-engine-api (not casehub-engine) to avoid pulling in the engine
          runtime CDI beans which have many unsatisfied persistence SPIs in this module. -->

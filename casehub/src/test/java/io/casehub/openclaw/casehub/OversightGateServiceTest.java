@@ -12,11 +12,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import io.casehub.blocks.oversight.ActionRiskClassifier;
-import io.casehub.blocks.oversight.RiskDecision;
-import io.casehub.blocks.oversight.GateOutcome;
+import io.casehub.api.spi.ActionRiskClassifier;
+import io.casehub.api.spi.RiskDecision;
+import io.casehub.api.spi.GateOutcome;
 import io.casehub.platform.api.identity.ActorType;
-import io.casehub.qhorus.api.message.CommitmentState;
 import io.casehub.qhorus.api.message.DispatchResult;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
