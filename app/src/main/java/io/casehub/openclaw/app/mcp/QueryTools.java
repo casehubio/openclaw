@@ -5,8 +5,8 @@ import java.util.Optional;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import io.casehub.qhorus.runtime.message.Commitment;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.api.message.Commitment;
+import io.casehub.qhorus.api.store.CommitmentStore;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
 import io.quarkiverse.mcp.server.ToolResponse;
@@ -40,15 +40,15 @@ public class QueryTools {
         }
 
         Commitment c = found.get();
-        String deadline = c.expiresAt != null ? c.expiresAt.toString() : "none";
-        String pendingActions = "OPEN".equals(c.state.name())
+        String deadline = c.expiresAt() != null ? c.expiresAt().toString() : "none";
+        String pendingActions = "OPEN".equals(c.state().name())
                 ? "[\"await DONE or DECLINE\"]"
                 : "[]";
 
         return ToolResponse.success("""
                 {"id": "%s", "kind": "commitment", "state": "%s", "obligor": "%s", "deadline": "%s", "pendingActions": %s}
-                """.formatted(commitmentId, c.state.name(),
-                c.obligor != null ? c.obligor : "unassigned",
+                """.formatted(commitmentId, c.state().name(),
+                c.obligor() != null ? c.obligor() : "unassigned",
                 deadline, pendingActions).strip());
     }
 }

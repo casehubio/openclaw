@@ -17,17 +17,17 @@ import io.casehub.openclaw.casehub.OpenClawChannelBackend;
 import io.casehub.openclaw.client.AgentInvocationRequest;
 import io.casehub.openclaw.client.OpenClawGatewayClient;
 import io.casehub.qhorus.api.channel.ChannelSemantic;
-import io.casehub.qhorus.runtime.channel.ChannelCreateRequest;
+import io.casehub.qhorus.api.channel.ChannelCreateRequest;
 import io.casehub.qhorus.api.gateway.ChannelInitialisedEvent;
 import io.casehub.qhorus.api.gateway.ChannelRef;
 import io.casehub.qhorus.api.gateway.OutboundMessage;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.channel.ChannelService;
-import io.casehub.qhorus.runtime.message.Message;
+import io.casehub.qhorus.api.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
-import io.casehub.qhorus.runtime.store.MessageStore;
-import io.casehub.qhorus.runtime.store.query.MessageQuery;
+import io.casehub.qhorus.api.store.MessageStore;
+import io.casehub.qhorus.api.store.query.MessageQuery;
 import io.casehub.platform.api.identity.ActorType;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
@@ -99,10 +99,10 @@ class BidirectionalWiringTest {
 
         // Create channels via real ChannelService (InMemory store)
         var workChannel = channelService.create(ChannelCreateRequest.builder(workChannelName).description("Work channel").semantic(ChannelSemantic.APPEND).build());
-        workChannelId = workChannel.id;
+        workChannelId = workChannel.id();
 
         var oversightChannel = channelService.create(ChannelCreateRequest.builder(oversightChannelName).description("Oversight channel").semantic(ChannelSemantic.APPEND).build());
-        oversightChannelId = oversightChannel.id;
+        oversightChannelId = oversightChannel.id();
 
         // Register agent in the routing registry (tenancyId: default tenant)
         registry.register("test-agent", "278776f9-e1b0-46fb-9032-8bddebdcf9ce", caseId, "test-session-key");
@@ -120,8 +120,8 @@ class BidirectionalWiringTest {
         doAnswer(invocation -> {
             String correlationId = invocation.getArgument(0);
             return messageStore.scan(MessageQuery.builder().build()).stream()
-                    .filter(m -> correlationId.equals(m.correlationId))
-                    .sorted(java.util.Comparator.comparingLong(m -> m.id))
+                    .filter(m -> correlationId.equals(m.correlationId()))
+                    .sorted(java.util.Comparator.comparingLong(m -> m.id()))
                     .toList();
         }).when(messageService).findAllByCorrelationId(any());
     }
@@ -161,11 +161,11 @@ class BidirectionalWiringTest {
 
         List<Message> messages = messageService.pollAfter(workChannelId, 0L, 20);
         List<Message> statusMessages = messages.stream()
-                .filter(m -> m.messageType == MessageType.STATUS)
+                .filter(m -> m.messageType() == MessageType.STATUS)
                 .toList();
         assertThat(statusMessages).isNotEmpty();
-        assertThat(statusMessages.get(0).sender).isEqualTo("test-agent");
-        assertThat(statusMessages.get(0).content).isEqualTo("done");
+        assertThat(statusMessages.get(0).sender()).isEqualTo("test-agent");
+        assertThat(statusMessages.get(0).content()).isEqualTo("done");
     }
 
     // ── 3. COMMAND with correlationId injects commitment context ─────────────
@@ -175,10 +175,10 @@ class BidirectionalWiringTest {
         // Call post() directly — the injection happens inside post(), not in the
         // dispatch → fanOut path (which would trigger commitmentService.open() and
         // is separately verified by test 1 without correlationId).
-        UUID commitmentId = UUID.randomUUID();
+        String correlationId = UUID.randomUUID().toString();
         ChannelRef ref = new ChannelRef(workChannelId, workChannelName);
         OutboundMessage msg = new OutboundMessage(UUID.randomUUID(), "engine",
-                MessageType.COMMAND, "Analyse the budget.", commitmentId, null, ActorType.HUMAN);
+                MessageType.COMMAND, "Analyse the budget.", correlationId, null, ActorType.HUMAN);
 
         channelBackend.post(ref, msg);
 
@@ -187,7 +187,7 @@ class BidirectionalWiringTest {
 
         AgentInvocationRequest request = captor.getValue();
         assertThat(request.message()).startsWith("Analyse the budget.");
-        assertThat(request.message()).contains(commitmentId.toString());
+        assertThat(request.message()).contains(correlationId);
         assertThat(request.message()).contains("test-agent");
         assertThat(request.message()).contains("casehub_done");
     }

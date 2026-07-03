@@ -22,16 +22,16 @@ import io.casehub.worker.api.PlannedAction;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.api.qualifier.CrossTenant;
-import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.engine.common.qualifier.CrossTenant;
+import io.casehub.qhorus.api.channel.Channel;
+import io.casehub.qhorus.api.message.Commitment;
+import io.casehub.qhorus.api.message.Message;
+import io.casehub.qhorus.api.store.CommitmentStore;
+import io.casehub.qhorus.api.store.CrossTenantChannelStore;
+import io.casehub.qhorus.api.store.CrossTenantMessageStore;
+import io.casehub.qhorus.api.store.query.MessageQuery;
 import io.casehub.qhorus.runtime.channel.ChannelService;
-import io.casehub.qhorus.runtime.message.Commitment;
-import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
-import io.casehub.qhorus.runtime.store.CrossTenantChannelStore;
-import io.casehub.qhorus.runtime.store.CrossTenantMessageStore;
-import io.casehub.qhorus.runtime.store.query.MessageQuery;
 
 /**
  * Owns the oversight gate lifecycle.
@@ -121,12 +121,12 @@ public class OversightGateService {
                                   final String outcome, final String tenancyId) {
         try {
             Optional<Commitment> cOpt = commitmentStore.findByCorrelationId(commitmentId);
-            if (cOpt.isEmpty() || cOpt.get().channelId == null) {
+            if (cOpt.isEmpty() || cOpt.get().channelId() == null) {
                 log.warnf("openGate: no channel-backed commitment for correlationId=%s — failing open",
                         commitmentId);
                 return new GateOutcome.Autonomous();
             }
-            UUID workChannelId = cOpt.get().channelId;
+            UUID workChannelId = cOpt.get().channelId();
 
             Channel workChannel = channelService.findById(workChannelId).orElse(null);
             if (workChannel == null) {
@@ -134,10 +134,10 @@ public class OversightGateService {
                 return new GateOutcome.Autonomous();
             }
 
-            UUID caseId = CaseChannelNames.extractCaseId(workChannel.name);
+            UUID caseId = CaseChannelNames.extractCaseId(workChannel.name());
             if (caseId == null) {
                 log.warnf("openGate: cannot extract caseId from channel name '%s' — failing open",
-                        workChannel.name);
+                        workChannel.name());
                 return new GateOutcome.Autonomous();
             }
 
@@ -161,8 +161,8 @@ public class OversightGateService {
             }
 
             long commandMessageId = messageService.findAllByCorrelationId(commitmentId).stream()
-                    .filter(m -> m.messageType == MessageType.COMMAND)
-                    .mapToLong(m -> m.id)
+                    .filter(m -> m.messageType() == MessageType.COMMAND)
+                    .mapToLong(m -> m.id())
                     .findFirst()
                     .orElse(-1L);
             if (commandMessageId < 0) {
@@ -174,7 +174,7 @@ public class OversightGateService {
             GateContext ctx = new GateContext(commitmentId, workChannelId, commandMessageId, tenancyId);
 
             messageService.dispatch(MessageDispatch.builder()
-                    .channelId(oversightChannel.id)
+                    .channelId(oversightChannel.id())
                     .sender(GATE_SENDER)
                     .type(MessageType.COMMAND)
                     .content(serializeGateContent(ctx, gate.reason()))
@@ -213,14 +213,14 @@ public class OversightGateService {
                 log.warnf("fulfill(): no COMMAND message found for gateId=%s — ignoring", gateId);
                 return;
             }
-            UUID oversightChannelId = gateCmd.channelId;
-            long commandMessageId = gateCmd.id;
-            Optional<GateContext> gateContext = parseGateContent(gateCmd.content);
+            UUID oversightChannelId = gateCmd.channelId();
+            long commandMessageId = gateCmd.id();
+            Optional<GateContext> gateContext = parseGateContent(gateCmd.content());
             String tenancyId = gateContext.map(GateContext::tenancyId).orElse(null);
 
             if (tenancyId == null) {
                 tenancyId = crossTenantChannelStore.findById(oversightChannelId)
-                        .map(ch -> ch.tenancyId)
+                        .map(ch -> ch.tenancyId())
                         .orElse(null);
                 if (tenancyId != null)
                     log.infof("fulfill(): recovered tenancyId from channel for pre-#29 gate %s", gateId);
@@ -263,13 +263,15 @@ public class OversightGateService {
     }
 
     private RiskDecision.GateRequired narrower(RiskDecision.GateRequired a, RiskDecision.GateRequired b) {
-        int sizeA = a.candidateGroups() == null ? Integer.MAX_VALUE : a.candidateGroups().size();
-        int sizeB = b.candidateGroups() == null ? Integer.MAX_VALUE : b.candidateGroups().size();
-        if (sizeA != sizeB) return sizeA < sizeB ? a : b;
+        boolean aHasStrategy = a.candidateGroups() != null;
+        boolean bHasStrategy = b.candidateGroups() != null;
+        if (aHasStrategy != bHasStrategy) return aHasStrategy ? a : b;
         if (a.expiresIn() != null && b.expiresIn() != null) {
             return a.expiresIn().compareTo(b.expiresIn()) <= 0 ? a : b;
         }
-        return a.expiresIn() != null ? a : b;
+        if (a.expiresIn() != null) return a;
+        if (b.expiresIn() != null) return b;
+        return a;
     }
 
     private String serializeGateContent(GateContext ctx, String reason) {

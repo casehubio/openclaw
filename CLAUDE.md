@@ -170,6 +170,7 @@ app/        — Quarkus deployment (MCP endpoint, delivery webhook, ChannelConte
 python/     — before_prompt_build hook + channel client (NOT a Maven module)
 plugin/     — TypeScript OpenClaw plugin (before_prompt_build, commitment lifecycle hooks)
 skills/     — OpenClaw SKILL.md files (casehub-global, casehub-workitem, casehub-case, casehub-queue, casehub-status, casehub-reject, casehub-block, casehub-delegate)
+app/src/main/webui/ — Lit Web Components demo UI (Quinoa-managed); esbuild + TypeScript; NOT a Maven module
 examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight, incident-response); docker-compose + Python mocks + scripts; NOT a Maven module
 ```
 
@@ -190,6 +191,11 @@ examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight
 - `DirectCallBridge` — `CompletableFuture` registry for synchronous webhook bridge; self-evicting via `orTimeout` + `whenComplete`
 - `OpenClawAgentConfigResolver` — resolves agent configuration by delegating to platform `ProvisionerConfigRegistry` SPI; merges local config with registry (registry wins per-agent); wrapped by `OpenClawAgentProvider`
 - `OpenClawAgentProvider` — implements `AgentProvider` (platform SPI); `OpenClawChatModel` — thin langchain4j bridge
+- `CaseExecutionEvent` — sealed interface with 9 typed event records (ScenarioStarted, AgentStarted, ChannelMessage, GatePending, etc.); Jackson polymorphic serialization via `@JsonTypeInfo`
+- `ScenarioStateStore` — in-memory typed state store for demo scenarios; broadcasts `CaseExecutionEvent` to registered `ScenarioEventListener` instances; thread-safe concurrent maps
+- `ScenarioObserver` — `MessageObserver` that routes Qhorus messages to `ScenarioStateStore`; detects gate events (COMMAND/RESPONSE/DECLINE from gate agent)
+- `ScenarioMetadataProvider` — hardcoded demo case definitions (trading-oversight, multi-agent-dev-team, incident-response)
+- `ScenarioDef`, `AgentDef`, `AgentState`, `GateState`, `ScenarioStateSnapshot`, `SetupResult` — scenario data model records
 
 **`app/`** owns:
 - `POST /openclaw/delivery/channel/{channelId}` — receives `deliver:webhook` callbacks from OpenClaw; delegates to `OversightGateService.evaluate()` (always 200)
@@ -206,7 +212,14 @@ examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight
 - `GET /openclaw/plugin/commitments/{agentId}` — open commitment query for `session_start` injection (`@RolesAllowed(PLUGIN)`)
 - `PluginTokenBridgeMechanism` — custom `HttpAuthenticationMechanism`; validates pre-shared bearer token for `/openclaw/plugin/*`; creates `SecurityIdentity` with `openclaw-plugin` role and `casehub.plugin.bridge` attribute; bridge to OIDC client-credentials (openclaw#52)
 - `OpenClawCurrentPrincipal` — `@Alternative @Priority(150)` `CurrentPrincipal`; handles bridge-authenticated identities by returning default tenancyId (prevents `MissingTenancyException` from `OidcCurrentPrincipal` when `JpaCommitmentStore` queries run under a non-OIDC `SecurityIdentity`); delegates to `OidcCurrentPrincipal` for OIDC/anonymous paths; removable when platform#121 ships
-- `POST /example/{exampleId}/start` — demo scenario orchestrator (`@Blocking`; inert when `casehub.example.enabled=false`); lives in `app/example/` subpackage with `DemoGateClassifier`, `ExampleSetup`, `ExamplePoller`
+- `POST /example/{exampleId}/start` — `@Deprecated(forRemoval = true)` demo scenario orchestrator; superseded by `ScenarioExecutionService` + demo UI
+- `GET /api/scenarios` — list demo scenarios with current status (`@PermitAll`)
+- `GET /api/scenarios/{id}/state` — scenario state snapshot for SSE reconnection backfill (`@PermitAll`)
+- `GET /api/scenarios/events` — SSE stream of `CaseExecutionEvent` JSON; passive `Multi<OutboundSseEvent>` pattern (`@PermitAll`)
+- `POST /api/scenarios/{id}/start` — start demo scenario (202/409/404, `@PermitAll`)
+- `POST /api/scenarios/{id}/gate/{gateId}/approve|reject` — oversight gate decisions via `OversightGateService.fulfill()` (`@PermitAll`; security retrofit openclaw#64)
+- `ScenarioExecutionService` — async case execution on virtual threads; sequences agents, registers channels, polls commitments; replaces `ExampleController`
+- `DevBeanProvider` — `@IfBuildProfile("dev")` no-op implementations of platform-supplied CDI beans for `quarkus:dev` mode
 
 **`python/`** owns:
 - `before_prompt_build` hook implementation

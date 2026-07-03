@@ -12,12 +12,12 @@ import org.junit.jupiter.api.Test;
 
 import io.casehub.api.model.CaseChannel;
 import io.casehub.platform.api.identity.ActorType;
+import io.casehub.qhorus.api.channel.Channel;
+import io.casehub.qhorus.api.channel.ChannelCreateRequest;
 import io.casehub.qhorus.api.gateway.ChannelRef;
 import io.casehub.qhorus.api.message.DispatchResult;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.channel.Channel;
-import io.casehub.qhorus.runtime.channel.ChannelCreateRequest;
 import io.casehub.qhorus.runtime.channel.ReactiveChannelService;
 import io.casehub.qhorus.runtime.gateway.ChannelGateway;
 import io.casehub.qhorus.runtime.message.ReactiveMessageService;
@@ -60,10 +60,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private Channel channel(UUID id, String name) {
-        Channel ch = new Channel();
-        ch.id = id;
-        ch.name = name;
-        return ch;
+        return new Channel(id, name, null, null, null, null, null, null, null, null, null, false, false, null, null, null);
     }
 
     /** Stubs findByName → empty, create → new channel, for any channel name containing caseId. */

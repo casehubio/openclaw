@@ -21,7 +21,8 @@ import io.casehub.qhorus.api.channel.ChannelSemantic;
 import io.casehub.qhorus.api.gateway.ChannelRef;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.qhorus.api.channel.Channel;
+import io.casehub.qhorus.api.channel.ChannelCreateRequest;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.gateway.ChannelGateway;
 import io.casehub.qhorus.runtime.message.MessageService;
@@ -71,18 +72,18 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
 
         Channel channel = channelService.findByName(channelName)
                 .orElseGet(() -> {
-                    Channel created = channelService.create(new io.casehub.qhorus.runtime.channel.ChannelCreateRequest(
+                    Channel created = channelService.create(new ChannelCreateRequest(
                             channelName, spec.description(), ChannelSemantic.APPEND,
                             null, null, null, null, null, spec.allowedTypes(), spec.deniedTypes(),
                             null, null, null, null));
-                    gateway.initChannel(created.id, new ChannelRef(created.id, created.name));
+                    gateway.initChannel(created.id(), new ChannelRef(created.id(), created.name()));
                     return created;
                 });
 
-        contextService.bindChannel(caseId, channel.id);
-        log.debugf("Opened channel: %s (id=%s)", channelName, channel.id);
-        return new CaseChannel(channel.id.toString(), channel.name, purpose, "qhorus",
-                Map.of(QHORUS_NAME_KEY, channel.name));
+        contextService.bindChannel(caseId, channel.id());
+        log.debugf("Opened channel: %s (id=%s)", channelName, channel.id());
+        return new CaseChannel(channel.id().toString(), channel.name(), purpose, "qhorus",
+                Map.of(QHORUS_NAME_KEY, channel.name()));
     }
 
     @Override
@@ -111,11 +112,11 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
         String prefix = CaseChannel.CASE_CHANNEL_PREFIX + caseId + "/";
         return channelService.findByNamePrefix(prefix).stream()
                 .map(ch -> new CaseChannel(
-                        ch.id.toString(),
-                        ch.name,
-                        extractPurpose(ch.name, caseId),
+                        ch.id().toString(),
+                        ch.name(),
+                        extractPurpose(ch.name(), caseId),
                         "qhorus",
-                        Map.of(QHORUS_NAME_KEY, ch.name)))
+                        Map.of(QHORUS_NAME_KEY, ch.name())))
                 .toList();
     }
 

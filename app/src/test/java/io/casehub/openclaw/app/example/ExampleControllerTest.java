@@ -14,7 +14,9 @@ import static io.restassured.http.ContentType.JSON;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
+
+import io.casehub.openclaw.casehub.scenario.SetupResult;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,7 +46,7 @@ class ExampleControllerTest {
     @Test
     @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void multiAgentDevTeam_runsThroughPlannerCoderReviewer() {
-        doNothing().when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
+        doReturn(new SetupResult(java.util.UUID.randomUUID(), java.util.UUID.randomUUID())).when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
         // All agents complete immediately with FULFILLED
         when(examplePoller.checkState(any())).thenReturn(CommitmentState.FULFILLED);
 
@@ -65,7 +67,7 @@ class ExampleControllerTest {
     @Test
     @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void tradingOversight_runsSignalRiskExecution() {
-        doNothing().when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
+        doReturn(new SetupResult(java.util.UUID.randomUUID(), java.util.UUID.randomUUID())).when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
         when(examplePoller.checkState(any())).thenReturn(CommitmentState.FULFILLED);
 
         given()
@@ -84,7 +86,7 @@ class ExampleControllerTest {
     @Test
     @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void incidentResponse_runsInvestigatorResolver() {
-        doNothing().when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
+        doReturn(new SetupResult(java.util.UUID.randomUUID(), java.util.UUID.randomUUID())).when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
         when(examplePoller.checkState(any())).thenReturn(CommitmentState.FULFILLED);
 
         given()
@@ -103,7 +105,7 @@ class ExampleControllerTest {
     @Test
     @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void declined_stops_doesNotRunNextAgent() {
-        doNothing().when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
+        doReturn(new SetupResult(java.util.UUID.randomUUID(), java.util.UUID.randomUUID())).when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
         // Signal completes, Risk declines
         when(examplePoller.checkState(any()))
                 .thenReturn(CommitmentState.FULFILLED)   // signal
@@ -124,7 +126,7 @@ class ExampleControllerTest {
     @Test
     @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
     void delegated_stops_doesNotRunNextAgent() {
-        doNothing().when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
+        doReturn(new SetupResult(java.util.UUID.randomUUID(), java.util.UUID.randomUUID())).when(exampleSetup).setupAndDispatch(any(), any(), any(), any(), any(), any());
         // Investigator escalates → DELEGATED
         when(examplePoller.checkState(any())).thenReturn(CommitmentState.DELEGATED);
 

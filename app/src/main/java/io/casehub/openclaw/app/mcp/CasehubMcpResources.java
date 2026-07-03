@@ -12,8 +12,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.casehub.openclaw.context.ChannelContextWindowService;
 import io.casehub.openclaw.context.WindowContent;
 import io.casehub.qhorus.api.message.CommitmentState;
-import io.casehub.qhorus.runtime.message.Commitment;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.api.message.Commitment;
+import io.casehub.qhorus.api.store.CommitmentStore;
 import io.quarkiverse.mcp.server.Resource;
 import io.quarkiverse.mcp.server.ResourceResponse;
 import io.quarkiverse.mcp.server.ResourceTemplate;
@@ -55,9 +55,9 @@ public class CasehubMcpResources {
             @ResourceTemplateArg(name = "agentId") String agentId) {
 
         List<Commitment> open = commitmentStore.findAllOpen().stream()
-                .filter(c -> agentId.equals(c.obligor))
-                .filter(c -> c.state == CommitmentState.OPEN
-                        || c.state == CommitmentState.ACKNOWLEDGED)
+                .filter(c -> agentId.equals(c.obligor()))
+                .filter(c -> c.state() == CommitmentState.OPEN
+                        || c.state() == CommitmentState.ACKNOWLEDGED)
                 .collect(Collectors.toList());
 
         StringBuilder sb = new StringBuilder();
@@ -68,9 +68,9 @@ public class CasehubMcpResources {
             sb.append("""
                     {"commitmentId": "%s", "state": "%s", "deadline": "%s", "watchdogArmed": true}
                     """.formatted(
-                    c.correlationId,
-                    c.state.name(),
-                    c.expiresAt != null ? c.expiresAt : "none").strip());
+                    c.correlationId(),
+                    c.state().name(),
+                    c.expiresAt() != null ? c.expiresAt() : "none").strip());
         }
         sb.append("], \"count\": ").append(open.size()).append("}");
 

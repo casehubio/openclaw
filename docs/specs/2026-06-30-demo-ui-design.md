@@ -1,354 +1,401 @@
-# Demo UI — Design Spec
+# Demo UI — Design Spec (Revised)
 
-**Date:** 2026-06-30
+**Date:** 2026-06-30 (revised 2026-07-06)
 **Issue:** casehubio/openclaw#58
 
 ## Problem
 
-casehub-openclaw has three demo scenarios (trading-oversight, multi-agent-dev-team, incident-response) that run headless. The only interaction is `scenario.sh` (curl) to start and `approve.sh` to approve oversight gates. There is no way to watch agents progress, see channel messages flow, or experience the oversight gate moment visually.
-
-This makes the demos unusable for pitches, conference talks, or hands-on evaluation. The accountability and oversight story — CaseHub's core differentiator — is invisible without a UI.
+casehub-openclaw has three demo cases (trading-oversight, multi-agent-dev-team, incident-response) that run headless. No way to watch agents progress, see channel messages flow, or experience oversight gate moments visually. The accountability story — CaseHub's core differentiator — is invisible without a UI.
 
 ## Solution
 
-A casehub-pages UI embedded in the openclaw Quarkus app via Quinoa. Real-time WebSocket updates drive a live dashboard showing agent pipelines, channel messages, commitment lifecycle, and oversight gate approval — all rendered with the TypeScript DSL using standard casehub-pages components.
+A case execution observer UI embedded in the openclaw Quarkus app via Quinoa. Built with Lit Web Components following the blocks-ui design language. Real-time SSE updates drive a live view of agent pipelines, channel messages, commitment lifecycle, and oversight gate approval.
 
-Single JAR deployment. `mvn quarkus:dev` hot-reloads both Java and TypeScript. The Docker Compose examples serve the same UI.
+Components are designed as generic, extensible case execution observers — not demo-specific. They can be promoted to `@casehubio/blocks-ui-*` packages when stable. OpenClaw provides only the demo launcher and domain-specific renderers.
 
 ## Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
+| Component model | Lit Web Components | Matches blocks-ui; extensible via slots and render callbacks |
+| Theme | blocks-ui OKLCH tokens (`--blocks-*`) | Consistent design language across CaseHub |
+| Real-time transport | SSE via blocks-ui `SSEManager` | Matches blocks-ui pattern; simpler than WebSocket; no new dependency |
+| Data loading | REST initial load + SSE deltas | blocks-ui pattern (work-item-inbox does the same) |
 | Flagship scenario | Trading Oversight | Finance + AI is attention-grabbing; dollar amounts make oversight gates visceral |
-| Scenario depth | All three at full depth | Same components render any scenario — cost is data, not UI work |
-| Real-time transport | WebSocket | casehub-pages has WebSocket dataset support; single connection, multiple datasets |
-| Gate approval UX | Modal dialog with provenance | Deliberate interruption; shows the chain of reasoning that led to this moment |
-| Landing page | Dashboard overview with sidebar nav | Feels like a real application, not a demo launcher |
-| Theme | Dark default with toggle | Control-room aesthetic; `site.setTheme()` handles the toggle |
-| Component strategy | Build in openclaw first, extract shared components later | Ship first, abstract second |
-| Component model | Standard DSL components (tables, metrics, panels) | No iframe components, no custom Web Components this round |
+| Scenario depth | All three at full depth | Same components render any case — cost is data, not UI work |
+| Gate approval UX | Modal dialog with provenance | Deliberate interruption; shows reasoning chain |
+| Theme default | Dark with toggle | Control-room aesthetic |
+| Case definitions | Demo-specific `ScenarioDef` model | `ScenarioDef` is a lightweight demo presentation record (id, name, description, agents, gateAgentId, caseId). It maps to an engine `CaseDefinition` by `caseId` but carries only what the UI needs. `CaseDefinition` (namespace, capabilities, workers, bindings, milestones, goals, planning strategy, etc.) is far too heavy for demo metadata. `ScenarioMetadataProvider` hardcodes three case setups. |
+| Security posture | `@PermitAll` for all demo endpoints | Demo runs behind container network boundary without OIDC configured. This is a regression from `ExampleController`'s `@RolesAllowed(ADMIN)` — justified because the demo UI must work without auth infrastructure. Production deployment requires auth retrofit (openclaw#64). |
 
 ## Architecture
 
 ### Two Layers, One JAR
 
+**Frontend** (`app/src/main/webui/`):
+
 ```
-app/src/main/webui/           ← Quinoa TypeScript frontend
-  package.json                ← @casehubio/pages-runtime, @casehubio/pages-ui
-  tsconfig.json
-  esbuild.config.mjs
-  .npmrc                      ← GitHub Packages registry for @casehubio scope
-  src/
-    index.html                ← minimal shell: <div id="app">
-    index.ts                  ← loadSite() entry point
-    pages/
-      dashboard.ts            ← overviewPage()
-      scenario.ts             ← scenarioPage(), agentPipeline(), channelFeed(), auditTrail()
-    controls/
-      gate-modal.ts           ← modal overlay for gate approval
-      scenario-controls.ts    ← start button handler
-    data/
-      datasets.ts             ← all dataset declarations (WebSocket URL, column schemas)
+package.json                 ← lit, @casehubio/blocks-ui-core
+tsconfig.json
+esbuild.config.mjs
+.npmrc                       ← GitHub Packages registry for @casehubio scope
+.gitignore
+src/
+  index.html                 ← <div id="app">
+  index.ts                   ← theme setup, component registration, app shell
+  app-shell.ts               ← top-level layout: sidebar nav + content area
+  components/
+    case-worker-pipeline.ts  ← agent step list with state/duration (blocks-ui candidate)
+    channel-feed.ts          ← scrolling channel message feed (blocks-ui candidate)
+    gate-approval-modal.ts   ← oversight gate modal with provenance (blocks-ui candidate)
+    case-execution-view.ts   ← composition: pipeline + feed + audit trail
+    demo-launcher.ts         ← list cases, start button (openclaw-specific)
+  types/
+    events.ts                ← SSE event types, CaseExecutionEvent discriminated union
 ```
 
-### Backend (New Endpoints)
+**Backend** — split across two modules:
+- `casehub/src/main/java/.../casehub/scenario/` — CDI beans (ScenarioStateStore, ScenarioObserver, ScenarioMetadataProvider, ScenarioExecutionService, ScenarioEventListener)
+- `app/src/main/java/.../app/scenario/` — JAX-RS resources (ScenarioSseResource, ScenarioRestResource)
+
+This follows the existing module boundary: `ExampleController` (app/) depends on `casehub/` beans. The `CaseExecutionEvent` sealed interface lives in `casehub/` so both modules can use it.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `WS /ws/events` | Real-time stream: agent state changes, commitment lifecycle, channel messages, gate events |
-| `GET /api/scenarios` | List available scenarios with metadata (agents, description, flow) |
-| `GET /api/scenarios/{id}/state` | Current state for REST API consumers (e.g. `scenario.sh`). Not used by WebSocket reconnection. |
-| `POST /api/scenarios/{id}/start` | Start a scenario asynchronously. Returns 202 immediately; progress via WebSocket. Returns 409 if already running. |
-| `POST /api/scenarios/{id}/gate/{gateId}/approve` | Approve an oversight gate (delegates to `OversightGateService.fulfill()`) |
-| `POST /api/scenarios/{id}/gate/{gateId}/reject` | Reject an oversight gate (delegates to `OversightGateService.fulfill()`) |
+| `GET /api/scenarios/events` | SSE stream: agent state changes, commitment lifecycle, channel messages, gate events |
+| `GET /api/scenarios` | List available demo cases with metadata and current status |
+| `GET /api/scenarios/{id}/state` | Current state of a running case (for SSE reconnection backfill) |
+| `POST /api/scenarios/{id}/start` | Start a demo case. Returns 202. Returns 409 if already running. |
+| `POST /api/scenarios/{id}/gate/{gateId}/approve` | Approve an oversight gate. Delegates to `OversightGateService.fulfill(gateId, "Approved")`. |
+| `POST /api/scenarios/{id}/gate/{gateId}/reject` | Reject an oversight gate. Delegates to `OversightGateService.fulfill(gateId, "Rejected")`. |
 
-All demo endpoints are `@PermitAll` — no auth for demo simplicity.
-
-**Migration from ExampleController:** `ExampleController` (`POST /example/{id}/start`) is deprecated and removed when the demo UI ships. Its blocking sequencing logic moves to `ScenarioExecutionService` which runs scenarios asynchronously on a managed executor. `scenario.sh` and `approve.sh` scripts updated to use `/api/scenarios/` paths.
-
-**Concurrent run guard:** `ScenarioStateStore` tracks running state per scenario. `POST /api/scenarios/{id}/start` returns 409 Conflict if the scenario is already running.
-
-**OversightGateService dependency:** Gate approval delegates to `OversightGateService.fulfill()` directly. openclaw#31 tracks the planned migration to casehub-blocks (parent#310). When blocks ships, the gate endpoints switch to the blocks API — the migration is mechanical.
+All demo endpoints are `@PermitAll` (see Design Decisions — Security posture). Gate approval endpoints use the same `OversightGateService.fulfill()` path as the existing `OpenClawOversightDeliveryResource` webhook — the commitment lifecycle is unified regardless of whether approval comes from the UI or an external messaging platform.
 
 ### Backend CDI Beans
 
 | Bean | Responsibility |
 |------|---------------|
-| `ScenarioEventBroadcaster` | Implements `MessageObserver` — passively observes Qhorus dispatches on work/observe/oversight channels, broadcasts wire messages to WebSocket sessions. Same observer pattern as `ChannelContextWindowObserver`. Must never throw. |
-| `ScenarioStateStore` | In-memory snapshot of current scenario state — updated by the broadcaster, serves `snapshot` messages on WebSocket connect/reconnect. Tracks running status per scenario for concurrent-run guard. |
-| `ScenarioMetadataProvider` | Serves scenario definitions — agents, roles, descriptions, gate config. Maps fixed case IDs to scenario identifiers. |
-| `ScenarioExecutionService` | Runs scenario agent sequences asynchronously on a managed executor. Extracted from `ExampleController`'s synchronous loop. Called by `POST /api/scenarios/{id}/start`. |
+| `ScenarioMetadataProvider` | Demo case definitions — agents, roles, case IDs, gate config. Already implemented (Task 1). |
+| `ScenarioStateStore` | In-memory state, SSE event broadcast via `ScenarioEventListener`, concurrent-run guard. Already implemented (Task 2). |
+| `ScenarioObserver` | `MessageObserver` — filters demo channels, updates state store. Extended from Task 3 to detect gate events on the oversight channel (see § Data Flow). |
+| `ScenarioExecutionService` | Async case execution on `@ManagedExecutor`. Replaces `ExampleController`'s synchronous blocking loop. See § ScenarioExecutionService below. |
+| `ScenarioSseResource` | JAX-RS SSE endpoint via `@Produces(SERVER_SENT_EVENTS)` returning `Multi<OutboundSseEvent>`. |
+| `ScenarioRestResource` | REST endpoints for case listing, start, gate approval. |
 
 ### Data Flow
 
 ```
-ScenarioExecutionService sequences agents (ScenarioEventBroadcaster observes via MessageObserver)
-  → COMMAND dispatched     → WS: {op:"replace", dataset:"agents", columns:[...], row:[...], key:"signal"}
-  → commitment created     → WS: {op:"replace", dataset:"commitments", columns:[...], row:[...], key:"corr-123"}
-  → STATUS on work channel → WS: {op:"append",  dataset:"messages", columns:[...], rows:[[...]]}
-  → DONE on work channel   → WS: {op:"replace", dataset:"agents", columns:[...], row:[...], key:"signal"}
-  → COMMAND on oversight   → WS: {op:"replace", dataset:"gates", columns:[...], row:[...], key:"gate-456"}
-                          + WS: {op:"event", topic:"gate-pending", payload:{scenarioId, gateId, ...}}
-  → user approves via UI   → POST /api/scenarios/{id}/gate/{gateId}/approve
-  → DONE on oversight      → WS: {op:"replace", dataset:"gates", columns:[...], row:[...], key:"gate-456"}
-                          + WS: {op:"event", topic:"gate-resolved", payload:{scenarioId, gateId, decision}}
+ScenarioExecutionService sequences agents on @ManagedExecutor
+  ├─ stateStore.updateScenarioStatus(id, "running", agent)   → SCENARIO_STARTED
+  │
+  │  Per agent (sequential, ordered by AgentDef.step):
+  ├─ stateStore.updateAgentState(id, agent, "running", ...)  → AGENT_STARTED
+  ├─ ExampleSetup.setupAndDispatch() creates channels, dispatches COMMAND
+  │   └─ returns SetupResult(workChannelId, oversightChannelId)
+  ├─ stateStore.registerChannel(workChannelId, scenarioId)   → links work channel
+  ├─ stateStore.registerChannel(oversightChannelId, scenarioId) → links oversight channel
+  ├─ ExamplePoller.checkState(correlationId) polls until terminal
+  ├─ stateStore.updateAgentState(id, agent, outcome, ...)    → AGENT_COMPLETED
+  ├─ stateStore.updateCommitment(...)                        → COMMITMENT_UPDATED
+  │
+  └─ stateStore.updateScenarioStatus(id, "completed|failed") → SCENARIO_COMPLETED/FAILED
+
+ScenarioObserver (MessageObserver) watches registered channels:
+  ├─ Work channel messages from agents                       → CHANNEL_MESSAGE
+  ├─ Oversight channel COMMAND from "openclaw-gate"          → GATE_PENDING
+  └─ Oversight channel RESPONSE/DECLINE from "openclaw-gate" → GATE_RESOLVED
+
+ScenarioStateStore broadcasts typed CaseExecutionEvent to ScenarioEventListeners
+  → ScenarioSseResource serializes to JSON, pushes to connected browsers via SSE
+  → Lit components receive SSEEvent, cast event.data to CaseExecutionEvent, update DOM
 ```
 
-`ScenarioEventBroadcaster` implements `MessageObserver` (same pattern as `ChannelContextWindowObserver`). It passively observes all Qhorus message dispatches on work/observe/oversight channels, filtering by the fixed demo case IDs. `ScenarioExecutionService` runs the agent sequence asynchronously — the broadcaster sees the resulting Qhorus events transparently, requiring no coupling between the execution service and the broadcast logic. The WebSocket is the observation channel, not the control channel.
+**Event producers by type:**
 
-## WebSocket Event Protocol
+| SSE Event | Producer | Mechanism |
+|-----------|----------|-----------|
+| `SCENARIO_STARTED`, `SCENARIO_COMPLETED`, `SCENARIO_FAILED` | `ScenarioExecutionService` | Direct call to `stateStore.updateScenarioStatus()` |
+| `AGENT_STARTED`, `AGENT_COMPLETED` | `ScenarioExecutionService` | Direct call to `stateStore.updateAgentState()` |
+| `CHANNEL_MESSAGE` | `ScenarioObserver` | Detects agent messages on registered work channel |
+| `COMMITMENT_UPDATED` | `ScenarioExecutionService` | Direct call to `stateStore.updateCommitment()` |
+| `GATE_PENDING` | `ScenarioObserver` | Detects COMMAND from `"openclaw-gate"` on registered oversight channel |
+| `GATE_RESOLVED` | `ScenarioObserver` | Detects RESPONSE/DECLINE from `"openclaw-gate"` on registered oversight channel |
 
-Single WebSocket connection at `WS /ws/events`. Messages conform to the casehub-pages `WireMessage` interface (`push-source.ts`). Fields per op:
+**Gate event detection:** `ScenarioExecutionService` does not call `OversightGateService.openGate()` — that is called by `CommitmentTools.channelBacked_done()` (the agent's MCP tool) deep in the commitment lifecycle. The execution service has no visibility into gate state. Instead, gate events are detected via the `MessageObserver` SPI: `OversightGateService.openGate()` dispatches a COMMAND on the oversight channel, and `OversightGateDispatcher.dispatch()` dispatches RESPONSE/DECLINE on the same channel. Since both work and oversight channels are registered with the state store, `ScenarioObserver` sees these messages and fires the corresponding state store methods. This decouples the demo state store from production services — no modifications to `OversightGateService` or `CommitmentTools`.
 
-- **snapshot**: `{op:"snapshot", dataset, columns, rows}` — full dataset replace
-- **append**: `{op:"append", dataset, columns, rows}` — add rows (2D array)
-- **replace**: `{op:"replace", dataset, columns, row, key}` — upsert single row by key
-- **remove**: `{op:"remove", dataset, key}` — remove single row by key
+**Channel registration ordering:** `registerChannel()` is called AFTER `setupAndDispatch()` returns, not before. This is safe because `setupAndDispatch()` dispatches the COMMAND to the agent — the agent hasn't responded yet when registration completes. All agent responses (channel messages, gate events) arrive after setup, so no events are missed. `ExampleSetup.setupAndDispatch()` is refactored to return `SetupResult(UUID workChannelId, UUID oversightChannelId)` so the execution service can register both channels.
 
-Multiple datasets share one connection via the PushSource pool (keyed by base URL).
+REST-first, SSE-updates: components call `GET /api/scenarios` on mount for initial state, then subscribe to SSE for real-time deltas. On SSE reconnect, components call `GET /api/scenarios/{id}/state` to backfill.
 
-### Wire Message Types
+### ScenarioExecutionService
 
-| Event | op | dataset | columns | key |
-|-------|----|---------|---------|-----|
-| Agent state change | `replace` | `agents` | scenarioId, agentId, role, state, durationMs, commitmentState, step | agentId |
-| Channel message | `append` | `messages` | scenarioId, agentId, role, content, timestamp | — |
-| Commitment update | `replace` | `commitments` | scenarioId, commitmentId, agentId, state, outcome, timestamp | commitmentId |
-| Gate pending | `replace` | `gates` | scenarioId, gateId, agentId, action, classification, priorAgents (JSON), decision (null), timestamp | gateId |
-| Gate resolved | `replace` | `gates` | scenarioId, gateId, agentId, action, classification, priorAgents, decision ("approved"/"rejected"), timestamp | gateId |
-| Scenario state change | `replace` | `scenarios` | id, name, status, activeAgent, agentCount | id |
-| Activity event | `append` | `activity` | scenarioId, agentId, event, detail, timestamp | — |
-| Gate pending trigger | `event` | — | topic: `gate-pending`, payload: `{scenarioId, gateId, agentId, action, classification, priorAgents}` | — |
-| Gate resolved trigger | `event` | — | topic: `gate-resolved`, payload: `{scenarioId, gateId, decision}` | — |
+Replaces `ExampleController`'s synchronous `@Blocking` polling loop with an async model running on `@ManagedExecutor`.
+
+**Execution model:**
+
+1. `start(scenarioId)` validates the scenario isn't already running (`stateStore.isRunning()`), then submits execution to the managed executor.
+2. `stateStore.resetScenario(scenarioId)` — clears prior run state (agent states, messages, commitments, gate states) so the UI starts clean. The method already exists on `ScenarioStateStore`.
+3. Broadcasts `SCENARIO_STARTED` via `stateStore.updateScenarioStatus(scenarioId, "running", firstAgentId)`.
+3. For each agent in the scenario's `AgentDef` list (sequential, ordered by `step`):
+   a. `stateStore.updateAgentState(scenarioId, agentId, "running", ...)` — broadcasts `AGENT_STARTED`.
+   b. `ExampleSetup.setupAndDispatch(caseId, tenancyId, agentId, ...)` — creates channels (idempotent), dispatches COMMAND. Returns `SetupResult(workChannelId, oversightChannelId)`.
+   c. `stateStore.registerChannel(result.workChannelId(), scenarioId)` — links work channel so `ScenarioObserver` routes agent messages.
+   d. `stateStore.registerChannel(result.oversightChannelId(), scenarioId)` — links oversight channel so `ScenarioObserver` detects gate events.
+   e. Polls `ExamplePoller.checkState(correlationId)` every 2s until terminal state or timeout.
+   f. On terminal state, broadcasts `AGENT_COMPLETED` with outcome mapping:
+      - `FULFILLED` → `completed`
+      - `DECLINED` → `declined`
+      - `DELEGATED` → `delegated`
+      - `FAILED` → `failed`
+      - `EXPIRED` / timeout → `timeout`
+   g. `stateStore.updateCommitment(...)` — broadcasts `COMMITMENT_UPDATED`.
+   h. Non-`FULFILLED` outcomes stop the pipeline and broadcast `SCENARIO_FAILED`.
+4. After all agents complete successfully, broadcasts `SCENARIO_COMPLETED`.
+
+**`ExampleSetup` refactoring:** `setupAndDispatch()` currently returns `void`. Refactored to return `SetupResult(UUID workChannelId, UUID oversightChannelId)` — the channel UUIDs are already computed internally (`caseChannelProvider.openChannel()` returns the channel object), they just need to be exposed. This is a trivial API change.
+
+**Configuration** (reuses existing properties):
+- `casehub.example.enabled` — gates execution
+- `casehub.example.tenancyid` — demo tenant
+- `casehub.example.timeout.seconds` — per-agent timeout
+- `casehub.example.gate.agentid` — oversight gate agent
+
+**Gate lifecycle:** `ScenarioExecutionService` does NOT call `OversightGateService.openGate()` and has no direct visibility into gate state. Gates are opened by `CommitmentTools.channelBacked_done()` (the agent's MCP tool) and resolved by `OversightGateService.fulfill()` (via UI or webhook). Both produce messages on the oversight channel that `ScenarioObserver` detects (see § Data Flow — Gate event detection). When a gate is pending, the commitment is non-terminal, so the poller returns null and the execution service continues polling silently until the gate is resolved.
+
+## SSE Event Protocol
+
+Single SSE endpoint: `GET /api/scenarios/events`. The backend sends SSE `data:` frames containing JSON-serialized `CaseExecutionEvent` objects. `SSEManager` parses each frame into an `SSEEvent` — the `CaseExecutionEvent` is the `data` property of `SSEEvent`, not a match for `SSEEvent` itself.
+
+**Protocol layering:**
+1. SSE transport: `event: message\ndata: {"type":"AGENT_STARTED","scenarioId":"trading",...}\n\n`
+2. `SSEManager` wraps into: `SSEEvent { type: "message", data: { type: "AGENT_STARTED", ... } }`
+3. Components receive `SSEEvent`, cast `event.data as CaseExecutionEvent`, switch on `.type`
+
+### Event Types — Discriminated Union
+
+Events use a sealed type hierarchy (Java sealed interface / TypeScript discriminated union) — each event type carries only its relevant fields. No nullable dead weight.
+
+**Java:**
+
+```java
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+    @JsonSubTypes.Type(value = ScenarioStartedEvent.class, name = "SCENARIO_STARTED"),
+    @JsonSubTypes.Type(value = ScenarioCompletedEvent.class, name = "SCENARIO_COMPLETED"),
+    @JsonSubTypes.Type(value = ScenarioFailedEvent.class, name = "SCENARIO_FAILED"),
+    @JsonSubTypes.Type(value = AgentStartedEvent.class, name = "AGENT_STARTED"),
+    @JsonSubTypes.Type(value = AgentCompletedEvent.class, name = "AGENT_COMPLETED"),
+    @JsonSubTypes.Type(value = CommitmentUpdatedEvent.class, name = "COMMITMENT_UPDATED"),
+    @JsonSubTypes.Type(value = ChannelMessageEvent.class, name = "CHANNEL_MESSAGE"),
+    @JsonSubTypes.Type(value = GatePendingEvent.class, name = "GATE_PENDING"),
+    @JsonSubTypes.Type(value = GateResolvedEvent.class, name = "GATE_RESOLVED"),
+})
+public sealed interface CaseExecutionEvent {
+    String scenarioId();
+    Instant occurredAt();
+}
+
+public record ScenarioStartedEvent(String scenarioId, Instant occurredAt) implements CaseExecutionEvent {}
+public record ScenarioCompletedEvent(String scenarioId, Instant occurredAt) implements CaseExecutionEvent {}
+public record ScenarioFailedEvent(String scenarioId, Instant occurredAt, String error) implements CaseExecutionEvent {}
+
+public record AgentStartedEvent(String scenarioId, Instant occurredAt,
+    String agentId, String role) implements CaseExecutionEvent {}
+public record AgentCompletedEvent(String scenarioId, Instant occurredAt,
+    String agentId, String role, String outcome, long durationMs) implements CaseExecutionEvent {}
+    // outcome: "completed", "failed", "declined", "delegated", "timeout"
+
+public record CommitmentUpdatedEvent(String scenarioId, Instant occurredAt,
+    String agentId, String commitmentId, String state, String outcome) implements CaseExecutionEvent {}
+
+public record ChannelMessageEvent(String scenarioId, Instant occurredAt,
+    String agentId, String role, String content) implements CaseExecutionEvent {}
+
+public record GatePendingEvent(String scenarioId, Instant occurredAt,
+    String gateId, String agentId, String action, String classification,
+    String priorAgents) implements CaseExecutionEvent {}
+
+public record GateResolvedEvent(String scenarioId, Instant occurredAt,
+    String gateId, String decision) implements CaseExecutionEvent {}
+```
+
+**TypeScript:**
+
+```typescript
+interface BaseEvent {
+  readonly scenarioId: string;
+  readonly occurredAt: string;   // ISO-8601
+}
+
+export interface ScenarioStartedEvent extends BaseEvent { readonly type: 'SCENARIO_STARTED'; }
+export interface ScenarioCompletedEvent extends BaseEvent { readonly type: 'SCENARIO_COMPLETED'; }
+export interface ScenarioFailedEvent extends BaseEvent { readonly type: 'SCENARIO_FAILED'; readonly error: string; }
+
+export interface AgentStartedEvent extends BaseEvent {
+  readonly type: 'AGENT_STARTED';
+  readonly agentId: string;
+  readonly role: string;
+}
+export interface AgentCompletedEvent extends BaseEvent {
+  readonly type: 'AGENT_COMPLETED';
+  readonly agentId: string;
+  readonly role: string;
+  readonly outcome: 'completed' | 'failed' | 'declined' | 'delegated' | 'timeout';
+  readonly durationMs: number;
+}
+
+export interface CommitmentUpdatedEvent extends BaseEvent {
+  readonly type: 'COMMITMENT_UPDATED';
+  readonly agentId: string;
+  readonly commitmentId: string;
+  readonly state: string;
+  readonly outcome: string;
+}
+
+export interface ChannelMessageEvent extends BaseEvent {
+  readonly type: 'CHANNEL_MESSAGE';
+  readonly agentId: string;
+  readonly role: string;
+  readonly content: string;
+}
+
+export interface GatePendingEvent extends BaseEvent {
+  readonly type: 'GATE_PENDING';
+  readonly gateId: string;
+  readonly agentId: string;
+  readonly action: string;
+  readonly classification: string;
+  readonly priorAgents: string;
+}
+
+export interface GateResolvedEvent extends BaseEvent {
+  readonly type: 'GATE_RESOLVED';
+  readonly gateId: string;
+  readonly decision: 'approved' | 'rejected';
+}
+
+export type CaseExecutionEvent =
+  | ScenarioStartedEvent | ScenarioCompletedEvent | ScenarioFailedEvent
+  | AgentStartedEvent | AgentCompletedEvent
+  | CommitmentUpdatedEvent | ChannelMessageEvent
+  | GatePendingEvent | GateResolvedEvent;
+```
+
+### Backend Implementation
+
+JAX-RS SSE via `@Produces(MediaType.SERVER_SENT_EVENTS)` returning `Multi<OutboundSseEvent>`. This is the **passive Multi pattern** — Quarkus manages the SSE sink lifecycle. The `SseEventSink` is never held or closed manually, avoiding the sink-close-after-send race documented in protocol `PP-20260613-3a569e` (`sse-sink-async-close`). `ScenarioStateStore` broadcasts typed `CaseExecutionEvent` objects to registered `ScenarioEventListener` instances. The SSE resource serializes them to JSON via Jackson — the store doesn't know about serialization format.
 
 ### Reconnection
 
-The server sends `snapshot` messages for all datasets in three situations:
+`SSEManager` (blocks-ui-core) handles exponential backoff automatically. On reconnect, components call `GET /api/scenarios/{id}/state` to backfill current state.
 
-1. **WebSocket connect** — new client receives current state from `ScenarioStateStore`
-2. **WebSocket reconnect** — casehub-pages `WebSocketSource` reconnects with exponential backoff automatically; the server delivers fresh snapshots on resubscription
-3. **Scenario restart** — the broadcaster sends snapshots (empty rows for append-only datasets like `messages`/`activity`, initial state for replace datasets) to all existing WebSocket sessions, clearing stale data from the prior run before the new run begins
-
-No HTTP side-channel needed; state is always delivered over the WebSocket itself.
-
-`GET /api/scenarios/{id}/state` serves REST API consumers (e.g. `scenario.sh`) and is not part of the WebSocket reconnection flow.
-
-Alignment note: casehub-pages has landed the `PushSource` abstraction (branch `issue-81-trailing-s-xs-batch`, spec `2026-06-30-push-source-abstraction-design.md`). The demo UI targets the post-PushSource API surface. `dataset()` declarations use the stable DSL, not the internal `WebSocketSource`/`PushSource` types — the internal refactoring is transparent to DSL consumers.
-
-## Scenario Data Model
-
-### Scenario Metadata (`GET /api/scenarios`)
+**Backfill response format** (`ScenarioStateSnapshot`):
 
 ```typescript
-interface Scenario {
-  id: string;                    // "trading-oversight"
-  name: string;                  // "Trading Oversight"
-  description: string;           // One-liner for the overview table
-  agents: AgentDef[];            // Ordered sequence
-  gateAgentId: string | null;    // Which agent triggers the oversight gate
-  status: "idle" | "running" | "completed" | "failed";
+interface ScenarioStateSnapshot {
+  readonly scenarioId: string;
+  readonly status: 'idle' | 'running' | 'completed' | 'failed';
+  readonly agents: AgentState[];         // current state of each agent
+  readonly pendingGate: GateState | null; // non-null if a gate is awaiting approval
+  readonly recentMessages: ChannelMessageEvent[]; // last N messages (capped at 100)
+}
+
+interface AgentState {
+  readonly agentId: string;
+  readonly role: string;
+  readonly state: 'waiting' | 'running' | 'completed' | 'failed' | 'declined' | 'delegated' | 'timeout';
+  readonly durationMs: number | null;
+}
+
+interface GateState {
+  readonly gateId: string;
+  readonly agentId: string;
+  readonly action: string;
+  readonly classification: string;
+  readonly priorAgents: string;
 }
 ```
 
-### Scenario Lifecycle State Machine
+If no scenario is running, the endpoint returns the snapshot with `status: 'idle'`, empty agents, null gate, and empty messages. For the overview (`GET /api/scenarios`), each scenario includes its current status but not detailed state — the client fetches detailed state on navigation.
 
-```
-idle ──POST /start──→ running ──all agents terminal──→ completed
-                       │  ▲                               │
-                       │  └──── POST /start (restarts) ◄──┘
-                       │  ▲                               │
-                       ├──timeout/exception──→ failed ────┘
-                       │
-                       └──── 409 on POST /start
-```
+## Component Architecture
 
-| Transition | Trigger | Detail |
-|-----------|---------|--------|
-| `idle` → `running` | `POST /api/scenarios/{id}/start` | ScenarioExecutionService begins async agent sequence. ScenarioStateStore marks running. |
-| `running` → `completed` | Last agent reaches terminal CommitmentState | ScenarioExecutionService detects all steps FULFILLED/DECLINED/DELEGATED. |
-| `running` → `failed` | Timeout or unrecoverable error | Inherits `casehub.example.timeout.seconds` (default 300). Executor thread interrupted on timeout. |
-| `completed`/`failed` → `running` | `POST /api/scenarios/{id}/start` | Scenario restarts from step 1. ScenarioStateStore clears prior state, then broadcasts `snapshot` messages (empty for append-only datasets, initial state for replace datasets) to all existing WebSocket sessions — clears client-side data before the new run begins. 409 only on `running`. |
-| JVM restart | Process restart | ScenarioStateStore is in-memory — all scenarios reset to `idle`. No persistence required for a demo. |
+### Generic Components (blocks-ui candidates)
+
+Built as extensible Lit Web Components with `--blocks-*` design tokens. Each has extension points for domain-specific rendering. All components use blocks-ui-core accessibility mixins where applicable — these are required for blocks-ui promotion.
+
+**`case-worker-pipeline`** — Vertical list of workers/agents progressing through steps.
+- Properties: `workers`, `renderDetail` (optional render callback)
+- Shows: name, role, state (waiting/running/completed/failed/declined/delegated/timeout), duration, commitment state
+- Extension: `renderDetail` callback lets the host app add domain-specific worker info
+- SSE events: `AGENT_STARTED`, `AGENT_COMPLETED`
+- Accessibility: `RovingTabindexMixin` for keyboard navigation between agent steps; `role="list"` with `role="listitem"` children; `LiveRegionMixin` to announce state transitions (e.g. "Risk Assessor completed in 4.2s")
+
+**`channel-feed`** — Scrolling feed of Qhorus channel messages.
+- Properties: `messages`, `renderMessage` (optional render callback)
+- Shows: sender, role, content, timestamp. Newest at bottom.
+- Extension: `renderMessage` callback for custom message formatting
+- SSE events: `CHANNEL_MESSAGE`
+- Accessibility: `LiveRegionMixin` to announce new messages to screen readers; `aria-label` on feed container
+
+**`gate-approval-modal`** — Modal overlay for oversight gate decisions.
+- Properties: gate context (action, classification, prior agents)
+- Slot: `gate-detail` for domain-specific content (e.g. trade summary)
+- Shows: action description, risk classification, prior agent chain, approve/reject buttons
+- Emits: `gate-decision` event with `{gateId, decision}`
+- SSE events: `GATE_PENDING` shows modal, `GATE_RESOLVED` closes it
+- Accessibility: `FocusTrapMixin` to trap keyboard focus within modal; `role="alertdialog"`, `aria-modal="true"`, `aria-labelledby` pointing to modal title; Escape key dismisses (rejects)
+
+**`case-execution-view`** — Composition of pipeline + feed + audit trail.
+- Properties: `scenarioId`, `endpoint`
+- Layout: two-column split (pipeline left 40%, feed right 60%), audit trail below
+- Subscribes to SSE and distributes events to child components
+- Accessibility: `LiveRegionMixin` to announce scenario-level state transitions (started, completed, failed, gate pending)
+
+**All components:** `@media (prefers-reduced-motion: reduce)` for any animations or transitions.
+
+### OpenClaw-Specific Components
+
+**`demo-launcher`** — Lists available demo cases with status and start buttons.
+- Calls `GET /api/scenarios` for case list
+- Shows: name, description, agent count, status (idle/running/completed)
+- Start button: `POST /api/scenarios/{id}/start`
+- SSE updates status in real-time
+
+**`app-shell`** — Top-level layout with sidebar navigation.
+- Sidebar: Overview (launcher), Trading Oversight, Dev Team, Incident Response
+- Content: `case-execution-view` for the selected case, or `demo-launcher` for overview
+- Theme toggle (dark/light) via `generateThemeCSS()`
+
+### Component Communication
+
+- `demo-launcher` → `app-shell`: navigation event on case selection
+- `case-execution-view` → children: distributes SSE events to pipeline, feed, audit
+- `gate-approval-modal` → REST: `POST /api/scenarios/{id}/gate/{gateId}/approve|reject`
+- All via `emitPagesEvent()` / `onPagesEvent()` from `@casehubio/blocks-ui-core`
+
+## Extensibility Model
+
+Components use Lit's natural extension patterns — slots, render callbacks, and properties — so domain-specific rendering is pluggable without subclassing.
 
 ```typescript
-interface AgentDef {
-  agentId: string;               // "signal"
-  role: string;                  // "Signal Analyst"
-  description: string;           // "Analyses market data for trading signals"
-  step: number;                  // 1, 2, 3
+// Generic component with extension point
+@customElement('case-worker-pipeline')
+export class CaseWorkerPipeline extends LitElement {
+  @property({ type: Array }) workers: WorkerState[] = [];
+  @property({ attribute: false }) renderDetail?: (worker: WorkerState) => TemplateResult;
 }
+
+// OpenClaw uses it with domain-specific detail
+html`
+  <case-worker-pipeline
+    .workers=${agents}
+    .renderDetail=${(w) => html`<span class="model">${w.model}</span>`}
+  ></case-worker-pipeline>
+`
 ```
 
-### The Three Scenarios
-
-| Scenario | Agents | Gate Agent |
-|----------|--------|------------|
-| Trading Oversight | signal → risk → execution | execution |
-| Multi-Agent Dev Team | planner → coder → reviewer | reviewer |
-| Incident Response | investigator → resolver | resolver |
-
-### Frontend Datasets
-
-All share a single WebSocket connection. Declared in `data/datasets.ts`:
-
-```typescript
-const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/events`;
-
-dataset("scenarios",   wsUrl, { keyColumn: "id" }),
-dataset("agents",      wsUrl, { keyColumn: "agentId" }),
-dataset("messages",    wsUrl),
-dataset("commitments", wsUrl, { keyColumn: "commitmentId" }),
-dataset("gates",       wsUrl, { keyColumn: "gateId" }),
-dataset("activity",    wsUrl),
-```
-
-The WebSocket URL is derived from `window.location` — works in `quarkus:dev` (localhost:8080), Docker Compose (any host/port mapping), HTTPS (wss://), and conference demos (remote host).
-
-Datasets receiving `replace` ops must declare `keyColumn` — without it, `processWireMessage` logs a warning and silently drops the message.
-
-| Dataset | Columns | Update pattern | keyColumn |
-|---------|---------|----------------|-----------|
-| `scenarios` | id, name, status, activeAgent, agentCount | replace | `id` |
-| `agents` | scenarioId, agentId, role, state, durationMs, commitmentState, step | replace | `agentId` |
-| `messages` | scenarioId, agentId, role, content, timestamp | append | — |
-| `commitments` | scenarioId, commitmentId, agentId, state, outcome, timestamp | replace | `commitmentId` |
-| `gates` | scenarioId, gateId, agentId, action, classification, priorAgents, decision, timestamp | replace | `gateId` |
-| `activity` | scenarioId, agentId, event, detail, timestamp | append | — |
-
-## Frontend Component Composition
-
-### Site Structure
-
-```typescript
-page("CaseHub OpenClaw",
-  sidebar(
-    ["Overview", overviewPage()],
-    ["Trading Oversight", scenarioPage("trading-oversight")],
-    ["Dev Team", scenarioPage("multi-agent-dev-team")],
-    ["Incident Response", scenarioPage("incident-response")],
-  ),
-  { settings: { mode: "dark" } }
-)
-```
-
-### Overview Page
-
-```typescript
-function overviewPage() {
-  return rows(
-    columns([3, 3, 3, 3],
-      [metric({ title: "Agents", lookup: lookup("scenarios", groupBy(null, sum("agentCount"))) })],
-      [metric({ title: "Scenarios", lookup: lookup("scenarios", groupBy(null, count("id"))) })],
-      [metric({ title: "Active", lookup: lookup("scenarios",
-        filterBy("status", "EQUALS_TO", "running"), groupBy(null, count("id"))) })],
-      [metric({ title: "Gates Pending", lookup: lookup("gates",
-        filterBy("decision", "IS_NULL"), groupBy(null, count("gateId"))) })],
-    ),
-    table({
-      title: "Scenarios",
-      sortable: true,
-      lookup: lookup("scenarios"),
-    }),
-    table({
-      title: "Recent Activity",
-      pageSize: 15,
-      lookup: lookup("activity", sortBy("timestamp", "DESCENDING")),
-    }),
-  );
-}
-```
-
-### Scenario Execution Page
-
-Same layout for all three scenarios, driven by data:
-
-```typescript
-function scenarioPage(scenarioId: string) {
-  return rows(
-    panel("Scenario",
-      html(`<p>Click start to run the ${scenarioId} demo.</p>
-            <button data-scenario-start="${scenarioId}">Start Scenario</button>`),
-    ),
-    columns([5, 7],
-      [agentPipeline(scenarioId)],
-      [channelFeed(scenarioId)],
-    ),
-    auditTrail(scenarioId),
-  );
-}
-```
-
-**Agent Pipeline (left column):** Table showing agent sequence — agent name, role, state (waiting/running/completed), duration, commitment state. Updates in real time via WebSocket.
-
-```typescript
-function agentPipeline(scenarioId: string) {
-  return panel("Agent Pipeline",
-    table({
-      lookup: lookup("agents",
-        filterBy("scenarioId", "EQUALS_TO", scenarioId),
-        sortBy("step", "ASCENDING"),
-      ),
-    }),
-  );
-}
-```
-
-**Channel Feed (right column):** Scrolling table of agent messages. Newest at bottom.
-
-```typescript
-function channelFeed(scenarioId: string) {
-  return panel("Channel Feed",
-    table({
-      pageSize: 50,
-      lookup: lookup("messages",
-        filterBy("scenarioId", "EQUALS_TO", scenarioId),
-        sortBy("timestamp", "ASCENDING"),
-      ),
-    }),
-  );
-}
-```
-
-**Audit Trail (below split):** Commitment lifecycle table — which commitments were opened, fulfilled, declined. Gate decisions with timing.
-
-```typescript
-function auditTrail(scenarioId: string) {
-  return panel("Audit Trail",
-    table({
-      pageSize: 20,
-      lookup: lookup("commitments",
-        filterBy("scenarioId", "EQUALS_TO", scenarioId),
-        sortBy("timestamp", "DESCENDING"),
-      ),
-    }),
-  );
-}
-```
-
-### Gate Modal
-
-Custom TypeScript outside the casehub-pages component tree (~50 lines). Uses the casehub-pages `pages-event` mechanism for gate notification:
-
-1. When a gate fires, the backend emits both a `replace` on the `gates` dataset (populates the table) and an `{op:"event", topic:"gate-pending", payload:{...}}` message. `processWireMessage` dispatches this as a `CustomEvent("pages-event")` on the configured `eventTarget` (push-source.ts:54-62, `bubbles: true, composed: true`).
-
-2. The gate modal subscribes via `document.addEventListener("pages-event", handler)` and filters for `detail.topic === "gate-pending"`. No direct WebSocket access, no data pipeline internals, no DOM observation.
-
-3. The modal renders an overlay with:
-   - Action description and risk classification reason (from event payload `action` and `classification`)
-   - Prior agent summary — `priorAgents` lists completed agents with roles and states, assembled by `ScenarioEventBroadcaster` from accumulated Qhorus work channel activity
-   - Approve / Reject buttons
-
-4. On decision: POST to `/api/scenarios/{id}/gate/{gateId}/approve` or `/reject`. The backend emits a `{op:"event", topic:"gate-resolved"}` alongside the `replace` update — the modal closes on receiving this event.
-
-casehub-pages lacks a modal/dialog component — tracked in openclaw#61 for filing on casehub-pages.
-
-### Start Button
-
-Custom TypeScript in `scenario-controls.ts`. The scenario panel uses `html()` to render a button with a `data-scenario-start` attribute (see composition above). After `loadSite()`, a delegated event listener on the document root handles clicks on `[data-scenario-start]` elements, firing `POST /api/scenarios/{id}/start`. Event delegation avoids re-attachment issues on page navigation. casehub-pages lacks an action button component — tracked in openclaw#61 for filing on casehub-pages.
-
-### Theme Toggle
-
-`site.setTheme("dark")` / `site.setTheme("light")` via a toggle button in the UI chrome. casehub-pages handles all CSS custom property switching.
+This supports future domain accelerators (FSI, clinical, SRE) that provide pre-built renderers for common verticals.
 
 ## Quinoa Setup
 
@@ -361,19 +408,54 @@ Custom TypeScript in `scenario-controls.ts`. The scenario panel uses `html()` to
 </dependency>
 ```
 
+No `quarkus-websockets` needed — SSE is built into `quarkus-rest`.
+
 ### application.properties
 
 ```properties
 quarkus.quinoa.build-dir=dist
 quarkus.quinoa.package-manager-install=true
+quarkus.quinoa.package-manager-install.node-version=22.15.0
+```
+
+### Frontend Dependencies
+
+```json
+{
+  "dependencies": {
+    "lit": "^3.0.0",
+    "@casehubio/blocks-ui-core": "0.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  }
+}
 ```
 
 ### Build Chain
 
 - `mvn quarkus:dev` — hot-reloads Java and TypeScript
 - `mvn package` — single JAR with frontend baked in
-- Docker Compose examples use this JAR — no separate frontend container
-- No existing `META-INF/resources/` content — clean start
+- Docker Compose examples serve the same JAR
+
+## ScenarioStateStore Rewrite (Task 2 → typed events)
+
+The existing `ScenarioStateStore` (Task 2) is substantially rewritten — not just a listener interface change.
+
+**What changes:**
+
+| Aspect | Current (WireMessage-based) | Revised (typed events) |
+|--------|----------------------------|----------------------|
+| Listener interface | `ScenarioEventListener.onWireMessage(String json)` | `ScenarioEventListener.onEvent(CaseExecutionEvent event)` |
+| State storage | `List<String>` rows matching column definitions | Typed maps (`Map<String, AgentState>`, etc.) |
+| Broadcast payload | `WireMessage.replace()`, `.append()`, `.event()` JSON builders | Typed `CaseExecutionEvent` record construction |
+| Snapshot generation | `generateSnapshots()` → `List<String>` of wire message JSON | `currentState(scenarioId)` → `ScenarioStateSnapshot` typed object |
+| Column definitions | 6 static `List<WireMessage.Column>` constants | Removed — structure is defined by the record types |
+
+**Scope:** Every mutation method body (`updateAgentState`, `addMessage`, `updateCommitment`, `updateScenarioStatus`, `fireGatePending`, `fireGateResolved`, `addActivity`, `generateSnapshots`, `resetScenario`, `broadcast`) is rewritten. The column-based row storage is replaced with typed state objects. The public API contract (method signatures) is largely preserved — callers still call `updateAgentState(scenarioId, agentId, state, ...)`. What changes is the internal representation and the broadcast format.
+
+The `WireMessage` class (Task 1) is removed. The `CaseExecutionEvent` sealed interface and its record implementations live in the `casehub/scenario` package, serialized to JSON by JAX-RS Jackson.
 
 ## Testing Strategy
 
@@ -381,41 +463,48 @@ quarkus.quinoa.package-manager-install=true
 
 | Test | Type | Coverage |
 |------|------|----------|
-| `ScenarioEventBroadcasterTest` | Unit | Wire message formatting, session management, broadcast |
-| `ScenarioStateStoreTest` | Unit | Snapshot update, backfill generation, concurrent access |
-| `ScenarioMetadataProviderTest` | Unit | All three scenarios return correct agent sequences and gate config |
-| `ScenarioWebSocketTest` | `@QuarkusTest` | WebSocket connection lifecycle, event reception |
-| `ScenarioRestResourceTest` | `@QuarkusTest` | GET scenarios, GET state, POST start, POST gate approve/reject |
+| `ScenarioSseResourceTest` | `@QuarkusTest` | SSE connection, event reception, reconnection backfill |
+| `ScenarioRestResourceTest` | `@QuarkusTest` | GET scenarios, POST start (202/409), POST gate approve/reject |
+| `ScenarioExecutionServiceTest` | Unit | Async execution, state transitions, error handling |
 
 ### Frontend Tests
 
-| Test | Coverage |
-|------|----------|
-| Dataset column schemas | Each dataset declaration matches the wire message format |
-| Gate modal logic | Renders on gate-pending, POSTs correct endpoint, closes on gate-resolved |
+Minimal — Lit components are thin wrappers over SSE data. Focus on:
+- SSE event routing to correct child components
+- Gate modal show/hide lifecycle
+- Start button fires correct REST call
 
 ### Manual Verification
 
-Run all three scenarios end-to-end and watch the UI. Pipeline updates, messages scroll, gate modal appears, approve/reject works. Visual verification before marking complete.
+Run all three demo cases via the UI. Pipeline updates in real time, messages scroll, gate modal appears, approve/reject works. All three scenarios end-to-end.
 
-No Playwright/E2E this round — the UI is a thin declarative layer over tested casehub-pages components. The interesting behaviour (real-time WebSocket flow) is hard to assert without flakiness.
+## Shared Component Promotion Path
 
-## Shared Component Extraction (Follow-Up)
+After the demo UI is working:
 
-After the UI is working and polished:
+1. Move `case-worker-pipeline`, `channel-feed`, `gate-approval-modal` to blocks-ui as `@casehubio/blocks-ui-*` packages
+2. OpenClaw's webui depends on the published packages instead of local files
+3. Domain-specific renderers stay in openclaw
+4. File issues on blocks-ui for each component promotion
 
-1. Identify which TypeScript functions are genuinely reusable vs scenario-specific
-2. Extract reusable patterns (commitment display, agent pipeline, gate modal) into a `@casehubio/pages-casehub` package in the casehub-pages monorepo
-3. File an issue on casehub-pages for the new package
-4. Refactor openclaw's webui to consume the shared package
+## What Changed From Original Spec
 
-This is a separate piece of work — ship the demo first, abstract second.
+| Aspect | Original (2026-06-30) | Revised (2026-07-06) |
+|--------|----------------------|---------------------|
+| Component model | casehub-pages TypeScript DSL | Lit Web Components (blocks-ui) |
+| Theme | `--pages-*` CSS properties | `--blocks-*` OKLCH tokens |
+| Real-time transport | WebSocket with wire messages | SSE via `SSEManager` |
+| Data loading | WebSocket datasets with snapshots | REST + SSE deltas |
+| Dependencies | `@casehubio/pages-runtime`, `@casehubio/pages-ui` | `lit`, `@casehubio/blocks-ui-core` |
+| Maven deps | `quarkus-websockets`, `quarkus-quinoa` | `quarkus-quinoa` only |
+| Event format | casehub-pages WireMessage (`{op, dataset, columns, rows}`) | Simple JSON (`{type, scenarioId, ...}`) |
+| Extensibility | None (pages DSL is declarative) | Lit slots + render callbacks |
+| Platform concept | "Scenarios" as new concept | Demo-specific `ScenarioDef` mapping to engine `CaseDefinition` by `caseId` |
 
 ## Out of Scope
 
-- Custom Web Components or iframe components
-- Changes to casehub-pages repo — gaps tracked in openclaw#61 (action button, modal/dialog components)
-- Changes to existing delivery/gate/channel infrastructure
+- Custom domain accelerators (FSI, clinical) — future work
+- CaseDefinition registry integration — `ScenarioMetadataProvider` stays as demo convenience
+- Changes to blocks-ui repo — issues filed for component promotion when ready
 - Playwright/E2E test automation — openclaw#59
-- Shared component extraction to `@casehubio/pages-casehub` — openclaw#60
-- Auth on demo endpoints
+- Auth on demo endpoints — openclaw#64 (security retrofit for production deployment)

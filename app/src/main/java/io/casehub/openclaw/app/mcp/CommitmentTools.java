@@ -18,11 +18,11 @@ import io.casehub.platform.api.identity.CurrentPrincipal;
 import io.casehub.qhorus.api.message.DispatchResult;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.message.Commitment;
+import io.casehub.qhorus.api.message.Commitment;
 import io.casehub.qhorus.runtime.message.CommitmentService;
-import io.casehub.qhorus.runtime.message.Message;
+import io.casehub.qhorus.api.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.api.store.CommitmentStore;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
 import io.quarkiverse.mcp.server.ToolResponse;
@@ -105,8 +105,8 @@ public class CommitmentTools {
         }
 
         Commitment commitment = open.get(0);
-        String correlationId = commitment.correlationId;
-        Instant deadline = commitment.expiresAt;
+        String correlationId = commitment.correlationId();
+        Instant deadline = commitment.expiresAt();
 
         messageService.dispatch(MessageDispatch.builder()
                 .channelId(channelId)
@@ -200,9 +200,9 @@ public class CommitmentTools {
         if (existing.isEmpty()) {
             return ToolResponse.error("COMMITMENT_NOT_FOUND: " + correlationId);
         }
-        if (existing.get().state.isTerminal()) {
+        if (existing.get().state().isTerminal()) {
             return ToolResponse.error("COMMITMENT_ALREADY_CLOSED: " + correlationId
-                    + " is in state " + existing.get().state);
+                    + " is in state " + existing.get().state());
         }
         commitmentService.fulfill(correlationId);
         return ToolResponse.success("{\"closed\": true}");
@@ -248,9 +248,9 @@ public class CommitmentTools {
         if (existing.isEmpty()) {
             return ToolResponse.error("COMMITMENT_NOT_FOUND: " + correlationId);
         }
-        if (existing.get().state.isTerminal()) {
+        if (existing.get().state().isTerminal()) {
             return ToolResponse.error("COMMITMENT_ALREADY_CLOSED: " + correlationId
-                    + " is in state " + existing.get().state);
+                    + " is in state " + existing.get().state());
         }
         commitmentService.decline(correlationId);
         return ToolResponse.success("{\"declined\": true}");
@@ -352,21 +352,21 @@ public class CommitmentTools {
         }
 
         Commitment commitment = cOpt.get();
-        if (commitment.state.isTerminal()) {
+        if (commitment.state().isTerminal()) {
             return ToolResponse.error("COMMITMENT_ALREADY_CLOSED: commitment " + commitmentId
-                    + " is already in terminal state " + commitment.state);
+                    + " is already in terminal state " + commitment.state());
         }
-        if (!agentId.equals(commitment.obligor)) {
+        if (!agentId.equals(commitment.obligor())) {
             return ToolResponse.error("COMMITMENT_UNAUTHORIZED: agentId '" + agentId
                     + "' is not the obligor for commitment " + commitmentId);
         }
 
-        commitment.expiresAt = newDeadline;
+        commitment = commitment.toBuilder().expiresAt(newDeadline).build();
         commitmentStore.save(commitment);
 
-        if (commitment.channelId != null) {
+        if (commitment.channelId() != null) {
             messageService.dispatch(MessageDispatch.builder()
-                    .channelId(commitment.channelId)
+                    .channelId(commitment.channelId())
                     .sender(agentId)
                     .type(MessageType.STATUS)
                     .content("BLOCKED: " + reason)
@@ -438,16 +438,16 @@ public class CommitmentTools {
      */
     private Optional<UUID> resolveChannelId(String correlationId) {
         return commitmentStore.findByCorrelationId(correlationId)
-                .filter(c -> !c.state.isTerminal())
-                .map(c -> c.channelId)
+                .filter(c -> !c.state().isTerminal())
+                .map(c -> c.channelId())
                 .filter(id -> id != null);
     }
 
     private long findCommandMessageId(String correlationId) {
         return messageService.findAllByCorrelationId(correlationId)
                 .stream()
-                .filter(m -> m.messageType == MessageType.COMMAND)
-                .mapToLong(m -> m.id)
+                .filter(m -> m.messageType() == MessageType.COMMAND)
+                .mapToLong(m -> m.id())
                 .findFirst()
                 .orElse(-1L);
     }

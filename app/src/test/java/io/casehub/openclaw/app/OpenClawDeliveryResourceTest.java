@@ -6,9 +6,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import io.casehub.openclaw.casehub.OversightGateService;
-import io.casehub.qhorus.api.qualifier.CrossTenant;
-import io.casehub.qhorus.runtime.channel.Channel;
-import io.casehub.qhorus.runtime.store.CrossTenantChannelStore;
+import io.casehub.engine.common.qualifier.CrossTenant;
+import io.casehub.qhorus.api.channel.Channel;
+import io.casehub.qhorus.api.store.CrossTenantChannelStore;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
 
@@ -31,10 +31,10 @@ class OpenClawDeliveryResourceTest {
     OversightGateService oversightGateService;
 
     private Channel channelWithTenancy(UUID id, String tenancyId) {
-        Channel ch = new Channel();
-        ch.id = id;
-        ch.tenancyId = tenancyId;
-        return ch;
+        return Channel.builder("test-channel")
+                .id(id)
+                .tenancyId(tenancyId)
+                .build();
     }
 
     @Test

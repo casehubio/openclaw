@@ -19,14 +19,14 @@ import io.casehub.platform.api.identity.TenancyConstants;
 import io.casehub.qhorus.api.channel.ChannelSemantic;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.channel.Channel;
-import io.casehub.qhorus.runtime.channel.ChannelCreateRequest;
+import io.casehub.qhorus.api.channel.Channel;
+import io.casehub.qhorus.api.channel.ChannelCreateRequest;
+import io.casehub.qhorus.api.message.Message;
+import io.casehub.qhorus.api.store.query.MessageQuery;
+import io.casehub.qhorus.persistence.memory.InMemoryCommitmentStore;
+import io.casehub.qhorus.persistence.memory.InMemoryMessageStore;
 import io.casehub.qhorus.runtime.channel.ChannelService;
-import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
-import io.casehub.qhorus.runtime.store.query.MessageQuery;
-import io.casehub.qhorus.testing.InMemoryCommitmentStore;
-import io.casehub.qhorus.testing.InMemoryMessageStore;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
@@ -127,7 +127,7 @@ class OversightGateDispatcherCdiTest {
         String commitmentId = UUID.randomUUID().toString();
         Properties props = new Properties();
         props.setProperty("originalCommitmentId", commitmentId);
-        props.setProperty("workChannelId", workChannel.id.toString());
+        props.setProperty("workChannelId", workChannel.id().toString());
         props.setProperty("commandMessageId", "99");
         props.setProperty("reason", "risk: test action");
         props.setProperty("tenancyId", TenancyConstants.DEFAULT_TENANT_ID);  // FixedCurrentPrincipal default
@@ -142,7 +142,7 @@ class OversightGateDispatcherCdiTest {
         //    CrossTenantMessageStore (backed by InMemoryMessageStore) makes it visible to
         //    fulfill()'s crossTenantMessageStore.scan() lookup.
         messageService.dispatch(MessageDispatch.builder()
-                .channelId(oversightChannel.id)
+                .channelId(oversightChannel.id())
                 .sender("openclaw-gate")
                 .type(MessageType.COMMAND)
                 .content(sw.toString())
@@ -173,9 +173,9 @@ class OversightGateDispatcherCdiTest {
         // Assertion 2: Work channel has no DONE from GATE_SENDER.
         //   The second dispatch (DONE) threw before any write — verifiable even with InMemory.
         List<Message> workDone = messageStore.scan(MessageQuery.builder().build()).stream()
-                .filter(m -> workChannel.id.equals(m.channelId)
-                          && MessageType.DONE == m.messageType
-                          && "openclaw-gate".equals(m.sender))
+                .filter(m -> workChannel.id().equals(m.channelId())
+                          && MessageType.DONE == m.messageType()
+                          && "openclaw-gate".equals(m.sender()))
                 .toList();
         assertThat(workDone).isEmpty();
 

@@ -17,6 +17,7 @@ import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.gateway.ChannelBackend;
 import io.casehub.qhorus.api.gateway.ChannelInitialisedEvent;
 import io.casehub.qhorus.api.gateway.ChannelRef;
+import io.casehub.qhorus.api.gateway.DeliveryGuarantee;
 import io.casehub.qhorus.api.gateway.OutboundMessage;
 import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.gateway.ChannelGateway;
@@ -107,13 +108,21 @@ public class OpenClawChannelBackend implements ChannelBackend {
         hookClient.registerSession(agentId, sessionKey, webhookUrl);
 
         try {
-            hookClient.invoke(agentId, buildPrompt(message.content(), agentId, message.correlationId()),
+            final UUID correlationId = message.correlationId() != null
+                    ? UUID.fromString(message.correlationId())
+                    : null;
+            hookClient.invoke(agentId, buildPrompt(message.content(), agentId, correlationId),
                     config.agent().defaultModel(), config.agent().defaultTimeoutSeconds());
             log.debugf("Invoked OpenClaw agent: agentId=%s caseId=%s", agentId, caseId);
         } catch (OpenClawInvocationException e) {
             log.errorf("OpenClaw invocation failed for agentId=%s: %s", agentId, e.getMessage());
             // Non-fatal — ChannelGateway.fanOut() absorbs exceptions from non-default backends
         }
+    }
+
+    @Override
+    public DeliveryGuarantee deliveryGuarantee() {
+        return DeliveryGuarantee.AT_LEAST_ONCE;
     }
 
     @Override

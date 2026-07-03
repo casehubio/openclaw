@@ -8,8 +8,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.casehub.qhorus.api.message.CommitmentState;
-import io.casehub.qhorus.runtime.message.Commitment;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.api.message.Commitment;
+import io.casehub.qhorus.api.store.CommitmentStore;
 import io.quarkiverse.mcp.server.ToolResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,8 +73,10 @@ class QueryToolsTest {
     @Test
     void status_openCommitmentWithDeadline_includesDeadline() {
         String correlationId = UUID.randomUUID().toString();
-        Commitment c = commitment(correlationId, UUID.randomUUID(), "home-agent", CommitmentState.OPEN);
-        c.expiresAt = java.time.Instant.parse("2026-06-04T17:00:00Z");
+        Commitment c = commitment(correlationId, UUID.randomUUID(), "home-agent", CommitmentState.OPEN)
+                .toBuilder()
+                .expiresAt(java.time.Instant.parse("2026-06-04T17:00:00Z"))
+                .build();
         when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
 
         ToolResponse response = tools.status("home-agent", correlationId);
@@ -87,13 +89,13 @@ class QueryToolsTest {
 
     private static Commitment commitment(String correlationId, UUID channelId,
                                           String obligor, CommitmentState state) {
-        Commitment c = new Commitment();
-        c.id = UUID.randomUUID();
-        c.correlationId = correlationId;
-        c.channelId = channelId;
-        c.obligor = obligor;
-        c.state = state;
-        return c;
+        return Commitment.builder()
+                .id(UUID.randomUUID())
+                .correlationId(correlationId)
+                .channelId(channelId)
+                .obligor(obligor)
+                .state(state)
+                .build();
     }
 
     private static String text(ToolResponse response) {

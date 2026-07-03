@@ -8,7 +8,7 @@ import jakarta.enterprise.inject.Alternative;
 import jakarta.inject.Inject;
 
 import io.casehub.platform.api.identity.CurrentPrincipal;
-import io.casehub.platform.oidc.OidcCurrentPrincipal;
+import io.casehub.platform.oidc.SecurityIdentityCurrentPrincipal;
 import io.quarkus.security.identity.SecurityIdentity;
 
 @RequestScoped
@@ -20,10 +20,10 @@ public class OpenClawCurrentPrincipal implements CurrentPrincipal {
     private static final String BRIDGE_ATTR = "casehub.plugin.bridge";
 
     private final SecurityIdentity identity;
-    private final OidcCurrentPrincipal oidcPrincipal;
+    private final SecurityIdentityCurrentPrincipal oidcPrincipal;
 
     @Inject
-    public OpenClawCurrentPrincipal(SecurityIdentity identity, OidcCurrentPrincipal oidcPrincipal) {
+    public OpenClawCurrentPrincipal(SecurityIdentity identity, SecurityIdentityCurrentPrincipal oidcPrincipal) {
         this.identity = identity;
         this.oidcPrincipal = oidcPrincipal;
     }

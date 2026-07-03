@@ -16,9 +16,9 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 
 import io.casehub.openclaw.casehub.OversightGateService;
-import io.casehub.qhorus.api.qualifier.CrossTenant;
-import io.casehub.qhorus.runtime.channel.Channel;
-import io.casehub.qhorus.runtime.store.CrossTenantChannelStore;
+import io.casehub.engine.common.qualifier.CrossTenant;
+import io.casehub.qhorus.api.channel.Channel;
+import io.casehub.qhorus.api.store.CrossTenantChannelStore;
 
 /**
  * Receives OpenClaw agent results delivered via deliver:webhook.
@@ -69,7 +69,7 @@ public class OpenClawDeliveryResource {
             log.warnf("Delivery received for unknown channelId=%s — tenancyId unresolvable; skipping dispatch",
                     channelId);
         }
-        String tenancyId = channel.map(ch -> ch.tenancyId).orElse(null);
+        String tenancyId = channel.map(ch -> ch.tenancyId()).orElse(null);
 
         String agentId = payload != null && payload.agentId() != null ? payload.agentId() : "openclaw-agent";
         String output  = payload != null && payload.output()  != null ? payload.output()  : "";

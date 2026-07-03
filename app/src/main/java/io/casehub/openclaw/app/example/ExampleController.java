@@ -37,6 +37,7 @@ import io.smallrye.common.annotation.Blocking;
  * When casehub.example.enabled=false (default), it returns 503. Set it to true in the
  * docker-compose environment for each example.
  */
+@Deprecated(forRemoval = true)
 @RolesAllowed(OpenClawGroups.ADMIN)
 @ApplicationScoped
 @Path("/example")

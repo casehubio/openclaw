@@ -9,11 +9,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.casehub.api.model.CaseChannel;
+import io.casehub.qhorus.api.channel.Channel;
+import io.casehub.qhorus.api.channel.ChannelCreateRequest;
 import io.casehub.qhorus.api.gateway.ChannelRef;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.channel.Channel;
-import io.casehub.qhorus.runtime.channel.ChannelCreateRequest;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.gateway.ChannelGateway;
 import io.casehub.qhorus.runtime.message.MessageService;
@@ -50,10 +50,7 @@ class OpenClawCaseChannelProviderTest {
     }
 
     private Channel channel(UUID id, String name) {
-        Channel ch = new Channel();
-        ch.id = id;
-        ch.name = name;
-        return ch;
+        return new Channel(id, name, null, null, null, null, null, null, null, null, null, false, false, null, null, null);
     }
 
     @Test

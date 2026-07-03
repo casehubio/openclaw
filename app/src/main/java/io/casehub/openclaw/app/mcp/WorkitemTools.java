@@ -13,7 +13,7 @@ import jakarta.inject.Inject;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.qhorus.api.channel.Channel;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.message.MessageService;
 import io.quarkiverse.mcp.server.Tool;
@@ -82,7 +82,7 @@ public class WorkitemTools {
         }
 
         var builder = MessageDispatch.builder()
-                .channelId(workChannel.id)
+                .channelId(workChannel.id())
                 .sender(OPENCLAW_SENDER)
                 .type(MessageType.COMMAND)
                 .content(description)
@@ -114,7 +114,7 @@ public class WorkitemTools {
         if (found.isEmpty()) {
             List<Channel> available = channelService.findByNamePrefix(WORK_CHANNEL_PREFIX);
             String names = available.stream()
-                    .map(c -> c.name.replace(WORK_CHANNEL_PREFIX, ""))
+                    .map(c -> c.name().replace(WORK_CHANNEL_PREFIX, ""))
                     .collect(Collectors.joining(", "));
             return ToolResponse.error("QUEUE_NOT_FOUND: '" + queueName
                     + "'. Available queues: " + (names.isEmpty() ? "(none)" : names));
@@ -126,7 +126,7 @@ public class WorkitemTools {
                 : description;
 
         var result = messageService.dispatch(MessageDispatch.builder()
-                .channelId(channel.id)
+                .channelId(channel.id())
                 .sender(OPENCLAW_SENDER)
                 .type(MessageType.COMMAND)
                 .content(content)

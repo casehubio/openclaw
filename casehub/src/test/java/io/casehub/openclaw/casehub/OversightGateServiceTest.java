@@ -16,17 +16,17 @@ import io.casehub.api.spi.ActionRiskClassifier;
 import io.casehub.api.spi.RiskDecision;
 import io.casehub.api.spi.GateOutcome;
 import io.casehub.platform.api.identity.ActorType;
+import io.casehub.qhorus.api.channel.Channel;
+import io.casehub.qhorus.api.message.Commitment;
 import io.casehub.qhorus.api.message.DispatchResult;
+import io.casehub.qhorus.api.message.Message;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.qhorus.api.store.CommitmentStore;
+import io.casehub.qhorus.api.store.CrossTenantChannelStore;
+import io.casehub.qhorus.api.store.CrossTenantMessageStore;
 import io.casehub.qhorus.runtime.channel.ChannelService;
-import io.casehub.qhorus.runtime.message.Commitment;
-import io.casehub.qhorus.runtime.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
-import io.casehub.qhorus.runtime.store.CrossTenantChannelStore;
-import io.casehub.qhorus.runtime.store.CrossTenantMessageStore;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -78,13 +78,9 @@ class OversightGateServiceTest {
         crossTenantChannelStore = mock(CrossTenantChannelStore.class);
         when(crossTenantChannelStore.findById(any())).thenReturn(Optional.empty()); // default: not found
 
-        workChannel = new Channel();
-        workChannel.id = workChannelId;
-        workChannel.name = "case-" + caseId + "/work";
+        workChannel = new Channel(workChannelId, "case-" + caseId + "/work", null, null, null, null, null, null, null, null, null, false, false, null, null, null);
 
-        oversightChannel = new Channel();
-        oversightChannel.id = oversightChannelId;
-        oversightChannel.name = "case-" + caseId + "/oversight";
+        oversightChannel = new Channel(oversightChannelId, "case-" + caseId + "/oversight", null, null, null, null, null, null, null, null, null, false, false, null, null, null);
 
         when(channelService.findById(workChannelId)).thenReturn(Optional.of(workChannel));
         when(channelService.findById(oversightChannelId)).thenReturn(Optional.of(oversightChannel));
@@ -303,12 +299,10 @@ class OversightGateServiceTest {
     @Test
     void fulfill_malformedGateContent_passesEmptyContextToDispatcher() {
         UUID gateId = UUID.randomUUID();
-        Message cmd = new Message();
-        cmd.id = 42L;
-        cmd.channelId = oversightChannelId;
-        cmd.messageType = MessageType.COMMAND;
-        cmd.correlationId = gateId.toString();
-        cmd.content = "not-properties-format-at-all";
+        Message cmd = new Message(
+            42L, oversightChannelId, null, MessageType.COMMAND, null, null, "not-properties-format-at-all",
+            gateId.toString(), null, 0, null, null, null, null, null, 0, null
+        );
         when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
 
         service.fulfill(gateId, "approved");
@@ -356,18 +350,14 @@ class OversightGateServiceTest {
         java.io.StringWriter sw = new java.io.StringWriter();
         try { props.store(sw, null); } catch (Exception e) { throw new RuntimeException(e); }
 
-        Message cmd = new Message();
-        cmd.id = 42L;
-        cmd.channelId = oversightChannelId;
-        cmd.messageType = MessageType.COMMAND;
-        cmd.content = sw.toString();
-        cmd.correlationId = gateId.toString();
+        Message cmd = new Message(
+            42L, oversightChannelId, null, MessageType.COMMAND, null, null, sw.toString(),
+            gateId.toString(), null, 0, null, null, null, null, null, 0, null
+        );
         when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
 
         // Recovery: channel lookup returns a channel with tenancyId = "tenant-A"
-        Channel oversight = new Channel();
-        oversight.id = oversightChannelId;
-        oversight.tenancyId = "tenant-A";
+        Channel oversight = new Channel(oversightChannelId, null, null, null, null, null, null, null, null, null, null, false, false, "tenant-A", null, null);
         when(crossTenantChannelStore.findById(oversightChannelId)).thenReturn(Optional.of(oversight));
 
         service.fulfill(gateId, "approved");
@@ -389,12 +379,10 @@ class OversightGateServiceTest {
         java.io.StringWriter sw = new java.io.StringWriter();
         try { props.store(sw, null); } catch (Exception e) { throw new RuntimeException(e); }
 
-        Message cmd = new Message();
-        cmd.id = 42L;
-        cmd.channelId = oversightChannelId;
-        cmd.messageType = MessageType.COMMAND;
-        cmd.content = sw.toString();
-        cmd.correlationId = gateId.toString();
+        Message cmd = new Message(
+            42L, oversightChannelId, null, MessageType.COMMAND, null, null, sw.toString(),
+            gateId.toString(), null, 0, null, null, null, null, null, 0, null
+        );
         when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
         // crossTenantChannelStore returns Optional.empty() by default from setup()
 
@@ -511,11 +499,11 @@ class OversightGateServiceTest {
     @Test
     void openGate_noChannelBackedCommitment_returnsAutonomous() {
         stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null));
-        Commitment c = new Commitment();
-        c.id = UUID.randomUUID();
-        c.correlationId = commitmentId;
-        c.channelId = null;  // self-commit — no channel
-        c.state = io.casehub.qhorus.api.message.CommitmentState.OPEN;
+        Commitment c = new Commitment(
+            UUID.randomUUID(), commitmentId, null, null, null, null,
+            io.casehub.qhorus.api.message.CommitmentState.OPEN,
+            null, null, null, null, null, null, null
+        );
         when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
 
         GateOutcome result = service.openGate(agentId, commitmentId, "outcome", "tenant-A");
@@ -529,9 +517,9 @@ class OversightGateServiceTest {
         ActionRiskClassifier narrowClassifier = mock(ActionRiskClassifier.class);
         ActionRiskClassifier broadClassifier = mock(ActionRiskClassifier.class);
         when(narrowClassifier.classify(any(), any()))
-                .thenReturn(new RiskDecision.GateRequired("narrow", true, List.of("admin"), null, null));
+                .thenReturn(new RiskDecision.GateRequired("narrow", true, null, null, null));
         when(broadClassifier.classify(any(), any()))
-                .thenReturn(new RiskDecision.GateRequired("broad", true, List.of("admin", "member"), null, null));
+                .thenReturn(new RiskDecision.GateRequired("broad", true, null, null, null));
         when(classifiers.isUnsatisfied()).thenReturn(false);
         when(classifiers.iterator()).thenReturn(List.of(narrowClassifier, broadClassifier).iterator());
         stubOpenGateCommitment();
@@ -561,11 +549,11 @@ class OversightGateServiceTest {
     @Test
     void openGate_noCommandMessage_returnsAutonomousAndNoGateOpened() {
         stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null));
-        Commitment c = new Commitment();
-        c.id = UUID.randomUUID();
-        c.correlationId = commitmentId;
-        c.channelId = workChannelId;
-        c.state = io.casehub.qhorus.api.message.CommitmentState.OPEN;
+        Commitment c = new Commitment(
+            UUID.randomUUID(), commitmentId, workChannelId, null, null, null,
+            io.casehub.qhorus.api.message.CommitmentState.OPEN,
+            null, null, null, null, null, null, null
+        );
         when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
         // No COMMAND message in history
         when(messageService.findAllByCorrelationId(commitmentId)).thenReturn(List.of());
@@ -579,19 +567,18 @@ class OversightGateServiceTest {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private void stubOpenGateCommitment() {
-        Commitment c = new Commitment();
-        c.id = UUID.randomUUID();
-        c.correlationId = commitmentId;
-        c.channelId = workChannelId;
-        c.obligor = agentId;
-        c.state = io.casehub.qhorus.api.message.CommitmentState.OPEN;
-        c.expiresAt = java.time.Instant.now().plusSeconds(3600);
+        Commitment c = new Commitment(
+            UUID.randomUUID(), commitmentId, workChannelId, null, null, null,
+            io.casehub.qhorus.api.message.CommitmentState.OPEN,
+            java.time.Instant.now().plusSeconds(3600), null, null,
+            agentId, null, null, null
+        );
         when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
 
-        Message cmd = new Message();
-        cmd.id = commandMsgId;
-        cmd.messageType = MessageType.COMMAND;
-        cmd.correlationId = commitmentId;
+        Message cmd = new Message(
+            commandMsgId, null, null, MessageType.COMMAND, null, null, null,
+            commitmentId, null, 0, null, null, null, null, null, 0, null
+        );
         when(messageService.findAllByCorrelationId(commitmentId)).thenReturn(List.of(cmd));
     }
 
@@ -613,8 +600,7 @@ class OversightGateServiceTest {
      */
     private UUID setupFulfillStubs(UUID oversightChanId, String rawOutput, String tenancyId, long msgId) {
         UUID gateId = UUID.randomUUID();
-        Message gateCmd = buildGateCommand(oversightChanId, gateId, workChannelId, commitmentId, tenancyId);
-        gateCmd.id = msgId;
+        Message gateCmd = buildGateCommand(oversightChanId, gateId, workChannelId, commitmentId, tenancyId, msgId);
         when(crossTenantMessageStore.scan(any())).thenReturn(List.of(gateCmd));
         return gateId;
     }
@@ -624,6 +610,11 @@ class OversightGateServiceTest {
      */
     private Message buildGateCommand(UUID oversightChanId, UUID gateId, UUID workChanId,
                                       String origCommitmentId, String tenancyId) {
+        return buildGateCommand(oversightChanId, gateId, workChanId, origCommitmentId, tenancyId, 42L);
+    }
+
+    private Message buildGateCommand(UUID oversightChanId, UUID gateId, UUID workChanId,
+                                      String origCommitmentId, String tenancyId, long msgId) {
         java.util.Properties props = new java.util.Properties();
         props.setProperty("originalCommitmentId", origCommitmentId);
         props.setProperty("workChannelId", workChanId.toString());
@@ -633,13 +624,10 @@ class OversightGateServiceTest {
         java.io.StringWriter sw = new java.io.StringWriter();
         try { props.store(sw, null); } catch (Exception e) { throw new RuntimeException(e); }
 
-        Message m = new Message();
-        m.id = 42L;
-        m.channelId = oversightChanId;
-        m.messageType = MessageType.COMMAND;
-        m.content = sw.toString();
-        m.correlationId = gateId.toString();
-        return m;
+        return new Message(
+            msgId, oversightChanId, tenancyId, MessageType.COMMAND, null, null, sw.toString(),
+            gateId.toString(), null, 0, null, null, null, null, null, 0, null
+        );
     }
 
     private DispatchResult dispatchResult(Long messageId) {

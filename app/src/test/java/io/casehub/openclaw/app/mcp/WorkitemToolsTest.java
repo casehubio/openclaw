@@ -10,7 +10,7 @@ import org.mockito.ArgumentCaptor;
 
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.qhorus.api.channel.Channel;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.message.MessageService;
 import io.quarkiverse.mcp.server.ToolResponse;
@@ -154,10 +154,9 @@ class WorkitemToolsTest {
     // ---- helpers ----
 
     private static Channel channel(UUID id, String name) {
-        Channel c = new Channel();
-        c.id = id;
-        c.name = name;
-        return c;
+        return Channel.builder(name)
+                .id(id)
+                .build();
     }
 
     private static io.casehub.qhorus.api.message.DispatchResult dispatchResult(

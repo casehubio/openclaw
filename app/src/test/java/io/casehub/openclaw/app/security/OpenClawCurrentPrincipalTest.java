@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import io.casehub.openclaw.app.OpenClawGroups;
 import io.casehub.platform.api.identity.CurrentPrincipal;
-import io.casehub.platform.oidc.OidcCurrentPrincipal;
+import io.casehub.platform.oidc.SecurityIdentityCurrentPrincipal;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.security.runtime.QuarkusPrincipal;
 import io.quarkus.security.runtime.QuarkusSecurityIdentity;
@@ -28,7 +28,7 @@ class OpenClawCurrentPrincipalTest {
                 .addRole(OpenClawGroups.PLUGIN)
                 .addAttribute("casehub.plugin.bridge", true)
                 .build();
-        OidcCurrentPrincipal oidc = mock(OidcCurrentPrincipal.class);
+        SecurityIdentityCurrentPrincipal oidc = mock(SecurityIdentityCurrentPrincipal.class);
 
         OpenClawCurrentPrincipal principal = new OpenClawCurrentPrincipal(identity, oidc);
 
@@ -42,7 +42,7 @@ class OpenClawCurrentPrincipalTest {
                 .addRole(OpenClawGroups.PLUGIN)
                 .addAttribute("casehub.plugin.bridge", true)
                 .build();
-        OidcCurrentPrincipal oidc = mock(OidcCurrentPrincipal.class);
+        SecurityIdentityCurrentPrincipal oidc = mock(SecurityIdentityCurrentPrincipal.class);
 
         OpenClawCurrentPrincipal principal = new OpenClawCurrentPrincipal(identity, oidc);
 
@@ -56,7 +56,7 @@ class OpenClawCurrentPrincipalTest {
                 .addRole(OpenClawGroups.PLUGIN)
                 .addAttribute("casehub.plugin.bridge", true)
                 .build();
-        OidcCurrentPrincipal oidc = mock(OidcCurrentPrincipal.class);
+        SecurityIdentityCurrentPrincipal oidc = mock(SecurityIdentityCurrentPrincipal.class);
 
         OpenClawCurrentPrincipal principal = new OpenClawCurrentPrincipal(identity, oidc);
 
@@ -70,7 +70,7 @@ class OpenClawCurrentPrincipalTest {
                 .addRole(OpenClawGroups.PLUGIN)
                 .addAttribute("casehub.plugin.bridge", true)
                 .build();
-        OidcCurrentPrincipal oidc = mock(OidcCurrentPrincipal.class);
+        SecurityIdentityCurrentPrincipal oidc = mock(SecurityIdentityCurrentPrincipal.class);
 
         OpenClawCurrentPrincipal principal = new OpenClawCurrentPrincipal(identity, oidc);
 
@@ -83,7 +83,7 @@ class OpenClawCurrentPrincipalTest {
                 .setPrincipal(new QuarkusPrincipal("user@example.com"))
                 .addRole("some-role")
                 .build();
-        OidcCurrentPrincipal oidc = mock(OidcCurrentPrincipal.class);
+        SecurityIdentityCurrentPrincipal oidc = mock(SecurityIdentityCurrentPrincipal.class);
         when(oidc.tenancyId()).thenReturn("tenant-123");
         when(oidc.actorId()).thenReturn("user@example.com");
         when(oidc.groups()).thenReturn(Set.of("some-role"));
@@ -105,7 +105,7 @@ class OpenClawCurrentPrincipalTest {
                 .setAnonymous(true)
                 .setPrincipal(new QuarkusPrincipal("anonymous"))
                 .build();
-        OidcCurrentPrincipal oidc = mock(OidcCurrentPrincipal.class);
+        SecurityIdentityCurrentPrincipal oidc = mock(SecurityIdentityCurrentPrincipal.class);
         when(oidc.tenancyId()).thenReturn(DEFAULT_TENANCY);
         when(oidc.actorId()).thenReturn("anonymous");
 

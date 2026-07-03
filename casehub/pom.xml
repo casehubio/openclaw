@@ -40,6 +40,12 @@
       <artifactId>casehub-engine-api</artifactId>
     </dependency>
 
+    <!-- Engine Common — @CrossTenant qualifier (moved from qhorus-api in qhorus#321) -->
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-engine-common</artifactId>
+    </dependency>
+
     <!-- Platform API — CurrentPrincipal + GroupMembershipProvider for permission-aware context -->
     <dependency>
       <groupId>io.casehub</groupId>

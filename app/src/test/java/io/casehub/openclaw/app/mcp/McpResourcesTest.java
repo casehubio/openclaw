@@ -10,8 +10,8 @@ import org.junit.jupiter.api.Test;
 import io.casehub.openclaw.context.ChannelContextWindowService;
 import io.casehub.openclaw.context.WindowContent;
 import io.casehub.qhorus.api.message.CommitmentState;
-import io.casehub.qhorus.runtime.message.Commitment;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.api.message.Commitment;
+import io.casehub.qhorus.api.store.CommitmentStore;
 import io.quarkiverse.mcp.server.ResourceResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,7 +53,7 @@ class McpResourcesTest {
 
         String text = text(response);
         assertThat(text).contains("OPEN");
-        assertThat(text).contains(open.correlationId);
+        assertThat(text).contains(open.correlationId());
         assertThat(text).contains("2026-06-04");
         assertThat(text).contains("\"count\": 1");
     }
@@ -107,14 +107,14 @@ class McpResourcesTest {
 
     private static Commitment commitment(String correlationId, UUID channelId,
                                           String obligor, CommitmentState state, Instant expiresAt) {
-        Commitment c = new Commitment();
-        c.id = UUID.randomUUID();
-        c.correlationId = correlationId;
-        c.channelId = channelId;
-        c.obligor = obligor;
-        c.state = state;
-        c.expiresAt = expiresAt;
-        return c;
+        return Commitment.builder()
+                .id(UUID.randomUUID())
+                .correlationId(correlationId)
+                .channelId(channelId)
+                .obligor(obligor)
+                .state(state)
+                .expiresAt(expiresAt)
+                .build();
     }
 
     private static String text(ResourceResponse response) {

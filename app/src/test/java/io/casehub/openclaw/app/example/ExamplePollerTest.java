@@ -6,8 +6,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.casehub.qhorus.api.message.CommitmentState;
-import io.casehub.qhorus.runtime.message.Commitment;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.api.message.Commitment;
+import io.casehub.qhorus.api.store.CommitmentStore;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -63,8 +63,8 @@ class ExamplePollerTest {
     }
 
     private static Commitment commitment(final CommitmentState state) {
-        final Commitment c = new Commitment();
-        c.state = state;
-        return c;
+        return Commitment.builder()
+                .state(state)
+                .build();
     }
 }

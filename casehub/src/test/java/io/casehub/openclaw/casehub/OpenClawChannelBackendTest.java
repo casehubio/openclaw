@@ -206,7 +206,7 @@ class OpenClawChannelBackendTest {
 
     private OutboundMessage commandWithCorrelationId(String content, UUID correlationId) {
         return new OutboundMessage(UUID.randomUUID(), "engine", MessageType.COMMAND,
-                content, correlationId, null, ActorType.AGENT);
+                content, correlationId.toString(), null, ActorType.AGENT);
     }
 
     private OpenClawClientConfig config(String baseUrl, String model, int timeout) {

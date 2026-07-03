@@ -5,7 +5,7 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
 import io.casehub.qhorus.api.message.CommitmentState;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.api.store.CommitmentStore;
 
 /**
  * Transactional JPA delegate for ExampleController's polling loop.
@@ -20,7 +20,7 @@ import io.casehub.qhorus.runtime.store.CommitmentStore;
  * {@code state != null && state.isTerminal()}.
  */
 @ApplicationScoped
-class ExamplePoller {
+public class ExamplePoller {
 
     private final CommitmentStore commitmentStore;
 
@@ -30,9 +30,9 @@ class ExamplePoller {
     }
 
     @Transactional
-    CommitmentState checkState(final String correlationId) {
+    public CommitmentState checkState(final String correlationId) {
         return commitmentStore.findByCorrelationId(correlationId)
-                .map(c -> c.state)
+                .map(c -> c.state())
                 .orElse(null);
     }
 }

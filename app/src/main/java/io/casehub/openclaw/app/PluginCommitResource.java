@@ -22,9 +22,9 @@ import org.jboss.logging.Logger;
 
 import io.casehub.qhorus.api.message.CommitmentState;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.message.Commitment;
+import io.casehub.qhorus.api.message.Commitment;
 import io.casehub.qhorus.runtime.message.CommitmentService;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.api.store.CommitmentStore;
 
 /**
  * REST endpoints consumed by the TypeScript plugin for auto-commit lifecycle management.
@@ -101,8 +101,8 @@ public class PluginCommitResource {
         log.debugf("Plugin auto-commit: agentId=%s correlationId=%s", req.agentId(), correlationId);
 
         return Response.ok(new CommitResponse(
-                c.correlationId,
-                c.expiresAt != null ? c.expiresAt.toString() : "none")).build();
+                c.correlationId(),
+                c.expiresAt() != null ? c.expiresAt().toString() : "none")).build();
     }
 
     @POST
@@ -123,13 +123,13 @@ public class PluginCommitResource {
     @Path("/commitments/{agentId}")
     public CommitmentsResponse commitments(@PathParam("agentId") String agentId) {
         List<CommitmentEntry> open = commitmentStore.findAllOpen().stream()
-                .filter(c -> agentId.equals(c.obligor))
-                .filter(c -> c.state == CommitmentState.OPEN
-                        || c.state == CommitmentState.ACKNOWLEDGED)
+                .filter(c -> agentId.equals(c.obligor()))
+                .filter(c -> c.state() == CommitmentState.OPEN
+                        || c.state() == CommitmentState.ACKNOWLEDGED)
                 .map(c -> new CommitmentEntry(
-                        c.correlationId,
-                        c.state.name(),
-                        c.expiresAt != null ? c.expiresAt.toString() : "none",
+                        c.correlationId(),
+                        c.state().name(),
+                        c.expiresAt() != null ? c.expiresAt().toString() : "none",
                         true))
                 .collect(Collectors.toList());
 

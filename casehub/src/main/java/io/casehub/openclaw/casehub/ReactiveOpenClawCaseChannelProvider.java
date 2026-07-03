@@ -22,7 +22,8 @@ import io.casehub.qhorus.api.channel.ChannelSemantic;
 import io.casehub.qhorus.api.gateway.ChannelRef;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.channel.Channel;
+import io.casehub.qhorus.api.channel.Channel;
+import io.casehub.qhorus.api.channel.ChannelCreateRequest;
 import io.casehub.qhorus.runtime.channel.ReactiveChannelService;
 import io.casehub.qhorus.runtime.gateway.ChannelGateway;
 import io.casehub.qhorus.runtime.message.ReactiveMessageService;
@@ -119,11 +120,11 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
         return channelService.findByNamePrefix(prefix)
                 .map(channels -> channels.stream()
                         .map(ch -> new CaseChannel(
-                                ch.id.toString(),
-                                ch.name,
-                                extractPurpose(ch.name, caseId),
+                                ch.id().toString(),
+                                ch.name(),
+                                extractPurpose(ch.name(), caseId),
                                 "qhorus",
-                                Map.of(QHORUS_NAME_KEY, ch.name)))
+                                Map.of(QHORUS_NAME_KEY, ch.name())))
                         .toList());
     }
 
@@ -159,16 +160,16 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
         return channelService.findByName(channelName)
                 .flatMap(opt -> opt.isPresent()
                         ? Uni.createFrom().item(opt.get())
-                        : channelService.create(new io.casehub.qhorus.runtime.channel.ChannelCreateRequest(
+                        : channelService.create(new ChannelCreateRequest(
                                 channelName, spec.description(), ChannelSemantic.APPEND,
                                 null, null, null, null, null, spec.allowedTypes(), spec.deniedTypes(),
                                 null, null, null, null))
-                                .invoke(ch -> gateway.initChannel(ch.id, new ChannelRef(ch.id, ch.name))))
-                .invoke(ch -> contextService.bindChannel(caseId, ch.id))
+                                .invoke(ch -> gateway.initChannel(ch.id(), new ChannelRef(ch.id(), ch.name()))))
+                .invoke(ch -> contextService.bindChannel(caseId, ch.id()))
                 .map(ch -> {
-                    log.debugf("Opened channel (reactive): %s (id=%s)", channelName, ch.id);
-                    return new CaseChannel(ch.id.toString(), ch.name, spec.purpose(), "qhorus",
-                            Map.of(QHORUS_NAME_KEY, ch.name));
+                    log.debugf("Opened channel (reactive): %s (id=%s)", channelName, ch.id());
+                    return new CaseChannel(ch.id().toString(), ch.name(), spec.purpose(), "qhorus",
+                            Map.of(QHORUS_NAME_KEY, ch.name()));
                 });
     }
 

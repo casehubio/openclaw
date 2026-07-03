@@ -7,9 +7,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import io.casehub.qhorus.api.message.CommitmentState;
-import io.casehub.qhorus.runtime.message.Commitment;
+import io.casehub.qhorus.api.message.Commitment;
 import io.casehub.qhorus.runtime.message.CommitmentService;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.api.store.CommitmentStore;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.security.TestSecurity;
@@ -53,7 +53,7 @@ class PluginCommitResourceTest {
             .post("/openclaw/plugin/commit")
         .then()
             .statusCode(200)
-            .body("commitmentId", is(c.correlationId));
+            .body("commitmentId", is(c.correlationId()));
     }
 
     @Test
@@ -138,13 +138,13 @@ class PluginCommitResourceTest {
 
     private static Commitment commitment(String correlationId, UUID channelId,
                                           String obligor, CommitmentState state, Instant expiresAt) {
-        Commitment c = new Commitment();
-        c.id = UUID.randomUUID();
-        c.correlationId = correlationId;
-        c.channelId = channelId;
-        c.obligor = obligor;
-        c.state = state;
-        c.expiresAt = expiresAt;
-        return c;
+        return Commitment.builder()
+                .id(UUID.randomUUID())
+                .correlationId(correlationId)
+                .channelId(channelId)
+                .obligor(obligor)
+                .state(state)
+                .expiresAt(expiresAt)
+                .build();
     }
 }

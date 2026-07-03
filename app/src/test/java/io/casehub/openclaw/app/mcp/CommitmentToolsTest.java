@@ -17,11 +17,11 @@ import io.casehub.qhorus.api.message.CommitmentState;
 import io.casehub.qhorus.api.message.DispatchResult;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
-import io.casehub.qhorus.runtime.message.Commitment;
+import io.casehub.qhorus.api.message.Commitment;
 import io.casehub.qhorus.runtime.message.CommitmentService;
-import io.casehub.qhorus.runtime.message.Message;
+import io.casehub.qhorus.api.message.Message;
 import io.casehub.qhorus.runtime.message.MessageService;
-import io.casehub.qhorus.runtime.store.CommitmentStore;
+import io.casehub.qhorus.api.store.CommitmentStore;
 import io.quarkiverse.mcp.server.ToolResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -324,8 +324,10 @@ class CommitmentToolsTest {
     void resolveChannelId_terminalCommitment_returnsAlreadyClosed() {
         String agentId = "agent";
         String correlationId = UUID.randomUUID().toString();
-        Commitment c = commitment(correlationId, UUID.randomUUID(), agentId, null);
-        c.state = CommitmentState.FULFILLED;
+        Commitment c = commitment(correlationId, UUID.randomUUID(), agentId, null)
+                .toBuilder()
+                .state(CommitmentState.FULFILLED)
+                .build();
 
         when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
 
@@ -534,8 +536,10 @@ class CommitmentToolsTest {
         // return COMMITMENT_ALREADY_CLOSED via selfCommit state guard.
         UUID channelId = UUID.randomUUID();
         String correlationId = UUID.randomUUID().toString();
-        Commitment c = commitment(correlationId, channelId, "agent", null);
-        c.state = CommitmentState.DELEGATED;
+        Commitment c = commitment(correlationId, channelId, "agent", null)
+                .toBuilder()
+                .state(CommitmentState.DELEGATED)
+                .build();
 
         when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
 
@@ -549,8 +553,10 @@ class CommitmentToolsTest {
     void escalate_terminalCommitment_returnsNotFound_notAlreadyClosed() {
         UUID channelId = UUID.randomUUID();
         String correlationId = UUID.randomUUID().toString();
-        Commitment c = commitment(correlationId, channelId, "agent", null);
-        c.state = CommitmentState.DELEGATED;
+        Commitment c = commitment(correlationId, channelId, "agent", null)
+                .toBuilder()
+                .state(CommitmentState.DELEGATED)
+                .build();
 
         when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
 
@@ -564,8 +570,10 @@ class CommitmentToolsTest {
     void delegate_terminalCommitment_returnsNotFound_notAlreadyClosed() {
         UUID channelId = UUID.randomUUID();
         String correlationId = UUID.randomUUID().toString();
-        Commitment c = commitment(correlationId, channelId, "agent", null);
-        c.state = CommitmentState.DELEGATED;
+        Commitment c = commitment(correlationId, channelId, "agent", null)
+                .toBuilder()
+                .state(CommitmentState.DELEGATED)
+                .build();
 
         when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
 
@@ -597,8 +605,8 @@ class CommitmentToolsTest {
         // save() called with updated expiresAt
         ArgumentCaptor<Commitment> saveCaptor = ArgumentCaptor.forClass(Commitment.class);
         verify(commitmentStore).save(saveCaptor.capture());
-        assertThat(saveCaptor.getValue().expiresAt).isEqualTo(blockedUntil);
-        assertThat(saveCaptor.getValue().expiresAt).isNotEqualTo(originalDeadline);
+        assertThat(saveCaptor.getValue().expiresAt()).isEqualTo(blockedUntil);
+        assertThat(saveCaptor.getValue().expiresAt()).isNotEqualTo(originalDeadline);
 
         // STATUS dispatched with "BLOCKED: " prefix
         ArgumentCaptor<MessageDispatch> dispatchCaptor = ArgumentCaptor.forClass(MessageDispatch.class);
@@ -629,7 +637,7 @@ class CommitmentToolsTest {
 
         ArgumentCaptor<Commitment> saveCaptor = ArgumentCaptor.forClass(Commitment.class);
         verify(commitmentStore).save(saveCaptor.capture());
-        assertThat(saveCaptor.getValue().expiresAt).isEqualTo(blockedUntil);
+        assertThat(saveCaptor.getValue().expiresAt()).isEqualTo(blockedUntil);
         verify(messageService, never()).dispatch(any());
         assertThat(response.isError()).isFalse();
     }
@@ -650,8 +658,10 @@ class CommitmentToolsTest {
     void block_terminalCommitment_returnsAlreadyClosed() {
         String agentId = "agent";
         String correlationId = UUID.randomUUID().toString();
-        Commitment c = commitment(correlationId, null, agentId, Instant.now().plus(1, ChronoUnit.HOURS));
-        c.state = CommitmentState.FULFILLED;
+        Commitment c = commitment(correlationId, null, agentId, Instant.now().plus(1, ChronoUnit.HOURS))
+                .toBuilder()
+                .state(CommitmentState.FULFILLED)
+                .build();
         when(commitmentStore.findByCorrelationId(correlationId)).thenReturn(Optional.of(c));
 
         ToolResponse response = tools.block(agentId, correlationId, "reason",
@@ -815,29 +825,33 @@ class CommitmentToolsTest {
 
     private static Commitment commitment(String correlationId, UUID channelId,
                                          String obligor, Instant expiresAt) {
-        Commitment c = new Commitment();
-        c.id = UUID.randomUUID();
-        c.correlationId = correlationId;
-        c.channelId = channelId;
-        c.obligor = obligor;
-        c.state = CommitmentState.OPEN;
-        c.expiresAt = expiresAt;
-        return c;
+        return Commitment.builder()
+                .id(UUID.randomUUID())
+                .correlationId(correlationId)
+                .channelId(channelId)
+                .obligor(obligor)
+                .state(CommitmentState.OPEN)
+                .expiresAt(expiresAt)
+                .build();
     }
 
     private static Commitment delegatedCommitment(String correlationId, UUID channelId, String obligor) {
-        Commitment c = commitment(correlationId, channelId, obligor, null);
-        c.state = CommitmentState.DELEGATED;
-        return c;
+        return Commitment.builder()
+                .id(UUID.randomUUID())
+                .correlationId(correlationId)
+                .channelId(channelId)
+                .obligor(obligor)
+                .state(CommitmentState.DELEGATED)
+                .build();
     }
 
     private static Message message(long id, UUID channelId, MessageType type, String correlationId) {
-        Message m = new Message();
-        m.id = id;
-        m.channelId = channelId;
-        m.messageType = type;
-        m.correlationId = correlationId;
-        return m;
+        return Message.builder()
+                .id(id)
+                .channelId(channelId)
+                .messageType(type)
+                .correlationId(correlationId)
+                .build();
     }
 
     private static DispatchResult dispatchResult(long messageId, UUID channelId, String sender,

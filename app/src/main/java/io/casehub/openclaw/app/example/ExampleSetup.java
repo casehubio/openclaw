@@ -9,6 +9,7 @@ import jakarta.transaction.Transactional;
 import io.casehub.openclaw.casehub.OpenClawAgentRegistry;
 import io.casehub.openclaw.casehub.OpenClawCaseChannelProvider;
 import io.casehub.openclaw.context.ChannelContextWindowService;
+import io.casehub.openclaw.casehub.scenario.SetupResult;
 import io.casehub.platform.api.identity.ActorType;
 import io.casehub.qhorus.api.message.MessageDispatch;
 import io.casehub.qhorus.api.message.MessageType;
@@ -31,7 +32,7 @@ import io.casehub.qhorus.runtime.message.MessageService;
  * caller can poll on it via ExamplePoller.checkState().
  */
 @ApplicationScoped
-class ExampleSetup {
+public class ExampleSetup {
 
     private final OpenClawCaseChannelProvider caseChannelProvider;
     private final OpenClawAgentRegistry registry;
@@ -55,9 +56,11 @@ class ExampleSetup {
      *
      * <p>openChannel() is idempotent — finds existing channels by name — so calling
      * this for successive agents in the same run only updates registry and bindAgent().
+     *
+     * @return SetupResult containing work and oversight channel UUIDs for registration
      */
     @Transactional
-    void setupAndDispatch(final UUID caseId, final String tenancyId,
+    public SetupResult setupAndDispatch(final UUID caseId, final String tenancyId,
                           final String agentId, final String sessionKey,
                           final String correlationId, final String commandContent) {
         // openChannel() is idempotent (finds existing channel by name) and returns the CaseChannel.
@@ -65,7 +68,8 @@ class ExampleSetup {
         final UUID workChannelId = UUID.fromString(
                 caseChannelProvider.openChannel(caseId, "work").id());
         caseChannelProvider.openChannel(caseId, "observe");
-        caseChannelProvider.openChannel(caseId, "oversight");
+        final UUID oversightChannelId = UUID.fromString(
+                caseChannelProvider.openChannel(caseId, "oversight").id());
 
         registry.register(agentId, tenancyId, caseId, sessionKey);
         contextService.bindAgent(agentId, caseId);
@@ -78,5 +82,7 @@ class ExampleSetup {
                 .correlationId(correlationId)
                 .actorType(ActorType.SYSTEM)
                 .build());
+
+        return new SetupResult(workChannelId, oversightChannelId);
     }
 }
