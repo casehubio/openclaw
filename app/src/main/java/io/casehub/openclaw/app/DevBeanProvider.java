@@ -9,7 +9,7 @@ import java.util.UUID;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 
-import io.quarkus.arc.profile.IfBuildProfile;
+import io.quarkus.arc.DefaultBean;
 
 import io.casehub.api.spi.ProvisionerConfigRegistry;
 import io.casehub.engine.common.qualifier.CrossTenant;
@@ -21,16 +21,17 @@ import io.casehub.qhorus.api.store.CrossTenantMessageStore;
 import io.casehub.qhorus.api.store.query.MessageQuery;
 
 /**
- * Dev-mode-only bean provider for CDI dependencies normally supplied by the
- * full platform stack. Enables {@code quarkus:dev} without Keycloak, platform
- * runtime, or cross-tenant infrastructure.
+ * Fallback bean provider for CDI dependencies normally supplied by the full
+ * platform stack. {@code @DefaultBean} means these are only used when no
+ * higher-priority bean satisfies the injection point — in production with
+ * the full stack, the real JPA implementations win.
  */
-@IfBuildProfile("dev")
 @ApplicationScoped
 public class DevBeanProvider {
 
     @Produces
     @CrossTenant
+    @DefaultBean
     @ApplicationScoped
     public CrossTenantMessageStore crossTenantMessageStore() {
         return new CrossTenantMessageStore() {
@@ -45,6 +46,7 @@ public class DevBeanProvider {
 
     @Produces
     @CrossTenant
+    @DefaultBean
     @ApplicationScoped
     public CrossTenantChannelStore crossTenantChannelStore() {
         return new CrossTenantChannelStore() {
@@ -55,6 +57,7 @@ public class DevBeanProvider {
     }
 
     @Produces
+    @DefaultBean
     @ApplicationScoped
     public ProvisionerConfigRegistry provisionerConfigRegistry() {
         return new ProvisionerConfigRegistry() {

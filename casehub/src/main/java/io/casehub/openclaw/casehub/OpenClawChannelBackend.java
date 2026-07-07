@@ -104,7 +104,8 @@ public class OpenClawChannelBackend implements ChannelBackend {
         // webhookUrl is embedded in the POST /hooks/agent body — OpenClaw uses this
         // request-body URL for delivery. Concurrent overwrites of the session entry
         // are safe because invoke() sends the URL it reads at call time.
-        final String webhookUrl = config.delivery().baseUrl() + "/channel/" + channel.id();
+        String webhookUrl = config.delivery().baseUrl() + "/channel/" + channel.id();
+        webhookUrl = appendDeliveryToken(webhookUrl);
         hookClient.registerSession(agentId, sessionKey, webhookUrl);
 
         try {
@@ -128,6 +129,13 @@ public class OpenClawChannelBackend implements ChannelBackend {
     @Override
     public void close(final ChannelRef channel) {
         // Qhorus channels are persistent — no teardown needed
+    }
+
+    private String appendDeliveryToken(String url) {
+        return config.delivery().token()
+                .filter(t -> !t.isBlank())
+                .map(t -> url + "?token=" + t)
+                .orElse(url);
     }
 
     /** Parses "case-{caseId}/{purpose}" → UUID, or returns null if format doesn't match. */

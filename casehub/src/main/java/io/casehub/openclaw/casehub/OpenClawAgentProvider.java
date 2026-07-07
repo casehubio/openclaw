@@ -18,15 +18,18 @@ public class OpenClawAgentProvider implements AgentProvider {
     private final OpenClawHookClient hookClient;
     private final String agentId;
     private final String deliveryBaseUrl;
+    private final String deliveryToken;
 
     public OpenClawAgentProvider(DirectCallBridge bridge,
                                   OpenClawHookClient hookClient,
                                   String agentId,
-                                  String deliveryBaseUrl) {
+                                  String deliveryBaseUrl,
+                                  String deliveryToken) {
         this.bridge = bridge;
         this.hookClient = hookClient;
         this.agentId = agentId;
         this.deliveryBaseUrl = deliveryBaseUrl;
+        this.deliveryToken = deliveryToken;
     }
 
     @Override
@@ -39,6 +42,9 @@ public class OpenClawAgentProvider implements AgentProvider {
             var future = bridge.submit(correlationId, effectiveTimeout);
             String deliveryUrl = deliveryBaseUrl
                     + "/openclaw/direct-call/" + correlationId;
+            if (deliveryToken != null && !deliveryToken.isBlank()) {
+                deliveryUrl += "?token=" + deliveryToken;
+            }
 
             String message = config.systemPrompt() + "\n\n" + config.userPrompt();
 

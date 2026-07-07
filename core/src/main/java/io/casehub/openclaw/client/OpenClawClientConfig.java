@@ -1,5 +1,7 @@
 package io.casehub.openclaw.client;
 
+import java.util.Optional;
+
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 
@@ -19,10 +21,8 @@ public interface OpenClawClientConfig {
     }
 
     interface Delivery {
-        // No consumers in this epic — placed here to establish the config boundary
-        // for WorkerProvisioner (casehub/ module, later epic), which constructs:
-        //   webhookUrl = baseUrl() + "/channel/" + qhorusChannelId
         String baseUrl();
+        Optional<String> token();
     }
 
     interface Agent {

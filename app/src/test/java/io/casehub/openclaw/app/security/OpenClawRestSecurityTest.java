@@ -55,26 +55,70 @@ class OpenClawRestSecurityTest {
     }
 
     // ==============================
-    // @PermitAll resources — no credentials required
+    // Channel-context — @RolesAllowed(OpenClawGroups.PLUGIN) + plugin-token mechanism
     // ==============================
 
     @Test
-    void permitAll_channelContextWindow_noAuthRequired() {
+    void unauthenticated_channelContext_returns401() {
+        given()
+            .when().get("/channel-context/test-agent")
+            .then().statusCode(401);
+    }
+
+    @Test
+    @TestSecurity(user = "plugin", roles = {OpenClawGroups.PLUGIN})
+    void pluginRole_channelContext_passes() {
         given()
             .when().get("/channel-context/test-agent")
             .then().statusCode(not(in(List.of(401, 403))));
     }
 
     @Test
-    void permitAll_deliveryChannel_noAuthRequired() {
+    void validBearerToken_channelContext_passes() {
+        given()
+            .header("Authorization", "Bearer test-plugin-token")
+            .when().get("/channel-context/test-agent")
+            .then().statusCode(not(in(List.of(401, 403))));
+    }
+
+    // ==============================
+    // Delivery endpoints — token-validated via query parameter
+    // ==============================
+
+    @Test
+    void deliveryChannel_noToken_returns403() {
         given().contentType(JSON).body("{}")
+            .when().post("/openclaw/delivery/channel/" + UUID.randomUUID())
+            .then().statusCode(403);
+    }
+
+    @Test
+    void deliveryChannel_validToken_passes() {
+        given().contentType(JSON).body("{}")
+            .queryParam("token", "test-delivery-token")
             .when().post("/openclaw/delivery/channel/" + UUID.randomUUID())
             .then().statusCode(not(in(List.of(401, 403))));
     }
 
     @Test
-    void permitAll_deliveryOversight_noAuthRequired() {
+    void deliveryChannel_wrongToken_returns403() {
         given().contentType(JSON).body("{}")
+            .queryParam("token", "wrong-token")
+            .when().post("/openclaw/delivery/channel/" + UUID.randomUUID())
+            .then().statusCode(403);
+    }
+
+    @Test
+    void deliveryOversight_noToken_returns403() {
+        given().contentType(JSON).body("{}")
+            .when().post("/openclaw/delivery/oversight/" + UUID.randomUUID())
+            .then().statusCode(403);
+    }
+
+    @Test
+    void deliveryOversight_validToken_passes() {
+        given().contentType(JSON).body("{}")
+            .queryParam("token", "test-delivery-token")
             .when().post("/openclaw/delivery/oversight/" + UUID.randomUUID())
             .then().statusCode(not(in(List.of(401, 403))));
     }
@@ -130,8 +174,16 @@ class OpenClawRestSecurityTest {
     }
 
     @Test
-    void permitAll_directCallDelivery_noAuthRequired() {
+    void directCallDelivery_noToken_returns403() {
         given().contentType(JSON).body("{\"output\":\"test\"}")
+            .when().post("/openclaw/direct-call/" + UUID.randomUUID())
+            .then().statusCode(403);
+    }
+
+    @Test
+    void directCallDelivery_validToken_passes() {
+        given().contentType(JSON).body("{\"output\":\"test\"}")
+            .queryParam("token", "test-delivery-token")
             .when().post("/openclaw/direct-call/" + UUID.randomUUID())
             .then().statusCode(not(in(List.of(401, 403))));
     }

@@ -46,6 +46,7 @@ class OpenClawDeliveryResourceTest {
 
         given()
             .contentType(JSON)
+            .queryParam("token", "test-delivery-token")
             .body("""
                     {"agentId": "finance-agent", "output": "Analysis complete."}
                     """)
@@ -65,6 +66,7 @@ class OpenClawDeliveryResourceTest {
 
         given()
             .contentType(JSON)
+            .queryParam("token", "test-delivery-token")
             .body("""
                     {"agentId": "finance-agent", "output": "Analysis complete."}
                     """)
@@ -81,6 +83,7 @@ class OpenClawDeliveryResourceTest {
     void deliver_invalidUuid_returns400() {
         given()
             .contentType(JSON)
+            .queryParam("token", "test-delivery-token")
             .body("""
                     {"agentId": "finance-agent", "output": "Analysis complete."}
                     """)

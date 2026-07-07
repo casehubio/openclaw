@@ -138,7 +138,7 @@ class BidirectionalWiringTest {
         AgentInvocationRequest request = captor.getValue();
         assertThat(request.agentId()).isEqualTo("test-agent");
         assertThat(request.deliver()).isEqualTo("webhook");
-        assertThat(request.to()).endsWith("/channel/" + workChannelId);
+        assertThat(request.to()).contains("/channel/" + workChannelId);
         // dispatchCommand passes no correlationId → no injection → message is content as-is
         assertThat(request.message()).isEqualTo("Analyse the budget.");
     }
@@ -151,6 +151,7 @@ class BidirectionalWiringTest {
 
         given()
             .contentType(JSON)
+            .queryParam("token", "test-delivery-token")
             .body("""
                 {"agentId":"test-agent","output":"done"}
                 """)
@@ -201,6 +202,7 @@ class BidirectionalWiringTest {
         // Always 200 — OpenClaw must not retry (openclaw-delivery-always-200 protocol).
         given()
             .contentType(JSON)
+            .queryParam("token", "test-delivery-token")
             .body("""
                 {"agentId":"test-agent","output":"result"}
                 """)
@@ -216,6 +218,7 @@ class BidirectionalWiringTest {
     void deliver_invalid_uuid_returns_400() {
         given()
             .contentType(JSON)
+            .queryParam("token", "test-delivery-token")
             .body("""
                 {"agentId":"test-agent","output":"result"}
                 """)
@@ -231,6 +234,7 @@ class BidirectionalWiringTest {
     void oversight_delivery_unknown_gateId_returns_200() {
         given()
             .contentType(JSON)
+            .queryParam("token", "test-delivery-token")
             .body("""
                 {"agentId":"test-agent","output":"approved"}
                 """)

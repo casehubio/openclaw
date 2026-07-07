@@ -11,13 +11,28 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class DirectCallDeliveryResourceTest {
 
+    private DirectCallDeliveryResource resource(DirectCallBridge bridge) {
+        var resource = new DirectCallDeliveryResource();
+        try {
+            var bridgeField = DirectCallDeliveryResource.class.getDeclaredField("bridge");
+            bridgeField.setAccessible(true);
+            bridgeField.set(resource, bridge);
+            var validatorField = DirectCallDeliveryResource.class.getDeclaredField("tokenValidator");
+            validatorField.setAccessible(true);
+            validatorField.set(resource, new DeliveryTokenValidator(""));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        return resource;
+    }
+
     @Test
     void deliver_completesTheBridge() {
         DirectCallBridge bridge = new DirectCallBridge();
-        DirectCallDeliveryResource resource = new DirectCallDeliveryResource(bridge);
+        DirectCallDeliveryResource resource = resource(bridge);
         CompletableFuture<String> future = bridge.submit("corr-1", Duration.ofSeconds(30));
 
-        Response response = resource.deliver("corr-1",
+        Response response = resource.deliver("corr-1", null,
                 new DirectCallDeliveryPayload("result text"));
 
         assertThat(response.getStatus()).isEqualTo(200);
@@ -28,9 +43,9 @@ class DirectCallDeliveryResourceTest {
     @Test
     void deliver_unknownCorrelationId_returns200() {
         DirectCallBridge bridge = new DirectCallBridge();
-        DirectCallDeliveryResource resource = new DirectCallDeliveryResource(bridge);
+        DirectCallDeliveryResource resource = resource(bridge);
 
-        Response response = resource.deliver("unknown",
+        Response response = resource.deliver("unknown", null,
                 new DirectCallDeliveryPayload("text"));
 
         assertThat(response.getStatus()).isEqualTo(200);
@@ -39,10 +54,10 @@ class DirectCallDeliveryResourceTest {
     @Test
     void deliver_nullPayload_returns200WithEmptyOutput() {
         DirectCallBridge bridge = new DirectCallBridge();
-        DirectCallDeliveryResource resource = new DirectCallDeliveryResource(bridge);
+        DirectCallDeliveryResource resource = resource(bridge);
         CompletableFuture<String> future = bridge.submit("corr-1", Duration.ofSeconds(30));
 
-        Response response = resource.deliver("corr-1", null);
+        Response response = resource.deliver("corr-1", null, null);
 
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(future.getNow(null)).isEqualTo("");
@@ -51,10 +66,10 @@ class DirectCallDeliveryResourceTest {
     @Test
     void deliver_nullOutput_returns200WithEmptyString() {
         DirectCallBridge bridge = new DirectCallBridge();
-        DirectCallDeliveryResource resource = new DirectCallDeliveryResource(bridge);
+        DirectCallDeliveryResource resource = resource(bridge);
         CompletableFuture<String> future = bridge.submit("corr-1", Duration.ofSeconds(30));
 
-        Response response = resource.deliver("corr-1",
+        Response response = resource.deliver("corr-1", null,
                 new DirectCallDeliveryPayload(null));
 
         assertThat(response.getStatus()).isEqualTo(200);
@@ -64,11 +79,11 @@ class DirectCallDeliveryResourceTest {
     @Test
     void deliver_exceptionInBridge_stillReturns200() {
         DirectCallBridge bridge = new DirectCallBridge();
-        DirectCallDeliveryResource resource = new DirectCallDeliveryResource(bridge);
+        DirectCallDeliveryResource resource = resource(bridge);
         CompletableFuture<String> future = bridge.submit("corr-1", Duration.ofSeconds(30));
         bridge.cancel("corr-1");
 
-        Response response = resource.deliver("corr-1",
+        Response response = resource.deliver("corr-1", null,
                 new DirectCallDeliveryPayload("late response"));
 
         assertThat(response.getStatus()).isEqualTo(200);

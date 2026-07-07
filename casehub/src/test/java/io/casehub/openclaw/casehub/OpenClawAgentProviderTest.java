@@ -29,7 +29,7 @@ class OpenClawAgentProviderTest {
         DirectCallBridge bridge = new DirectCallBridge();
         OpenClawHookClient hookClient = mock(OpenClawHookClient.class);
         OpenClawAgentProvider provider = new OpenClawAgentProvider(
-                bridge, hookClient, "health-agent", "https://casehub.internal");
+                bridge, hookClient, "health-agent", "https://casehub.internal", null);
 
         AgentSessionConfig config = new AgentSessionConfig(
                 "You are a health agent", "Book appointment with Dr Smith",
@@ -49,7 +49,7 @@ class OpenClawAgentProviderTest {
         DirectCallBridge bridge = new DirectCallBridge();
         OpenClawHookClient hookClient = mock(OpenClawHookClient.class);
         OpenClawAgentProvider provider = new OpenClawAgentProvider(
-                bridge, hookClient, "health-agent", "https://casehub.internal");
+                bridge, hookClient, "health-agent", "https://casehub.internal", null);
 
         AgentSessionConfig config = new AgentSessionConfig(
                 "sys", "user", List.of(), Duration.ofSeconds(30), "my-corr-id");
@@ -67,7 +67,7 @@ class OpenClawAgentProviderTest {
         DirectCallBridge bridge = new DirectCallBridge();
         OpenClawHookClient hookClient = mock(OpenClawHookClient.class);
         OpenClawAgentProvider provider = new OpenClawAgentProvider(
-                bridge, hookClient, "health-agent", "https://casehub.internal");
+                bridge, hookClient, "health-agent", "https://casehub.internal", null);
 
         AgentSessionConfig config = new AgentSessionConfig(
                 "System prompt here", "User prompt here",
@@ -88,7 +88,7 @@ class OpenClawAgentProviderTest {
         DirectCallBridge bridge = new DirectCallBridge();
         OpenClawHookClient hookClient = mock(OpenClawHookClient.class);
         OpenClawAgentProvider provider = new OpenClawAgentProvider(
-                bridge, hookClient, "health-agent", "https://casehub.internal");
+                bridge, hookClient, "health-agent", "https://casehub.internal", null);
 
         doAnswer(inv -> {
             String url = inv.getArgument(4);
@@ -118,7 +118,7 @@ class OpenClawAgentProviderTest {
                         isNull(), anyInt(), anyString());
 
         OpenClawAgentProvider provider = new OpenClawAgentProvider(
-                bridge, hookClient, "health-agent", "https://casehub.internal");
+                bridge, hookClient, "health-agent", "https://casehub.internal", null);
         AgentSessionConfig config = AgentSessionConfig.of("sys", "user", Duration.ofSeconds(5));
 
         assertThatThrownBy(() ->
@@ -132,7 +132,7 @@ class OpenClawAgentProviderTest {
         DirectCallBridge bridge = new DirectCallBridge();
         OpenClawHookClient hookClient = mock(OpenClawHookClient.class);
         OpenClawAgentProvider provider = new OpenClawAgentProvider(
-                bridge, hookClient, "health-agent", "https://casehub.internal");
+                bridge, hookClient, "health-agent", "https://casehub.internal", null);
 
         assertThatThrownBy(() -> provider.openSession(AgentSessionInit.of("sys")))
                 .isInstanceOf(UnsupportedOperationException.class);

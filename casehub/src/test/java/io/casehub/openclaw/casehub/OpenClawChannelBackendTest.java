@@ -215,7 +215,10 @@ class OpenClawChannelBackendTest {
                 @Override public String url() { return "http://openclaw"; }
                 @Override public String bearerToken() { return "tok"; }
             }; }
-            @Override public Delivery delivery() { return () -> baseUrl; }
+            @Override public Delivery delivery() { return new Delivery() {
+                @Override public String baseUrl() { return baseUrl; }
+                @Override public java.util.Optional<String> token() { return java.util.Optional.empty(); }
+            }; }
             @Override public Agent agent() { return new Agent() {
                 @Override public String defaultModel() { return model; }
                 @Override public int defaultTimeoutSeconds() { return timeout; }

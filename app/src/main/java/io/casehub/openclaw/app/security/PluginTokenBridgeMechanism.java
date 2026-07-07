@@ -1,13 +1,15 @@
 package io.casehub.openclaw.app.security;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Set;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import io.casehub.openclaw.app.OpenClawGroups;
-import io.quarkus.security.AuthenticationFailedException;
 import io.quarkus.security.identity.IdentityProviderManager;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.security.identity.request.AuthenticationRequest;
@@ -22,8 +24,13 @@ import io.vertx.ext.web.RoutingContext;
 @ApplicationScoped
 public class PluginTokenBridgeMechanism implements HttpAuthenticationMechanism {
 
-    @ConfigProperty(name = "casehub.openclaw.plugin.bearer-token")
-    String configuredToken;
+    private final byte[] configuredTokenBytes;
+
+    @Inject
+    public PluginTokenBridgeMechanism(
+            @ConfigProperty(name = "casehub.openclaw.plugin.bearer-token") String configuredToken) {
+        this.configuredTokenBytes = configuredToken.getBytes(StandardCharsets.UTF_8);
+    }
 
     @Override
     public Uni<SecurityIdentity> authenticate(RoutingContext context,
@@ -33,7 +40,8 @@ public class PluginTokenBridgeMechanism implements HttpAuthenticationMechanism {
         // @RolesAllowed(PLUGIN) on the resource handles rejection (401 anonymous, 403 wrong role).
         // Never throw AuthenticationFailedException — it triggers OIDC challenge flow which
         // connects to the (absent) OIDC server and returns 500 instead of 401.
-        if (!context.request().path().startsWith("/openclaw/plugin/")) {
+        String path = context.request().path();
+        if (!path.startsWith("/openclaw/plugin/") && !path.startsWith("/channel-context/")) {
             return Uni.createFrom().nullItem();
         }
 
@@ -43,7 +51,7 @@ public class PluginTokenBridgeMechanism implements HttpAuthenticationMechanism {
         }
 
         String token = authHeader.substring(7).trim();
-        if (!configuredToken.equals(token)) {
+        if (!MessageDigest.isEqual(configuredTokenBytes, token.getBytes(StandardCharsets.UTF_8))) {
             return Uni.createFrom().nullItem();
         }
 

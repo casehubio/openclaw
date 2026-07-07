@@ -10,6 +10,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
@@ -53,10 +54,17 @@ public class OpenClawDeliveryResource {
     @Inject
     OversightGateService oversightGateService;
 
+    @Inject
+    DeliveryTokenValidator tokenValidator;
+
     @POST
     @Path("/{channelId}")
     public Response deliver(@PathParam("channelId") String channelIdStr,
+                             @QueryParam("token") String token,
                              OpenClawDeliveryPayload payload) {
+        if (!tokenValidator.isValid(token)) {
+            return Response.status(403).build();
+        }
         UUID channelId;
         try {
             channelId = UUID.fromString(channelIdStr);

@@ -16,6 +16,7 @@ class OpenClawOversightDeliveryResourceTest {
     void deliver_validGateId_returns200() {
         given()
             .contentType(JSON)
+            .queryParam("token", "test-delivery-token")
             .body("""
                     {"agentId": "finance-agent", "output": "approved"}
                     """)
@@ -29,6 +30,7 @@ class OpenClawOversightDeliveryResourceTest {
     void deliver_invalidGateId_returns400() {
         given()
             .contentType(JSON)
+            .queryParam("token", "test-delivery-token")
             .body("""
                     {"agentId": "finance-agent", "output": "approved"}
                     """)
@@ -43,6 +45,7 @@ class OpenClawOversightDeliveryResourceTest {
         // OversightGateService.fulfill() fails-open when commitment not found
         given()
             .contentType(JSON)
+            .queryParam("token", "test-delivery-token")
             .body("""
                     {"agentId": "finance-agent", "output": "rejected"}
                     """)

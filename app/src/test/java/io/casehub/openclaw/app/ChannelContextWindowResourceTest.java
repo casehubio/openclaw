@@ -7,12 +7,14 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
+import io.casehub.openclaw.app.OpenClawGroups;
 import io.casehub.openclaw.context.ChannelContextWindowService;
 import io.casehub.openclaw.context.ContextMessage;
 import io.casehub.openclaw.context.WindowContent;
 import io.casehub.qhorus.api.message.MessageType;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.hasSize;
@@ -23,6 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @QuarkusTest
+@TestSecurity(user = "plugin", roles = {OpenClawGroups.PLUGIN})
 class ChannelContextWindowResourceTest {
 
     @InjectMock

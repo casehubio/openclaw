@@ -8,6 +8,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
@@ -26,17 +27,20 @@ public class DirectCallDeliveryResource {
 
     private static final Logger log = Logger.getLogger(DirectCallDeliveryResource.class);
 
-    private final DirectCallBridge bridge;
+    @Inject
+    DirectCallBridge bridge;
 
     @Inject
-    public DirectCallDeliveryResource(DirectCallBridge bridge) {
-        this.bridge = bridge;
-    }
+    DeliveryTokenValidator tokenValidator;
 
     @POST
     @Path("/{correlationId}")
     public Response deliver(@PathParam("correlationId") String correlationId,
+                             @QueryParam("token") String token,
                              DirectCallDeliveryPayload payload) {
+        if (!tokenValidator.isValid(token)) {
+            return Response.status(403).build();
+        }
         try {
             String output = payload != null && payload.output() != null
                     ? payload.output() : "";
