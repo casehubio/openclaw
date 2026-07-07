@@ -211,13 +211,13 @@ examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight
 - `POST /openclaw/plugin/done` — plugin auto-done REST endpoint (`@RolesAllowed(PLUGIN)`)
 - `GET /openclaw/plugin/commitments/{agentId}` — open commitment query for `session_start` injection (`@RolesAllowed(PLUGIN)`)
 - `PluginTokenBridgeMechanism` — custom `HttpAuthenticationMechanism`; validates pre-shared bearer token for `/openclaw/plugin/*`; creates `SecurityIdentity` with `openclaw-plugin` role and `casehub.plugin.bridge` attribute; bridge to OIDC client-credentials (openclaw#52)
-- `OpenClawCurrentPrincipal` — `@Alternative @Priority(150)` `CurrentPrincipal`; handles bridge-authenticated identities by returning default tenancyId (prevents `MissingTenancyException` from `OidcCurrentPrincipal` when `JpaCommitmentStore` queries run under a non-OIDC `SecurityIdentity`); delegates to `OidcCurrentPrincipal` for OIDC/anonymous paths; removable when platform#121 ships
+- `PluginTokenBridgeMechanism` stamps `tenancyId` as a SecurityIdentity attribute so `SecurityIdentityCurrentPrincipal` (platform#121) resolves tenancy for bridge-authenticated identities without a custom `CurrentPrincipal`
 - `POST /example/{exampleId}/start` — `@Deprecated(forRemoval = true)` demo scenario orchestrator; superseded by `ScenarioExecutionService` + demo UI
 - `GET /api/scenarios` — list demo scenarios with current status (`@PermitAll`)
 - `GET /api/scenarios/{id}/state` — scenario state snapshot for SSE reconnection backfill (`@PermitAll`)
 - `GET /api/scenarios/events` — SSE stream of `CaseExecutionEvent` JSON; passive `Multi<OutboundSseEvent>` pattern (`@PermitAll`)
-- `POST /api/scenarios/{id}/start` — start demo scenario (202/409/404, `@PermitAll`)
-- `POST /api/scenarios/{id}/gate/{gateId}/approve|reject` — oversight gate decisions via `OversightGateService.fulfill()` (`@PermitAll`; security retrofit openclaw#64)
+- `POST /api/scenarios/{id}/start` — start demo scenario (202/409/404, `@RolesAllowed(ADMIN)`)
+- `POST /api/scenarios/{id}/gate/{gateId}/approve|reject` — oversight gate decisions via `OversightGateService.fulfill()` (`@RolesAllowed(ADMIN)`)
 - `ScenarioExecutionService` — async case execution on virtual threads; sequences agents, registers channels, polls commitments; replaces `ExampleController`
 - `DevBeanProvider` — `@IfBuildProfile("dev")` no-op implementations of platform-supplied CDI beans for `quarkus:dev` mode
 

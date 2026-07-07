@@ -24,6 +24,8 @@ import io.vertx.ext.web.RoutingContext;
 @ApplicationScoped
 public class PluginTokenBridgeMechanism implements HttpAuthenticationMechanism {
 
+    private static final String DEFAULT_TENANCY = "278776f9-e1b0-46fb-9032-8bddebdcf9ce";
+
     private final byte[] configuredTokenBytes;
 
     @Inject
@@ -59,6 +61,7 @@ public class PluginTokenBridgeMechanism implements HttpAuthenticationMechanism {
                 .setPrincipal(new QuarkusPrincipal("openclaw-plugin"))
                 .addRole(OpenClawGroups.PLUGIN)
                 .addAttribute("casehub.plugin.bridge", true)
+                .addAttribute("tenancyId", DEFAULT_TENANCY)
                 .build();
 
         return Uni.createFrom().item(identity);

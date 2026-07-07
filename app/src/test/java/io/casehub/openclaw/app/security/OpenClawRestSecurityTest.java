@@ -55,6 +55,77 @@ class OpenClawRestSecurityTest {
     }
 
     // ==============================
+    // Scenario REST — read endpoints @PermitAll, mutation @RolesAllowed(ADMIN)
+    // ==============================
+
+    @Test
+    void unauthenticated_listScenarios_passes() {
+        given()
+            .when().get("/api/scenarios")
+            .then().statusCode(not(in(List.of(401, 403))));
+    }
+
+    @Test
+    void unauthenticated_scenarioState_passes() {
+        given()
+            .when().get("/api/scenarios/nonexistent/state")
+            .then().statusCode(not(in(List.of(401, 403))));
+    }
+
+    @Test
+    void unauthenticated_startScenario_returns401() {
+        given().contentType(JSON)
+            .when().post("/api/scenarios/nonexistent/start")
+            .then().statusCode(401);
+    }
+
+    @Test
+    @TestSecurity(user = "operator", roles = {"openclaw-operator"})
+    void wrongRole_startScenario_returns403() {
+        given().contentType(JSON)
+            .when().post("/api/scenarios/nonexistent/start")
+            .then().statusCode(403);
+    }
+
+    @Test
+    @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
+    void admin_startScenario_isNotForbidden() {
+        given().contentType(JSON)
+            .when().post("/api/scenarios/nonexistent/start")
+            .then().statusCode(not(in(List.of(401, 403))));
+    }
+
+    @Test
+    void unauthenticated_approveGate_returns401() {
+        given().contentType(JSON)
+            .when().post("/api/scenarios/test/gate/" + UUID.randomUUID() + "/approve")
+            .then().statusCode(401);
+    }
+
+    @Test
+    @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
+    void admin_approveGate_isNotForbidden() {
+        given().contentType(JSON)
+            .when().post("/api/scenarios/test/gate/" + UUID.randomUUID() + "/approve")
+            .then().statusCode(not(in(List.of(401, 403))));
+    }
+
+    @Test
+    void unauthenticated_rejectGate_returns401() {
+        given().contentType(JSON)
+            .when().post("/api/scenarios/test/gate/" + UUID.randomUUID() + "/reject")
+            .then().statusCode(401);
+    }
+
+    @Test
+    @TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
+    void admin_rejectGate_isNotForbidden() {
+        given().contentType(JSON)
+            .when().post("/api/scenarios/test/gate/" + UUID.randomUUID() + "/reject")
+            .then().statusCode(not(in(List.of(401, 403))));
+    }
+
+    // ==============================
     // Channel-context — @RolesAllowed(OpenClawGroups.PLUGIN) + plugin-token mechanism
     // ==============================
 

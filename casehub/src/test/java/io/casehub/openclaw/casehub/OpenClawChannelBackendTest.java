@@ -184,6 +184,14 @@ class OpenClawChannelBackendTest {
         assertThat(backend.actorType()).isEqualTo(ActorType.AGENT);
     }
 
+    // ── deliveryGuarantee ──────────────────────────────────────────────────────
+
+    @Test
+    void deliveryGuarantee_isAtLeastOnce() {
+        assertThat(backend.deliveryGuarantee())
+                .isEqualTo(io.casehub.qhorus.api.gateway.DeliveryGuarantee.AT_LEAST_ONCE);
+    }
+
     // ── extractCaseId ─────────────────────────────────────────────────────────
 
     @Test
