@@ -137,7 +137,7 @@ This is **not** an application layer and **not** a framework. It is the wiring b
 - `MessageObserver` — observes Qhorus channel activity and feeds the ChannelContextWindow
 
 **Oversight gate (Java — `casehub/` module):**
-- `OversightGateService` — `evaluate()` archives agent webhook output as a non-resolving STATUS message (no correlationId, no commitment state change); `fulfill()` processes human responses to oversight gates (see openclaw#30 for Phase 2 gate wiring via `CommitmentTools.done()`)
+- `OversightGateService` — implements `io.casehub.api.spi.OversightGateService` (engine-api SPI); `evaluate()` archives agent webhook output as a non-resolving STATUS message (no correlationId, no commitment state change); `fulfill()` processes human responses to oversight gates (see openclaw#30 for Phase 2 gate wiring via `CommitmentTools.done()`)
 - `CaseChannelNames` — package-private utility for case channel name operations shared across the `casehub/` module
 
 **Direct-call bridge (Java — `core/` + `casehub/` + `app/` modules):**
@@ -186,7 +186,7 @@ examples/   — Runnable demo scenarios (multi-agent-dev-team, trading-oversight
 **`casehub/`** owns:
 - All CaseHub SPI implementations
 - `ChannelContextWindowObserver` — implements `MessageObserver` SPI; synchronously receives every Qhorus dispatch and feeds the ring buffer; must never throw to Qhorus
-- `OversightGateService` — `evaluate()` archives webhook text as archival STATUS; `fulfill()` processes human oversight gate responses (openclaw#30 wires gate entry via `CommitmentTools.done()`)
+- `OversightGateService` — implements `io.casehub.api.spi.OversightGateService` (engine-api SPI); `evaluate()` archives webhook text as archival STATUS; `fulfill()` processes human oversight gate responses (openclaw#30 wires gate entry via `CommitmentTools.done()`)
 - `CaseChannelNames` — package-private channel name utility
 - `DirectCallBridge` — `CompletableFuture` registry for synchronous webhook bridge; self-evicting via `orTimeout` + `whenComplete`
 - `OpenClawAgentConfigResolver` — resolves agent configuration by delegating to platform `ProvisionerConfigRegistry` SPI; merges local config with registry (registry wins per-agent); wrapped by `OpenClawAgentProvider`

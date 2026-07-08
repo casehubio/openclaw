@@ -52,7 +52,7 @@ import io.casehub.qhorus.runtime.message.MessageService;
  * <p>All three methods catch and log all exceptions — none propagate to callers.
  */
 @ApplicationScoped
-public class OversightGateService {
+public class OversightGateService implements io.casehub.api.spi.OversightGateService {
 
     private static final Logger log = Logger.getLogger(OversightGateService.class);
     static final String GATE_SENDER = "openclaw-gate";
@@ -117,6 +117,7 @@ public class OversightGateService {
      * <p>Fail-open: infrastructure failures (channel not found, dispatch error) → Autonomous.
      * Classifier exception → GateRequired fail-safe (not Autonomous — failure ≠ safe).
      */
+    @Override
     public GateOutcome openGate(final String agentId, final String commitmentId,
                                   final String outcome, final String tenancyId) {
         try {
@@ -201,6 +202,7 @@ public class OversightGateService {
      * the delivery webhook has no casehub principal, so tenant-scoped {@link MessageService}
      * cannot resolve the message.
      */
+    @Override
     public void fulfill(final UUID gateId, final String rawOutput) {
         try {
             Message gateCmd = crossTenantMessageStore.scan(
