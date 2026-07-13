@@ -111,7 +111,7 @@ C4Context
 
 **Foundation owns:** case lifecycle (casehub-engine); agent communication mesh and Qhorus channels (casehub-qhorus); Merkle audit chain and trust scoring (casehub-ledger); human task lifecycle (casehub-work).
 
-**Not owned here:** ActionRiskClassifier SPI in casehub-engine-api (casehubio/engine#402 — local placeholder only). Oversight channel now uses `deniedTypes=EVENT` per PLATFORM.md (claudony#142 resolved in #25).
+**Not owned here:** ActionRiskClassifier SPI in casehub-engine-api (shipped via casehubio/engine#402). Oversight channel uses `deniedTypes=EVENT` per PLATFORM.md (claudony#142 resolved in #25).
 
 See `../parent/docs/PLATFORM.md` Capability Ownership table and `../parent/docs/repos/casehub-openclaw.md`.
 
@@ -425,7 +425,7 @@ After C2, the integration can dispatch a message to an OpenClaw agent via `POST 
 #### Chapter 3 — ChannelContextWindow Service
 
 **Journey:** OpenClaw-CaseHub Integration | **Sequence:** 3 of 8 | **Status:** ✅ complete
-**Delivered:** 2026-05-28 | **Issues:** casehubio/openclaw#3 ⚠️ (code complete; epic issue never closed — close after reviewing) | **Blog:** `blog/2026-05-28-mdp01-channel-context-window.md`
+**Delivered:** 2026-05-28 | **Issues:** casehubio/openclaw#3 | **Blog:** `blog/2026-05-28-mdp01-channel-context-window.md`
 
 **What this delivers**
 After C3, the integration provides a per-agent TTL ring buffer of Qhorus channel activity. Agents can query `GET /channel-context/{agentId}?since={windowSeq}` to receive recent messages across all case channels they are associated with. Overflow and service-restart signals are included in the response. **Flyway persistence was evaluated and dropped** — the ring buffer is in-memory only; durability is Qhorus's responsibility.
@@ -556,7 +556,7 @@ Layer 3 skill pack extension — three new SKILL.md files (casehub-reject, caseh
 
 `OversightGateService.evaluate()` now dispatches the correct speech act type (DONE, STATUS, etc.) with `inReplyTo` populated via `commitmentStore.findOpenByObligor()` — restart-resilient, no in-memory state.
 
-`ActionRiskClassifier` local placeholder verified identical to casehubio/engine#402 proposed SPI — import-swap ready.
+`ActionRiskClassifier` migrated to casehubio/engine#402 SPI (closed).
 
 **Deferred:** `CommitmentService.extendDeadline()` filed on casehub-qhorus to remove the direct `expiresAt` mutation workaround.
 
@@ -650,7 +650,7 @@ To implement a webhook-delivery client for an agent runtime in a CaseHub integra
 
 1. Define a `@RegisterRestClient(configKey = "runtime-gateway")` interface with `@RegisterProvider(AuthFilter.class)` for authentication. Do not use `RestClientBuilder` — CDI injection is required for provider resolution.
 2. Create an immutable request record with a package-private static factory that enforces `deliver: "webhook"`. No public constructor.
-3. Create an `@ApplicationScoped` client bean that owns an in-memory session registry (`ConcurrentHashMap<String, Session>`). Key by the runtime's agent identifier (not the CaseHub workerId — the workerId is not stable across provisioning calls until casehubio/engine#402 ships).
+3. Create an `@ApplicationScoped` client bean that owns an in-memory session registry (`ConcurrentHashMap<String, Session>`). Key by the runtime's agent identifier (not the CaseHub workerId — the workerId is not stable across provisioning calls; see casehubio/engine#402).
 4. Wrap all invocations in `try { ... } catch (WebApplicationException e) { ... } finally { response.close(); }`. The REST client throws on non-2xx; it never returns an error Response.
 5. In `application.properties`, bridge `quarkus.rest-client.{configKey}.url=${casehub.{runtime}.gateway.url}`. Without this bridge, the client uses no base URL.
 6. Write a `@QuarkusTest` with `WireMockServer` as a `QuarkusTestResourceLifecycleManager`. Unit tests that mock the REST client cannot reproduce the throw-on-non-2xx behaviour.
@@ -715,7 +715,7 @@ Not closed here: REST endpoints for delivery webhooks (L3), ActionRiskClassifier
 
 #### Architectural decisions
 
-**Why `ActionRiskClassifier` is local rather than in casehub-engine-api:** the platform-wide SPI (casehubio/engine#402) was not shipped when this layer was built. A local interface with the same contract allows the gate to be fully wired and tested with a Phase 1 always-Autonomous default. When engine-api ships the SPI, the migration is a pure import swap — the contract is identical by design. Tradeoff: two definitions of the same concept exist until engine-api ships.
+**Why `ActionRiskClassifier` was local rather than in casehub-engine-api:** the platform-wide SPI (casehubio/engine#402) was not shipped when this layer was built. A local interface with the same contract allowed the gate to be fully wired and tested with a Phase 1 always-Autonomous default. engine-api shipped the SPI (engine#402 closed); the migration was a pure import swap — the contract was identical by design.
 
 **Why `OversightGateService.fulfill()` uses four database queries rather than an in-memory map:** an in-memory map solves the happy path (gate opened and fulfilled in the same process instance) and makes the restart failure mode worse (map is lost; gate hangs until Watchdog). The Commitment created by `openGate()` is already in the database; `findByCorrelationId` is an indexed query. The four queries carry the same persistence guarantee as the rest of the case step. Tradeoff: four DB queries per gate resolution vs O(1) in-memory lookup.
 
@@ -1016,7 +1016,7 @@ To implement a CaseHub-aware OpenClaw TypeScript plugin:
 **Issues:** casehubio/openclaw#7
 **Navigation:** `git log --grep="#7" --oneline`
 **Blog:** `blog/2026-05-31-mdp01-openclaw-skill-pack.md`
-**Improvement refs:** Phase 2 skills (casehub-reject, casehub-block, casehub-delegate) deferred
+**Improvement refs:** Phase 2 skills (casehub-reject, casehub-block, casehub-delegate) delivered in openclaw#23
 **Completed:** 2026-05-31
 
 #### What it adds
@@ -1029,7 +1029,7 @@ What this layer adds:
 - **Always-active protocol awareness** — `casehub-global` SKILL.md instructs agents on when to use CaseHub tools explicitly and when not to (auto-commit handles the rest); does not instruct agents to call `casehub_commit` explicitly when `autoCommit: true` (would cause double-commitments)
 - **Stateless explicit skills** — each of the four explicit skills is a single MCP tool invocation; no multi-step state; no commitment lifecycle; user-initiated only
 
-Not closed here: Phase 2 multi-step skills (broadcast, vote, handoff); future NLI speech act classification (casehubio/openclaw#27).
+Not closed here: Phase 2 multi-step skills (broadcast, vote, handoff). NLI speech act classification (openclaw#27) superseded by tool-call-first architecture (openclaw#28).
 
 #### Accountability gaps closed
 
@@ -1100,7 +1100,7 @@ To add SKILL.md files to a CaseHub integration tier:
 **Date:** 2026-06-23
 **Context:** casehub-openclaw's REST surface is predominantly system-to-system — OpenClaw webhook callbacks, Python SDK calls, TypeScript plugin calls. None of these callers carry a casehub OIDC token. This is a structural reality of the integration tier, not a configuration gap. Activating `casehub-platform-oidc` raised the question of which endpoints get `@RolesAllowed` vs `@PermitAll`.
 **Decision:** `@PermitAll` on three system-to-system resources (delivery×2, channel-context); `@RolesAllowed(OpenClawGroups.PLUGIN)` on `PluginCommitResource` (authenticated by `PluginTokenBridgeMechanism` via pre-shared bearer token — openclaw#42); `@RolesAllowed(OpenClawGroups.ADMIN)` on `ExampleController`; MCP endpoint secured by HTTP auth policy `authenticated` (openclaw#43). `@PermitAll` is preferred over leaving endpoints unannotated — it makes the deliberate absence of auth auditable. CDI exclusions for `MockCurrentPrincipal` and `QhorusInboundCurrentPrincipal` removed (openclaw#48) — `OidcCurrentPrincipal @Alternative @Priority(100)` (platform#111) displaces both via standard CDI resolution. `OpenClawCurrentPrincipal @Alternative @Priority(150)` handles bridge-authenticated identities (non-OIDC SecurityIdentity → default tenancyId).
-**Consequences:** Plugin endpoint auth (openclaw#42) and MCP endpoint auth (openclaw#43) shipped. Delivery endpoints remain `@PermitAll` — OpenClaw webhooks carry no OIDC token. OIDC client-credentials migration for plugin (openclaw#52) deferred pending upstream OpenClaw support. Platform#121 filed to make `OidcCurrentPrincipal` handle non-OIDC SecurityIdentity types natively (enables removal of app-local `OpenClawCurrentPrincipal`).
+**Consequences:** Plugin endpoint auth (openclaw#42) and MCP endpoint auth (openclaw#43) shipped. Delivery endpoints remain `@PermitAll` — OpenClaw webhooks carry no OIDC token. OIDC client-credentials migration for plugin (openclaw#52) deferred pending upstream OpenClaw support. Platform#121 shipped — `OidcCurrentPrincipal` now handles non-OIDC SecurityIdentity types natively.
 **Source:** `docs/superpowers/specs/2026-06-23-oidc-wiring-design.md`, `docs/protocols/casehub/oidc-cdi-qhorus-exclusion.md`.
 
 ### PlannedAction dependency resolution — coding against engine local HEAD (openclaw#46)
@@ -1131,9 +1131,9 @@ To add SKILL.md files to a CaseHub integration tier:
 
 | Risk | Description | Issue | Mitigation |
 |---|---|---|---|
-| `ActionRiskClassifier` SPI not in engine-api | Local placeholder; migration to `casehub-engine-api` import swap depends on casehubio/engine#402 shipping | casehubio/engine#402 | `DefaultActionRiskClassifier` always-Autonomous; no real risk gate until SPI ships |
+| ~~`ActionRiskClassifier` SPI not in engine-api~~ | ~~Local placeholder; migration to `casehub-engine-api` import swap depends on casehubio/engine#402 shipping~~ | casehubio/engine#402 **CLOSED** | **Resolved** — SPI shipped in engine-api; import swap completed |
 | OpenClaw `after_tool_call` not firing | Upstream OpenClaw bug in embedded agent runs; any future use of `after_tool_call` hook depends on this fix | casehubio/openclaw#18 | No current dependency on `after_tool_call`; tracked for future phases |
-| Epic 3 issue (#3) never closed | `ChannelContextWindow` code is complete; the GitHub epic issue was left open after the Flyway migration was dropped from scope | casehubio/openclaw#3 | Close the issue; no code impact |
+| ~~Epic 3 issue (#3) never closed~~ | ~~`ChannelContextWindow` code is complete; the GitHub epic issue was left open after the Flyway migration was dropped from scope~~ | casehubio/openclaw#3 **CLOSED** | **Resolved** — issue closed |
 
 ### Technical Debt
 
@@ -1141,11 +1141,11 @@ To add SKILL.md files to a CaseHub integration tier:
 |---|---|---|---|
 | ~~STATUS instead of DONE~~ | ~~`OpenClawDeliveryResource` dispatches STATUS (not DONE) because `inReplyTo` Long is unavailable at delivery time~~ | casehubio/openclaw#16 **CLOSED** | **Fixed 2026-06-04** — `evaluate()` uses `findOpenByObligor()` to recover correlationId and dispatch DONE with correct `inReplyTo` |
 | ~~`fulfill()` atomicity gap~~ | ~~`OversightGateService.fulfill()` dispatches RESPONSE and DONE in two sequential calls~~ | casehubio/openclaw#15 **CLOSED** | **Fixed 2026-06-03** — `OversightGateDispatcher @ApplicationScoped` wraps both dispatches atomically |
-| Oversight channel `allowedTypes` | Set to null (all types allowed); final decision (null vs. tiered model vs. new MessageTypes) deferred to casehubio/claudony#142 | casehubio/openclaw (no tracking issue) | Low |
-| Webhook payload `@JsonAlias` unverified | Field names in `OpenClawDeliveryPayload` may differ from live OpenClaw API; assumed camelCase, unconfirmed | casehubio/openclaw#11 | XS |
-| `channelId` not stored on Commitment | `OversightGateService` must reconstruct `channelId` from Qhorus queries after restart; storing it would simplify `fulfill()` | casehubio/openclaw#20 | S |
+| ~~Oversight channel `allowedTypes`~~ | ~~Set to null (all types allowed); final decision deferred to casehubio/claudony#142~~ | claudony#142 **CLOSED** | **Resolved** — oversight channel uses `deniedTypes=EVENT` per PLATFORM.md (openclaw#25) |
+| ~~Webhook payload `@JsonAlias` unverified~~ | ~~Field names in `OpenClawDeliveryPayload` may differ from live OpenClaw API; assumed camelCase, unconfirmed~~ | casehubio/openclaw#11 **CLOSED** | **Resolved** |
+| ~~`channelId` not stored on Commitment~~ | ~~`OversightGateService` must reconstruct `channelId` from Qhorus queries after restart; storing it would simplify `fulfill()`~~ | casehubio/openclaw#20 **CLOSED** | **Resolved** |
 | ~~Reactive SPI variants not built~~ | ~~`ReactiveWorkerProvisioner`, `ReactiveCaseChannelProvider` planned but deferred~~ | casehubio/openclaw#12 **CLOSED** | **Fixed 2026-06-09** — `ReactiveOpenClawWorkerProvisioner` and `ReactiveOpenClawCaseChannelProvider` implemented; `OpenClawCaseChannelProvider.openChannel()` initChannel() bug fixed; gated on `casehub.qhorus.reactive.enabled` |
-| Epic 6 code review findings | Minor code quality issues from review; not correctness defects | casehubio/openclaw#17 | S |
+| ~~Epic 6 code review findings~~ | ~~Minor code quality issues from review; not correctness defects~~ | casehubio/openclaw#17 **CLOSED** | **Resolved** |
 | ~~Deep-dive doc stale for Epic 7 MCP layer~~ | ~~`../parent/docs/repos/casehub-openclaw.md` not updated for Epic 7 MCP endpoint~~ | casehubio/openclaw#19 **CLOSED** | **Resolved 2026-06-09** — doc already updated in parent repo; verified Layer 0 section and PLATFORM.md Capability Ownership entry both present |
 
 ---
