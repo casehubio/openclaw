@@ -44,7 +44,7 @@ class ScenarioObserverTest {
 
     private MessageReceivedEvent event(UUID channelId, MessageType type, String senderId, String content) {
         String c = (type == MessageType.EVENT) ? null : content;
-        return new MessageReceivedEvent("test/channel", channelId, "demo", type, senderId, "corr-1", Instant.now(), c);
+        return new MessageReceivedEvent(null, "test/channel", channelId, "demo", type, senderId, "corr-1", Instant.now(), c, null);
     }
 
     @Test

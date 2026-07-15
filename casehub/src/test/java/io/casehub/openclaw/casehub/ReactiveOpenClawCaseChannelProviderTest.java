@@ -60,7 +60,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private Channel channel(UUID id, String name) {
-        return new Channel(id, name, null, null, null, null, null, null, null, null, null, false, false, null, null, null);
+        return new Channel(id, name, null, null, null, null, null, null, null, null, null, false, false, null, null, null, null);
     }
 
     /** Stubs findByName → empty, create → new channel, for any channel name containing caseId. */

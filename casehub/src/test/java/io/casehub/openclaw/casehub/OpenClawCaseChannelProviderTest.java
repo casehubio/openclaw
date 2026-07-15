@@ -50,7 +50,7 @@ class OpenClawCaseChannelProviderTest {
     }
 
     private Channel channel(UUID id, String name) {
-        return new Channel(id, name, null, null, null, null, null, null, null, null, null, false, false, null, null, null);
+        return new Channel(id, name, null, null, null, null, null, null, null, null, null, false, false, null, null, null, null);
     }
 
     @Test

@@ -78,9 +78,9 @@ class OversightGateServiceTest {
         crossTenantChannelStore = mock(CrossTenantChannelStore.class);
         when(crossTenantChannelStore.findById(any())).thenReturn(Optional.empty()); // default: not found
 
-        workChannel = new Channel(workChannelId, "case-" + caseId + "/work", null, null, null, null, null, null, null, null, null, false, false, null, null, null);
+        workChannel = new Channel(workChannelId, "case-" + caseId + "/work", null, null, null, null, null, null, null, null, null, false, false, null, null, null, null);
 
-        oversightChannel = new Channel(oversightChannelId, "case-" + caseId + "/oversight", null, null, null, null, null, null, null, null, null, false, false, null, null, null);
+        oversightChannel = new Channel(oversightChannelId, "case-" + caseId + "/oversight", null, null, null, null, null, null, null, null, null, false, false, null, null, null, null);
 
         when(channelService.findById(workChannelId)).thenReturn(Optional.of(workChannel));
         when(channelService.findById(oversightChannelId)).thenReturn(Optional.of(oversightChannel));
@@ -301,7 +301,7 @@ class OversightGateServiceTest {
         UUID gateId = UUID.randomUUID();
         Message cmd = new Message(
             42L, oversightChannelId, null, MessageType.COMMAND, null, null, "not-properties-format-at-all",
-            gateId.toString(), null, 0, null, null, null, null, null, 0, null
+            gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
         );
         when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
 
@@ -352,12 +352,12 @@ class OversightGateServiceTest {
 
         Message cmd = new Message(
             42L, oversightChannelId, null, MessageType.COMMAND, null, null, sw.toString(),
-            gateId.toString(), null, 0, null, null, null, null, null, 0, null
+            gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
         );
         when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
 
         // Recovery: channel lookup returns a channel with tenancyId = "tenant-A"
-        Channel oversight = new Channel(oversightChannelId, null, null, null, null, null, null, null, null, null, null, false, false, "tenant-A", null, null);
+        Channel oversight = new Channel(oversightChannelId, null, null, null, null, null, null, null, null, null, null, false, false, null, "tenant-A", null, null);
         when(crossTenantChannelStore.findById(oversightChannelId)).thenReturn(Optional.of(oversight));
 
         service.fulfill(gateId, "approved");
@@ -381,7 +381,7 @@ class OversightGateServiceTest {
 
         Message cmd = new Message(
             42L, oversightChannelId, null, MessageType.COMMAND, null, null, sw.toString(),
-            gateId.toString(), null, 0, null, null, null, null, null, 0, null
+            gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
         );
         when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
         // crossTenantChannelStore returns Optional.empty() by default from setup()
@@ -577,7 +577,7 @@ class OversightGateServiceTest {
 
         Message cmd = new Message(
             commandMsgId, null, null, MessageType.COMMAND, null, null, null,
-            commitmentId, null, 0, null, null, null, null, null, 0, null
+            commitmentId, null, 0, null, null, null, null, null, null, 0, null
         );
         when(messageService.findAllByCorrelationId(commitmentId)).thenReturn(List.of(cmd));
     }
@@ -626,7 +626,7 @@ class OversightGateServiceTest {
 
         return new Message(
             msgId, oversightChanId, tenancyId, MessageType.COMMAND, null, null, sw.toString(),
-            gateId.toString(), null, 0, null, null, null, null, null, 0, null
+            gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
         );
     }
 
