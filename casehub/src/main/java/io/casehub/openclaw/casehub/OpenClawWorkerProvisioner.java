@@ -25,8 +25,8 @@ import io.casehub.platform.api.identity.CurrentPrincipal;
  * requested capabilities, registering it in the agent routing maps, and binding it to
  * the ChannelContextWindow. No process is started — OpenClaw agents are always-running.
  *
- * <p>MVP constraint: one OpenClaw agent per case. A second provision() for the same
- * caseId silently overwrites the previous entry in OpenClawAgentRegistry.
+ * <p>Multiple agents can be provisioned for the same case (1:N). The registry
+ * tracks all active agents per case; deregistration is per-agent.
  */
 @ApplicationScoped
 public class OpenClawWorkerProvisioner implements WorkerProvisioner {

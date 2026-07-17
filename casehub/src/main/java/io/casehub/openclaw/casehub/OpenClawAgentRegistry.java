@@ -1,57 +1,85 @@
 package io.casehub.openclaw.casehub;
 
+import jakarta.enterprise.context.ApplicationScoped;
+import org.jboss.logging.Logger;
+
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-
-import jakarta.enterprise.context.ApplicationScoped;
-
-import org.jboss.logging.Logger;
 
 /**
  * Routing maps for OpenClaw agent sessions. Shared by WorkerProvisioner (write),
  * ChannelBackend (read for routing), and WorkerStatusListener (cleanup).
  *
- * <p>MVP constraint: 1:1 caseId ↔ agentId. A second register() call for the same
- * caseId silently overwrites the previous entry. Log a warning at register() time
- * if this occurs — it indicates a misconfigured or unexpected provisioning pattern.
+ * <p>Supports 1:N agents per case — multiple agents can be registered for the same
+ * caseId simultaneously (e.g. casehub-life's domain-specialised agents).
  */
 @ApplicationScoped
 public class OpenClawAgentRegistry {
 
     private static final Logger log = Logger.getLogger(OpenClawAgentRegistry.class);
 
-    private final ConcurrentHashMap<String, UUID> agentToCase = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<UUID, String> caseToAgent = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, String> agentToSessionKey = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<UUID, String> caseToTenancy = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, UUID>      agentToCase       = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, Set<String>> caseToAgents      = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String>    agentToSessionKey = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, String>      caseToTenancy     = new ConcurrentHashMap<>();
+
+    public record DeregistrationResult(UUID caseId, boolean wasLastAgent) {}
 
     public void register(String agentId, String tenancyId, UUID caseId, String sessionKey) {
-        // MVP constraint: 1:1 caseId:agentId. Overwrite is silent by map semantics, but
-        // it indicates misconfigured or unexpected provisioning — warn loudly.
-        String existingAgent = caseToAgent.get(caseId);
-        if (existingAgent != null && !existingAgent.equals(agentId)) {
-            log.warnf("caseId=%s already mapped to agentId=%s; overwriting with agentId=%s. "
-                    + "Multiple OpenClaw agents per case violates the MVP 1:1 constraint.",
-                    caseId, existingAgent, agentId);
+        UUID previousCase = agentToCase.put(agentId, caseId);
+        if (previousCase != null && !previousCase.equals(caseId)) {
+            Set<String> remaining = caseToAgents.computeIfPresent(previousCase, (k, agents) -> {
+                agents.remove(agentId);
+                return agents.isEmpty() ? null : agents;
+            });
+            if (remaining == null) {
+                caseToTenancy.remove(previousCase);
+            }
         }
-        agentToCase.put(agentId, caseId);
-        caseToAgent.put(caseId, agentId);
+        caseToAgents.computeIfAbsent(caseId, k -> ConcurrentHashMap.newKeySet()).add(agentId);
         agentToSessionKey.put(agentId, sessionKey);
         caseToTenancy.put(caseId, tenancyId);
     }
 
-    public void deregister(String agentId) {
-        UUID caseId = agentToCase.remove(agentId);
+    public DeregistrationResult deregister(String agentId) {
+        UUID    caseId       = agentToCase.remove(agentId);
+        boolean wasLastAgent = false;
         if (caseId != null) {
-            caseToAgent.remove(caseId);
-            caseToTenancy.remove(caseId);
+            Set<String> remaining = caseToAgents.computeIfPresent(caseId, (k, agents) -> {
+                agents.remove(agentId);
+                return agents.isEmpty() ? null : agents;
+            });
+            wasLastAgent = (remaining == null);
+            if (wasLastAgent) {
+                caseToTenancy.remove(caseId);
+            }
         }
         agentToSessionKey.remove(agentId);
+        return new DeregistrationResult(caseId, wasLastAgent);
     }
 
+    /**
+     * Transitional — prefer {@link #findAgentIds(UUID)} for new callers.
+     * Returns any single agent from the set. Logs a warning when multiple agents
+     * are registered (signals that parallel routing via openclaw#70 is needed).
+     */
     public Optional<String> findAgentId(UUID caseId) {
-        return Optional.ofNullable(caseToAgent.get(caseId));
+        Set<String> agents = caseToAgents.get(caseId);
+        if (agents == null || agents.isEmpty()) {
+            return Optional.empty();
+        }
+        if (agents.size() > 1) {
+            log.warnf("Multiple agents registered for caseId=%s: %s — returning arbitrary agent. " +
+                      "Parallel COMMAND routing needed (openclaw#70).", caseId, agents);
+        }
+        return agents.stream().findFirst();
+    }
+
+    public Set<String> findAgentIds(UUID caseId) {
+        Set<String> agents = caseToAgents.get(caseId);
+        return agents != null ? Set.copyOf(agents) : Set.of();
     }
 
     public Optional<UUID> findCaseId(String agentId) {
@@ -64,5 +92,9 @@ public class OpenClawAgentRegistry {
 
     public Optional<String> findTenancyId(UUID caseId) {
         return Optional.ofNullable(caseToTenancy.get(caseId));
+    }
+
+    public boolean hasAgentsForCase(UUID caseId) {
+        return caseToAgents.containsKey(caseId);
     }
 }

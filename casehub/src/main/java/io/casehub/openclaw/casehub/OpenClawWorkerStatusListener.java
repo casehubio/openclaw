@@ -1,17 +1,14 @@
 package io.casehub.openclaw.casehub;
 
-import java.util.Map;
-import java.util.UUID;
-
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.event.Event;
-import jakarta.inject.Inject;
-
-import org.jboss.logging.Logger;
-
 import io.casehub.api.model.WorkResult;
 import io.casehub.api.spi.WorkerStatusListener;
 import io.casehub.openclaw.context.ChannelContextWindowService;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Event;
+import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
+
+import java.util.Map;
 
 /**
  * Reacts to CaseHub engine worker lifecycle events for OpenClaw agents.
@@ -49,12 +46,10 @@ public class OpenClawWorkerStatusListener implements WorkerStatusListener {
     @Override
     public void onWorkerCompleted(String workerId, WorkResult result) {
         log.infof("OpenClaw agent completed: agentId=%s status=%s", workerId, result.status());
-        // Capture caseId before deregistering — registry removes the mappings on deregister()
-        UUID caseId = registry.findCaseId(workerId).orElse(null);
-        registry.deregister(workerId);
+        var deregResult = registry.deregister(workerId);
         service.unbindAgent(workerId);
-        if (caseId != null) {
-            service.closeCase(caseId);
+        if (deregResult.caseId() != null && deregResult.wasLastAgent()) {
+            service.closeCase(deregResult.caseId());
         }
     }
 
