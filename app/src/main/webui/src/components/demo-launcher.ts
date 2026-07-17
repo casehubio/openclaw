@@ -15,13 +15,13 @@ export class DemoLauncher extends LitElement {
     h1 {
       font-size: 28px;
       font-weight: 700;
-      color: var(--blocks-text-bright, #ffffff);
+      color: var(--pages-neutral-12);
       margin-bottom: 8px;
     }
 
     .subtitle {
       font-size: 16px;
-      color: var(--blocks-text-dim, #a0aec0);
+      color: var(--pages-neutral-7);
       margin-bottom: 32px;
     }
 
@@ -32,8 +32,8 @@ export class DemoLauncher extends LitElement {
     }
 
     .scenario-card {
-      background: var(--blocks-surface-2, #16213e);
-      border: 1px solid var(--blocks-border, #2d3748);
+      background: var(--pages-neutral-2);
+      border: 1px solid var(--pages-neutral-4);
       border-radius: 8px;
       padding: 20px;
       display: flex;
@@ -44,12 +44,12 @@ export class DemoLauncher extends LitElement {
     .scenario-name {
       font-size: 18px;
       font-weight: 600;
-      color: var(--blocks-text-bright, #ffffff);
+      color: var(--pages-neutral-12);
     }
 
     .scenario-description {
       font-size: 14px;
-      color: var(--blocks-text, #e0e0e0);
+      color: var(--pages-neutral-11);
       line-height: 1.5;
     }
 
@@ -63,32 +63,32 @@ export class DemoLauncher extends LitElement {
     }
 
     .scenario-status.idle {
-      background: var(--blocks-surface-3, #2d3748);
-      color: var(--blocks-text-dim, #a0aec0);
+      background: var(--pages-neutral-3);
+      color: var(--pages-neutral-7);
     }
 
     .scenario-status.running {
-      background: var(--blocks-warning-bg, #fbbf24);
-      color: var(--blocks-warning-text, #78350f);
+      background: var(--pages-warning-9);
+      color: var(--pages-warning-12);
     }
 
     .scenario-status.completed {
-      background: var(--blocks-success-bg, #10b981);
-      color: var(--blocks-success-text, #064e3b);
+      background: var(--pages-success-9);
+      color: var(--pages-success-12);
     }
 
     .scenario-status.failed {
-      background: var(--blocks-error-bg, #ef4444);
-      color: var(--blocks-error-text, #7f1d1d);
+      background: var(--pages-danger-9);
+      color: var(--pages-danger-12);
     }
 
     button {
       margin-top: auto;
       padding: 10px 16px;
-      background: var(--blocks-primary, #3b82f6);
+      background: var(--pages-accent-9);
       border: none;
       border-radius: 6px;
-      color: var(--blocks-text-bright, #ffffff);
+      color: var(--pages-neutral-12);
       cursor: pointer;
       font-size: 14px;
       font-weight: 500;
@@ -96,7 +96,7 @@ export class DemoLauncher extends LitElement {
     }
 
     button:hover:not(:disabled) {
-      background: var(--blocks-primary-hover, #2563eb);
+      background: var(--pages-accent-10);
     }
 
     button:disabled {
@@ -105,11 +105,11 @@ export class DemoLauncher extends LitElement {
     }
 
     .view-button {
-      background: var(--blocks-surface-3, #2d3748);
+      background: var(--pages-neutral-3);
     }
 
     .view-button:hover {
-      background: var(--blocks-surface-hover, #374151);
+      background: var(--pages-neutral-4);
     }
 
     @media (prefers-reduced-motion: reduce) {

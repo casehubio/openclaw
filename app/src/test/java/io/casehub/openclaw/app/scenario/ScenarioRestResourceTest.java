@@ -1,21 +1,25 @@
 package io.casehub.openclaw.app.scenario;
 
-import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.InjectMock;
-
+import io.casehub.openclaw.app.OpenClawGroups;
 import io.casehub.openclaw.casehub.OversightGateService;
-import io.casehub.openclaw.casehub.scenario.*;
-
+import io.casehub.openclaw.casehub.scenario.ScenarioStateSnapshot;
+import io.casehub.openclaw.casehub.scenario.ScenarioStateStore;
+import io.quarkus.test.InjectMock;
+import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.*;
-import static org.mockito.Mockito.*;
+import static org.hamcrest.Matchers.equalTo;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @QuarkusTest
+@TestSecurity(user = "admin", roles = {OpenClawGroups.ADMIN})
 class ScenarioRestResourceTest {
 
     @InjectMock
@@ -86,24 +90,30 @@ class ScenarioRestResourceTest {
     }
 
     @Test
-    void approveGate_callsFulfill() {
+    void completeWorkitem_approve_callsFulfill() {
         UUID gateId = UUID.randomUUID();
         given()
-            .when().post("/api/scenarios/trading-oversight/gate/" + gateId + "/approve")
-            .then()
+                .contentType("application/json")
+                .body("{\"outcome\":\"approve\"}")
+                .when().put("/api/scenarios/trading-oversight/workitems/" + gateId + "/complete")
+                .then()
                 .statusCode(200);
 
         verify(oversightGateService).fulfill(gateId, "Approved");
     }
 
     @Test
-    void rejectGate_callsFulfill() {
+    void completeWorkitem_reject_callsFulfill() {
         UUID gateId = UUID.randomUUID();
         given()
-            .when().post("/api/scenarios/trading-oversight/gate/" + gateId + "/reject")
-            .then()
+                .contentType("application/json")
+                .body("{\"outcome\":\"reject\"}")
+                .when().put("/api/scenarios/trading-oversight/workitems/" + gateId + "/complete")
+                .then()
                 .statusCode(200);
 
         verify(oversightGateService).fulfill(gateId, "Rejected");
     }
+
+
 }

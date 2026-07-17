@@ -5,6 +5,12 @@
     "build": "node esbuild.config.mjs"
   },
   "dependencies": {
+    "@casehubio/blocks-ui-approval-gate": "^0.2.2",
+    "@casehubio/blocks-ui-channel-activity": "^0.2.2",
+    "@casehubio/blocks-ui-core": "^0.2.2",
+    "@casehubio/blocks-ui-split-workbench": "^0.2.2",
+    "@casehubio/pages-primitives": "^0.2.2",
+    "@casehubio/pages-ui-tokens": "^0.2.2",
     "lit": "^3.0.0"
   },
   "devDependencies": {

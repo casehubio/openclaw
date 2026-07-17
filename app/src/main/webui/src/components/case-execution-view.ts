@@ -1,5 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { emitPagesEvent, onPagesEvent } from '@casehubio/blocks-ui-core';
+import type { QhorusMessage } from '@casehubio/blocks-ui-channel-activity';
 import type {
   CaseExecutionEvent,
   AgentState,
@@ -7,6 +9,23 @@ import type {
   GateState,
   ScenarioStateSnapshot,
 } from '../types/events.js';
+
+let nextMessageId = 0;
+
+function toQhorusMessage(event: ChannelMessageEvent): QhorusMessage {
+  return {
+    id: String(nextMessageId++),
+    channelId: '',
+    sender: event.agentId,
+    messageType: 'STATUS',
+    actorType: 'AGENT',
+    content: event.content,
+    topic: '',
+    replyCount: 0,
+    artefactRefs: [],
+    createdAt: event.occurredAt,
+  };
+}
 
 @customElement('case-execution-view')
 export class CaseExecutionView extends LitElement {
@@ -16,6 +35,7 @@ export class CaseExecutionView extends LitElement {
   @state() private pendingGate: GateState | null = null;
   @state() private status: 'idle' | 'running' | 'completed' | 'failed' = 'idle';
   private eventSource: EventSource | null = null;
+  private _unsubGateDecided?: () => void;
 
   static styles = css`
     :host {
@@ -25,61 +45,29 @@ export class CaseExecutionView extends LitElement {
 
     .status-banner {
       padding: 16px;
-      margin-bottom: 20px;
       border-radius: 8px;
       font-size: 14px;
       font-weight: 600;
     }
 
     .status-banner.running {
-      background: var(--blocks-info-bg, #3b82f6);
-      color: var(--blocks-info-text, #eff6ff);
+      background: var(--pages-info-9);
+      color: var(--pages-info-12);
     }
 
     .status-banner.completed {
-      background: var(--blocks-success-bg, #10b981);
-      color: var(--blocks-success-text, #064e3b);
+      background: var(--pages-success-9);
+      color: var(--pages-success-12);
     }
 
     .status-banner.failed {
-      background: var(--blocks-error-bg, #ef4444);
-      color: var(--blocks-error-text, #7f1d1d);
+      background: var(--pages-danger-9);
+      color: var(--pages-danger-12);
     }
 
     .status-banner.idle {
-      background: var(--blocks-surface-2, #16213e);
-      color: var(--blocks-text, #e0e0e0);
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 40% 60%;
-      gap: 20px;
-      height: calc(100% - 70px);
-    }
-
-    h3 {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--blocks-text-bright, #ffffff);
-      margin-bottom: 16px;
-    }
-
-    .panel {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .panel-content {
-      flex: 1;
-      overflow: auto;
-    }
-
-    @media (max-width: 1024px) {
-      .layout {
-        grid-template-columns: 1fr;
-        grid-template-rows: 400px 1fr;
-      }
+      background: var(--pages-neutral-2);
+      color: var(--pages-neutral-11);
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -89,15 +77,23 @@ export class CaseExecutionView extends LitElement {
     }
   `;
 
+  firstUpdated() {
+    emitPagesEvent(document, 'openclaw-scenario:selected', {});
+  }
+
   connectedCallback() {
     super.connectedCallback();
     this.loadState();
     this.subscribeToSSE();
+    this._unsubGateDecided = onPagesEvent(document, 'gate.decided', () => {
+      this.pendingGate = null;
+    });
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.eventSource?.close();
+    this._unsubGateDecided?.();
   }
 
   private async loadState() {
@@ -208,30 +204,35 @@ export class CaseExecutionView extends LitElement {
 
   render() {
     return html`
-      <div class="status-banner ${this.status}">
-        Scenario: ${this.scenarioId} — ${this.status.toUpperCase()}
-      </div>
-
-      <div class="layout">
-        <div class="panel">
-          <h3>Agent Pipeline</h3>
-          <div class="panel-content">
-            <case-worker-pipeline .workers=${this.agents}></case-worker-pipeline>
-          </div>
+      <split-workbench selection-topic="openclaw-scenario">
+        <div slot="header" class="status-banner ${this.status}">
+          Scenario: ${this.scenarioId} — ${this.status.toUpperCase()}
         </div>
-
-        <div class="panel">
-          <h3>Channel Feed</h3>
-          <div class="panel-content">
-            <channel-feed .messages=${this.messages}></channel-feed>
-          </div>
+        <div slot="list">
+          <case-worker-pipeline .workers=${this.agents}></case-worker-pipeline>
         </div>
-      </div>
+        <div slot="detail">
+          <channel-feed .messages=${this.messages.map(toQhorusMessage)}></channel-feed>
+        </div>
+      </split-workbench>
 
-      <gate-approval-modal
-        .gate=${this.pendingGate}
-        .scenarioId=${this.scenarioId}
-      ></gate-approval-modal>
+      ${this.pendingGate ? html`
+        <pages-modal
+          variant="alertdialog"
+          no-close-button
+          .open=${true}
+          @pages-modal-cancel=${(e: Event) => e.preventDefault()}
+        >
+          <span slot="header">Oversight Gate</span>
+          <approval-gate
+            gate-id=${this.pendingGate.gateId}
+            endpoint="/api/scenarios/${this.scenarioId}"
+            prompt=${this.pendingGate.action}
+            context-text=${this.pendingGate.classification}
+            .data=${{ agent: this.pendingGate.agentId, priorAgents: this.pendingGate.priorAgents }}
+          ></approval-gate>
+        </pages-modal>
+      ` : ''}
     `;
   }
 }

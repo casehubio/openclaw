@@ -1,33 +1,35 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import { applyThemeMode } from '@casehubio/pages-ui-tokens';
 
 @customElement('app-shell')
 export class AppShell extends LitElement {
   @state() private currentView = 'overview';
+  @state() private themeMode: 'dark' | 'light' = 'dark';
 
   static styles = css`
     :host {
       display: flex;
       height: 100vh;
-      color: var(--blocks-text, #e0e0e0);
-      background: var(--blocks-surface, #1a1a2e);
-      font-family: var(--blocks-font, system-ui, sans-serif);
+      color: var(--pages-neutral-11);
+      background: var(--pages-neutral-1);
+      font-family: var(--pages-font-family);
     }
 
     nav {
       width: 240px;
-      background: var(--blocks-surface-2, #16213e);
+      background: var(--pages-neutral-2);
       padding: 24px 16px;
       display: flex;
       flex-direction: column;
       gap: 24px;
-      border-right: 1px solid var(--blocks-border, #2d3748);
+      border-right: 1px solid var(--pages-neutral-4);
     }
 
     h2 {
       font-size: 18px;
       font-weight: 600;
-      color: var(--blocks-text-bright, #ffffff);
+      color: var(--pages-neutral-12);
       margin-bottom: 8px;
     }
 
@@ -42,34 +44,34 @@ export class AppShell extends LitElement {
       padding: 12px 16px;
       border-radius: 6px;
       cursor: pointer;
-      color: var(--blocks-text-dim, #a0aec0);
+      color: var(--pages-neutral-7);
       transition: background 150ms, color 150ms;
     }
 
     li:hover {
-      background: var(--blocks-surface-hover, #243447);
-      color: var(--blocks-text, #e0e0e0);
+      background: var(--pages-neutral-4);
+      color: var(--pages-neutral-11);
     }
 
     li.active {
-      background: var(--blocks-primary, #3b82f6);
-      color: var(--blocks-text-bright, #ffffff);
+      background: var(--pages-accent-9);
+      color: var(--pages-neutral-12);
     }
 
     button {
       margin-top: auto;
       padding: 10px 16px;
-      background: var(--blocks-surface-3, #2d3748);
-      border: 1px solid var(--blocks-border, #4a5568);
+      background: var(--pages-neutral-3);
+      border: 1px solid var(--pages-neutral-4);
       border-radius: 6px;
-      color: var(--blocks-text, #e0e0e0);
+      color: var(--pages-neutral-11);
       cursor: pointer;
       font-size: 14px;
       transition: background 150ms;
     }
 
     button:hover {
-      background: var(--blocks-surface-hover, #374151);
+      background: var(--pages-neutral-4);
     }
 
     main {
@@ -121,6 +123,7 @@ export class AppShell extends LitElement {
   }
 
   private toggleTheme() {
-    document.documentElement.classList.toggle('light');
+    this.themeMode = this.themeMode === 'dark' ? 'light' : 'dark';
+    applyThemeMode(document.documentElement, this.themeMode);
   }
 }

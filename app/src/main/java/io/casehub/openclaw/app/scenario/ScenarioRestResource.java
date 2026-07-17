@@ -1,20 +1,24 @@
 package io.casehub.openclaw.app.scenario;
 
-import java.util.List;
-
-import jakarta.annotation.security.PermitAll;
-import jakarta.annotation.security.RolesAllowed;
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
-
 import io.casehub.openclaw.app.OpenClawGroups;
 import io.casehub.openclaw.casehub.OversightGateService;
 import io.casehub.openclaw.casehub.scenario.ScenarioStateSnapshot;
 import io.casehub.openclaw.casehub.scenario.ScenarioStateStore;
+import jakarta.annotation.security.PermitAll;
+import jakarta.annotation.security.RolesAllowed;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
+import java.util.List;
 import java.util.UUID;
 
 @ApplicationScoped
@@ -62,19 +66,19 @@ public class ScenarioRestResource {
         }
     }
 
-    @POST
-    @Path("/{id}/gate/{gateId}/approve")
+    public record WorkitemCompleteRequest(String outcome, String resolution) {}
+
+    @PUT
+    @Path("/{id}/workitems/{gateId}/complete")
     @RolesAllowed(OpenClawGroups.ADMIN)
-    public Response approveGate(@PathParam("id") String scenarioId, @PathParam("gateId") String gateId) {
-        oversightGateService.fulfill(UUID.fromString(gateId), "Approved");
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response completeWorkitem(@PathParam("id") String scenarioId,
+                                     @PathParam("gateId") String gateId,
+                                     WorkitemCompleteRequest request) {
+        String fulfillText = "approve".equalsIgnoreCase(request.outcome()) ? "Approved" : "Rejected";
+        oversightGateService.fulfill(UUID.fromString(gateId), fulfillText);
         return Response.ok().build();
     }
 
-    @POST
-    @Path("/{id}/gate/{gateId}/reject")
-    @RolesAllowed(OpenClawGroups.ADMIN)
-    public Response rejectGate(@PathParam("id") String scenarioId, @PathParam("gateId") String gateId) {
-        oversightGateService.fulfill(UUID.fromString(gateId), "Rejected");
-        return Response.ok().build();
-    }
+
 }
