@@ -270,7 +270,7 @@ Engine                    CaseChannelProvider         MessageService      Channe
 The changes have a dependency chain. Build bottom-up:
 
 1. **qhorus-api** — `OutboundMessage` gains `target` field
-2. **qhorus runtime** — `MessageService` and `ChannelGateway.deliverRemote()` populate `target`
+2. **qhorus runtime** — all 6 `OutboundMessage` construction sites (see §Change 1 table) populate `target`
 3. **engine-api** — `ProvisionResult.workerId`, `CaseChannelProvider.postToChannel()` 7-param
 4. **engine runtime** — `WorkerScheduleEventHandler` passes `target`
 5. **openclaw** — provider overrides 7-param, backend reads `target`, provisioner returns workerId
@@ -293,7 +293,7 @@ After all steps, `mvn install` in dependency order: qhorus → engine → opencl
 ### engine
 
 - **Unit:** `ProvisionResult.withWorker("agentA")` carries workerId.
-- **Unit:** `CaseChannelProvider` default method delegates 6-param to 7-param with null target.
+- **Unit:** `CaseChannelProvider` 3-param convenience default delegates to 7-param with null target.
 - **Integration:** `WorkerScheduleEventHandler` dispatches COMMAND with `target` set from
   `ProvisionResult.workerId()`.
 
