@@ -1,14 +1,5 @@
 package io.casehub.openclaw.casehub;
 
-import java.util.Map;
-import java.util.UUID;
-
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.event.Observes;
-import jakarta.inject.Inject;
-
-import org.jboss.logging.Logger;
-
 import io.casehub.api.model.CaseChannel;
 import io.casehub.openclaw.client.OpenClawClientConfig;
 import io.casehub.openclaw.client.OpenClawHookClient;
@@ -21,6 +12,13 @@ import io.casehub.qhorus.api.gateway.DeliveryGuarantee;
 import io.casehub.qhorus.api.gateway.OutboundMessage;
 import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.gateway.ChannelGateway;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
+import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
+
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Bridges Qhorus COMMANDs to OpenClaw agents via the hook API.
@@ -83,43 +81,51 @@ public class OpenClawChannelBackend implements ChannelBackend {
 
     @Override
     public void post(final ChannelRef channel, final OutboundMessage message) {
-        if (message.type() != MessageType.COMMAND) return;
+        if (message.type() != MessageType.COMMAND) {return;}
 
         final UUID caseId = extractCaseId(channel.name());
-        if (caseId == null) return;
+        if (caseId == null) {return;}
 
-        final String agentId = registry.findAgentId(caseId).orElse(null);
+        final String agentId;
+        if (message.target() != null && !message.target().isBlank()) {
+            agentId = message.target();
+            if (!registry.findCaseId(agentId).map(caseId::equals).orElse(false)) {
+                if (registry.findCaseId(agentId).isPresent()) {
+                    log.warnf("Target agent %s registered for caseId=%s, not %s — routing bug, COMMAND dropped",
+                              agentId, registry.findCaseId(agentId).orElse(null), caseId);
+                } else {
+                    log.warnf("Target agent %s not registered — COMMAND dropped (agent may have crashed)", agentId);
+                }
+                return;
+            }
+        } else {
+            agentId = registry.findAgentId(caseId).orElse(null);
+        }
         if (agentId == null) {
             log.debugf("No OpenClaw agent for caseId=%s — ignoring COMMAND on %s", caseId, channel.name());
             return;
         }
 
-        // Log-and-return rather than throw — post() must never propagate exceptions through fanOut()
         final String sessionKey = registry.findSessionKey(agentId).orElse(null);
         if (sessionKey == null) {
             log.warnf("No session key found for agentId=%s (registry write race?) — ignoring COMMAND", agentId);
             return;
         }
 
-        // webhookUrl is embedded in the POST /hooks/agent body — OpenClaw uses this
-        // request-body URL for delivery. Concurrent overwrites of the session entry
-        // are safe because invoke() sends the URL it reads at call time.
         String webhookUrl = config.delivery().baseUrl() + "/channel/" + channel.id();
         webhookUrl = appendDeliveryToken(webhookUrl);
         hookClient.registerSession(agentId, sessionKey, webhookUrl);
 
         try {
             final UUID correlationId = message.correlationId() != null
-                    ? UUID.fromString(message.correlationId())
-                    : null;
+                                       ? UUID.fromString(message.correlationId())
+                                       : null;
             hookClient.invoke(agentId, buildPrompt(message.content(), agentId, correlationId),
-                    config.agent().defaultModel(), config.agent().defaultTimeoutSeconds());
+                              config.agent().defaultModel(), config.agent().defaultTimeoutSeconds());
             log.debugf("Invoked OpenClaw agent: agentId=%s caseId=%s", agentId, caseId);
         } catch (OpenClawInvocationException e) {
             log.errorf("OpenClaw invocation failed for agentId=%s: %s", agentId, e.getMessage());
-            // Non-fatal — ChannelGateway.fanOut() absorbs exceptions from non-default backends
-        }
-    }
+        }}
 
     @Override
     public DeliveryGuarantee deliveryGuarantee() {

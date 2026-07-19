@@ -1,15 +1,5 @@
 package io.casehub.openclaw.casehub;
 
-import java.util.Map;
-import java.util.UUID;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.mockito.ArgumentCaptor;
-
-import io.casehub.api.model.CaseChannel;
 import io.casehub.openclaw.client.OpenClawClientConfig;
 import io.casehub.openclaw.client.OpenClawHookClient;
 import io.casehub.openclaw.client.OpenClawInvocationException;
@@ -19,6 +9,13 @@ import io.casehub.qhorus.api.gateway.ChannelRef;
 import io.casehub.qhorus.api.gateway.OutboundMessage;
 import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.runtime.gateway.ChannelGateway;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
+
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -26,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -194,6 +192,59 @@ class OpenClawChannelBackendTest {
 
     // ── extractCaseId ─────────────────────────────────────────────────────────
 
+
+    @Test
+    void post_withTarget_routesToTargetAgent() {
+        registry.register("agent-alpha", "t1", caseId, "key-alpha");
+        registry.register("agent-beta", "t1", caseId, "key-beta");
+        ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
+
+        backend.post(ref, commandWithTarget("do it", "agent-alpha"));
+
+        verify(hookClient).registerSession(eq("agent-alpha"), eq("key-alpha"), any());
+        verify(hookClient).invoke(eq("agent-alpha"), any(), any(), anyInt());
+        verify(hookClient, never()).invoke(eq("agent-beta"), any(), any(), anyInt());
+    }
+
+    @Test
+    void post_withTarget_agentNotRegistered_commandDropped() {
+        ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
+        backend.post(ref, commandWithTarget("do it", "unknown-agent"));
+
+        verify(hookClient, never()).invoke(any(), any(), any(), anyInt());
+    }
+
+    @Test
+    void post_withTarget_agentOnDifferentCase_commandDropped() {
+        UUID otherCase = UUID.randomUUID();
+        registry.register("agent-alpha", "t1", otherCase, "key-alpha");
+        ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
+
+        backend.post(ref, commandWithTarget("do it", "agent-alpha"));
+
+        verify(hookClient, never()).invoke(any(), any(), any(), anyInt());
+    }
+
+    @Test
+    void post_withNullTarget_fallsBackToFindAgentId() {
+        registry.register("agent-alpha", "t1", caseId, "key-alpha");
+        ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
+
+        backend.post(ref, command("do it"));
+
+        verify(hookClient).invoke(eq("agent-alpha"), any(), any(), anyInt());
+    }
+
+    @Test
+    void post_withBlankTarget_fallsBackToFindAgentId() {
+        registry.register("agent-alpha", "t1", caseId, "key-alpha");
+        ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
+
+        backend.post(ref, commandWithTarget("do it", "  "));
+
+        verify(hookClient).invoke(eq("agent-alpha"), any(), any(), anyInt());
+    }
+
     @Test
     void extractCaseId_validCaseChannel_returnsUUID() {
         UUID id = UUID.randomUUID();
@@ -216,6 +267,12 @@ class OpenClawChannelBackendTest {
         return new OutboundMessage(UUID.randomUUID(), "engine", MessageType.COMMAND,
                 content, correlationId.toString(), null, ActorType.AGENT, null, null);
     }
+
+    private OutboundMessage commandWithTarget(String content, String target) {
+        return new OutboundMessage(UUID.randomUUID(), "engine", MessageType.COMMAND,
+                                   content, null, null, ActorType.AGENT, null, target);
+    }
+
 
     private OpenClawClientConfig config(String baseUrl, String model, int timeout) {
         return new OpenClawClientConfig() {
