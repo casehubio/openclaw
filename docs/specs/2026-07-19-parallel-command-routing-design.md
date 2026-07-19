@@ -61,29 +61,33 @@ public record OutboundMessage(UUID messageId, String sender, MessageType type,
     String target) {}
 ```
 
-**qhorus runtime — `MessageService`:** When constructing `OutboundMessage` from a
-`MessageDispatch`, include `dispatch.target()`. The exact construction site is in
-`MessageService` where it builds the `OutboundMessage` before calling `fanOut()`.
+**qhorus runtime — all `OutboundMessage` construction sites:** Every site that creates
+an `OutboundMessage` must include `target`. There are six production sites:
 
-**qhorus runtime — `ChannelGateway.deliverRemote()`:** When constructing `OutboundMessage`
-from a stored `Message` for AT_LEAST_ONCE redelivery, include `msg.target()`:
+| # | Class | Path | Context |
+|---|-------|------|---------|
+| 1 | `MessageService` | LAST_WRITE `fanOut()` | Overwrite-then-fanOut for LAST_WRITE channels |
+| 2 | `MessageService` | normal `fanOut()` | Standard dispatch path |
+| 3 | `ChannelGateway` | `deliverRemote()` | Remote/cluster delivery to non-AT_LEAST_ONCE backends |
+| 4 | `DeliveryBatchExecutor` | `toOutbound()` | **Primary AT_LEAST_ONCE delivery** — cursor-based batch pump |
+| 5 | `ReactiveMessageService` | `OverwriteResult` fanOut | Reactive LAST_WRITE path |
+| 6 | `ReactiveMessageService` | `FullResult` fanOut | Reactive standard dispatch path |
 
-```java
-// Before
-OutboundMessage outbound = new OutboundMessage(UUID.randomUUID(),
-    msg.sender(), msg.messageType(), msg.content(), msg.correlationId(),
-    msg.inReplyTo(), msg.actorType(), msg.artefactRefs());
+Sites 1–2 construct from `MessageDispatch` → use `dispatch.target()`.
+Sites 3–4 construct from a stored `Message` → use `msg.target()`.
+Sites 5–6 construct from `MessageDispatch` → use `dispatch.target()`.
 
-// After
-OutboundMessage outbound = new OutboundMessage(UUID.randomUUID(),
-    msg.sender(), msg.messageType(), msg.content(), msg.correlationId(),
-    msg.inReplyTo(), msg.actorType(), msg.artefactRefs(), msg.target());
-```
+Note: `DeliveryBatchExecutor.toOutbound()` (site 4) is the primary delivery path for
+backends declaring `AT_LEAST_ONCE` (including `OpenClawChannelBackend`). The batch pump
+reads persisted messages and calls `backend.post()` via this helper. If this site omits
+`target`, every AT_LEAST_ONCE delivery loses routing information.
+
+`ChannelGateway.deliverRemote()` (site 3) handles remote/cluster fan-out to backends
+that do NOT use AT_LEAST_ONCE delivery. It explicitly skips AT_LEAST_ONCE backends.
 
 **Backward compatibility:** Adding a field to a record is a binary-incompatible change.
 All callers that construct `OutboundMessage` directly (tests, other backends) need updating.
-This is acceptable — pre-release platform, no external consumers. Search for all
-`new OutboundMessage(` call sites across the platform.
+This is acceptable — pre-release platform, no external consumers.
 
 ### Change 2: `ProvisionResult` returns `workerId` (casehub-engine)
 
@@ -120,38 +124,50 @@ this as "no explicit target" and falls back to existing behavior.
 **engine-api — `CaseChannelProvider`:**
 
 ```java
-// Existing 6-param stays abstract — all current providers implement it
+// Before: 6-param abstract
 void postToChannel(CaseChannel channel, String from, String content,
     MessageType type, String correlationId, String deadline);
 
-// New 7-param is a default method — delegates to 6-param, dropping target
-default void postToChannel(CaseChannel channel, String from, String content,
-    MessageType type, String correlationId, String deadline, String target) {
-    postToChannel(channel, from, content, type, correlationId, deadline);
+// After: 7-param abstract — target replaces the implicit routing
+void postToChannel(CaseChannel channel, String from, String content,
+    MessageType type, String correlationId, String deadline, String target);
+
+// 3-param convenience default updated to delegate to 7-param
+default void postToChannel(CaseChannel channel, String from, String content) {
+    postToChannel(channel, from, content, null, null, null, null);
 }
 ```
 
-The engine calls the 7-param. Providers that haven't been updated inherit the default
-(target is silently dropped). Providers that want `target` override the 7-param.
+No default method shim. Making `target` part of the abstract signature forces every
+implementation to be explicit about routing — an un-updated provider fails at compile time.
+A default method that silently drops `target` is exactly the category of bug this spec fixes.
 
-**engine-api — `ReactiveCaseChannelProvider`:** Same pattern with `Uni<Void>` return.
+Implementations to update:
+- `OpenClawCaseChannelProvider` — sets `target` on `MessageDispatch` (this spec)
+- `NoOpCaseChannelProvider` — add `target` parameter, ignore it
+- `NoOpReactiveCaseChannelProvider` — same
+- Claudony providers — covered by wsp-casehub-claudony#1
 
-**engine runtime — `WorkerScheduleEventHandler`:** After provisioning, the engine stores the
-`ProvisionResult.workerId()` and passes it as `target` when calling the 7-param
-`postToChannel()`.
+**engine-api — `ReactiveCaseChannelProvider`:** Same change — 7-param abstract with
+`Uni<Void>` return. No default method.
 
-```java
-// Pseudocode — engine dispatch path
-ProvisionResult result = provisioner.provision(capabilities, context);
-String target = result.workerId();  // may be null for no-op provisioners
-channelProvider.postToChannel(channel, sender, content, COMMAND,
-    correlationId, deadline, target);
-```
+**engine runtime — `WorkerScheduleEventHandler.dispatchCommand()`:** Currently calls the
+6-param `postToChannel()` and has no access to the provisioner's result. Provisioning
+happens earlier in the engine lifecycle (before `WorkerScheduleEvent` is published).
 
-**Backward compatibility:** The 6-param method stays abstract — existing providers compile
-unchanged. The 7-param is a new default method — invisible to providers that don't override
-it. The engine switches to calling the 7-param; un-updated providers silently drop the
-target via the default delegation.
+The engine must thread `ProvisionResult.workerId()` from the provisioning step to
+`dispatchCommand()`. Concrete options (engine-internal design, resolved in engine#758):
+- Store `workerId` on the engine's worker state entity (keyed by worker name), persisted
+  so it survives restarts. `dispatchCommand()` reads it from the entity.
+- Carry `workerId` on `WorkerScheduleEvent` from the provisioning caller.
+
+Either way, `dispatchCommand()` calls the 7-param `postToChannel()` with the stored
+`workerId` as `target`. For no-op provisioners (`ProvisionResult.empty()`), `target`
+is null — the backend handles this via single-agent fallback.
+
+**Breaking change:** The 6-param abstract is removed. All implementations and callers
+must update to the 7-param signature. This is a pre-release platform with no external
+consumers — compile-time breakage is the correct forcing function.
 
 ### Change 4: Provider sets `target`, backend reads it (casehub-openclaw)
 
@@ -176,9 +192,9 @@ public void postToChannel(CaseChannel channel, String from, String content,
 }
 ```
 
-The 6-param override is removed — the default method in the SPI handles backward compatibility.
+The 6-param override is removed — the abstract signature is now 7-param.
 
-**`ReactiveOpenClawCaseChannelProvider`:** Same — override 7-param, remove 6-param.
+**`ReactiveOpenClawCaseChannelProvider`:** Same — implement 7-param, remove 6-param.
 
 **`OpenClawChannelBackend.post()`:**
 
@@ -190,20 +206,33 @@ public void post(final ChannelRef channel, final OutboundMessage message) {
     final UUID caseId = extractCaseId(channel.name());
     if (caseId == null) return;
 
-    // Route by explicit target (set by engine via postToChannel)
     String agentId = message.target();
 
-    // Fall back to registry lookup when target is null
-    // (backward compat: old engine versions, COMMANDs without targeting)
-    if (agentId == null) {
-        agentId = registry.findAgentId(caseId).orElse(null);
+    if (agentId != null) {
+        // Validate target is registered for this case — prevents cross-case
+        // misrouting when an agent is registered on multiple cases
+        if (!registry.findAgentIds(caseId).contains(agentId)) {
+            log.warnf("Target agent %s not registered for caseId=%s — "
+                    + "ignoring COMMAND on %s", agentId, caseId, channel.name());
+            return;
+        }
+    } else {
+        // No explicit target — deterministic fallback for single-agent cases only
+        Set<String> agents = registry.findAgentIds(caseId);
+        if (agents.isEmpty()) {
+            log.debugf("No OpenClaw agent for caseId=%s — ignoring COMMAND on %s",
+                       caseId, channel.name());
+            return;
+        }
+        if (agents.size() > 1) {
+            log.errorf("Multiple agents registered for caseId=%s but COMMAND has "
+                    + "no target — cannot route. Engine must set target for "
+                    + "multi-agent cases (openclaw#70).", caseId);
+            return;
+        }
+        agentId = agents.iterator().next();
     }
 
-    if (agentId == null) {
-        log.debugf("No OpenClaw agent for caseId=%s — ignoring COMMAND on %s",
-                   caseId, channel.name());
-        return;
-    }
     // ... existing session key lookup, webhook URL, invocation
 }
 ```
@@ -272,15 +301,27 @@ After all steps, `mvn install` in dependency order: qhorus → engine → opencl
 
 - **Unit — `OpenClawChannelBackendTest`:**
   - COMMAND with `target="finance-agent"` routes to `finance-agent` (not arbitrary)
-  - COMMAND with `target=null` falls back to `findAgentId()` (backward compat)
-  - COMMAND with `target` pointing to an agent not in registry → logged, no-op
+  - COMMAND with `target=null`, single agent registered → falls back to that agent
+  - COMMAND with `target=null`, multiple agents registered → error logged, COMMAND dropped
+  - COMMAND with `target` pointing to an agent not registered for this case → warn, no-op
+  - COMMAND with `target` pointing to an agent registered on a DIFFERENT case → warn, no-op
   - Multi-agent case: two agents registered, COMMAND with `target="agentA"` routes correctly
   - Non-COMMAND messages still ignored regardless of `target`
 - **Unit — `OpenClawCaseChannelProviderTest`:**
-  - `postToChannel()` with `target` sets `.target()` on `MessageDispatch`
-  - `postToChannel()` with null `target` sets no `.target()` on `MessageDispatch`
+  - `postToChannel()` 7-param with `target` sets `.target()` on `MessageDispatch`
+  - `postToChannel()` 7-param with null `target` sets no `.target()` on `MessageDispatch`
 - **Unit — `OpenClawWorkerProvisionerTest`:**
   - `provision()` returns `ProvisionResult.withWorker(agentId)`
+- **Integration — `OpenClawTargetRoutingIntegrationTest`:**
+  - Provisions two agents for the same case via `OpenClawWorkerProvisioner`
+  - Posts a COMMAND with `target` set via `OpenClawCaseChannelProvider.postToChannel()`
+    (7-param)
+  - Verifies the `MessageDispatch.target()` is set, the persisted `Message.target()` is
+    set, and `OpenClawChannelBackend.post()` routes to the correct agent
+  - Verifies a second COMMAND with the other agent's target routes correctly
+  - This is an openclaw-scope integration test. Full cross-repo integration
+    (engine provisioning → qhorus dispatch → openclaw routing) is a deployment
+    concern validated at the system test level.
 
 ---
 
@@ -296,11 +337,27 @@ After all steps, `mvn install` in dependency order: qhorus → engine → opencl
 
 ---
 
+## Known edge cases
+
+- **AT_LEAST_ONCE redelivery after agent termination:** When a target agent is terminated
+  between original delivery and redelivery, the batch pump delivers the COMMAND with the
+  original `target`. `OpenClawChannelBackend.post()` validates the target against the
+  registry, finds the agent is no longer registered for the case, and drops the COMMAND
+  (log warn, return). This is correct — the AT_LEAST_ONCE guarantee applies to backend
+  delivery, not agent availability. If the agent was terminated, the engine is responsible
+  for lifecycle management (retry policy, escalation, case error state). This is an engine
+  concern, not a routing concern.
+
+- **Single-agent fallback:** When `target` is null and exactly one agent is registered for
+  the case, the backend falls back to that agent. This is deterministic and safe. When
+  `target` is null and multiple agents are registered, the COMMAND is rejected with an
+  error log. This prevents the arbitrary-agent misrouting that this spec fixes.
+
 ## What this does NOT do
 
 - **Parallel provisioner dispatch** — the engine still provisions workers sequentially. True
   parallel dispatch is an engine concern outside this scope.
-- **Claudony update** — Claudony's provider/backend need the same changes as openclaw's. Filed
-  separately; this spec covers openclaw only.
-- **Remove `findAgentId()` fallback** — kept for backward compatibility with engine versions
-  that don't set `target`. Can be removed once all engine deployments populate `target`.
+- **Claudony update** — Claudony's provider/backend need the same changes as openclaw's.
+  Tracked as wsp-casehub-claudony#1; this spec covers openclaw only.
+- **Engine-internal state management** — how the engine threads `workerId` from provisioning
+  to dispatch is an engine-internal design detail. Tracked as engine#758.
