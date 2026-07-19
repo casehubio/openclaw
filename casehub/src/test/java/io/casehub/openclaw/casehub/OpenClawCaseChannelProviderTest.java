@@ -101,7 +101,7 @@ class OpenClawCaseChannelProviderTest {
         UUID channelId = UUID.randomUUID();
         CaseChannel ch = new CaseChannel(channelId.toString(), "case-x/work", "work", "qhorus", Map.of());
 
-        provider.postToChannel(ch, "sender-1", "content", MessageType.COMMAND, "corr-1", null);
+        provider.postToChannel(ch, "sender-1", "content", MessageType.COMMAND, "corr-1", null, null);
 
         verify(messageService).dispatch(any(MessageDispatch.class));
     }
@@ -122,7 +122,7 @@ class OpenClawCaseChannelProviderTest {
         CaseChannel ch = new CaseChannel(channelId.toString(), "case-x/work", "work", "qhorus", Map.of());
 
         // null type would cause MessageDispatch builder to throw without the STATUS default
-        provider.postToChannel(ch, "sender-1", "content", null, null, null);
+        provider.postToChannel(ch, "sender-1", "content", null, null, null, null);
 
         verify(messageService).dispatch(any(MessageDispatch.class));
     }

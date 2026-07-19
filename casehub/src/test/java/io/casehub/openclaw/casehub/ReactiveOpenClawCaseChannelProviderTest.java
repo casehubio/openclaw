@@ -328,7 +328,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
         when(messageService.dispatch(any(MessageDispatch.class)))
                 .thenReturn(Uni.createFrom().item(dr(channelId)));
 
-        provider.postToChannel(ch, "engine", "content", MessageType.COMMAND, "corr-1", null)
+        provider.postToChannel(ch, "engine", "content", MessageType.COMMAND, "corr-1", null, null)
                 .await().indefinitely();
 
         verify(messageService).dispatch(argThat(d ->
@@ -348,7 +348,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
         when(messageService.dispatch(any(MessageDispatch.class)))
                 .thenReturn(Uni.createFrom().item(dr(channelId)));
 
-        provider.postToChannel(ch, "engine", "content", null, null, null)
+        provider.postToChannel(ch, "engine", "content", null, null, null, null)
                 .await().indefinitely();
 
         verify(messageService).dispatch(argThat(d -> d.type() == MessageType.STATUS));
@@ -362,7 +362,7 @@ class ReactiveOpenClawCaseChannelProviderTest {
         when(messageService.dispatch(any(MessageDispatch.class)))
                 .thenReturn(Uni.createFrom().item(dr(channelId)));
 
-        provider.postToChannel(ch, "engine", "{}", MessageType.COMMAND, "42", deadline)
+        provider.postToChannel(ch, "engine", "{}", MessageType.COMMAND, "42", deadline, null)
                 .await().indefinitely();
 
         verify(messageService).dispatch(argThat(d ->

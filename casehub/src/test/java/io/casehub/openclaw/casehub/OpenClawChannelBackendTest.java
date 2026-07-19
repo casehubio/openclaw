@@ -121,7 +121,7 @@ class OpenClawChannelBackendTest {
         registry.register("finance-agent", "test-tenant", caseId, "finance-agent");
         ChannelRef ref = new ChannelRef(channelId, "case-" + caseId + "/work");
         OutboundMessage msg = new OutboundMessage(UUID.randomUUID(), "engine", type,
-                "content", null, null, ActorType.AGENT, null);
+                "content", null, null, ActorType.AGENT, null, null);
 
         backend.post(ref, msg);
         verify(hookClient, never()).invoke(any(), any(), any(), any(Integer.class));
@@ -209,12 +209,12 @@ class OpenClawChannelBackendTest {
 
     private OutboundMessage command(String content) {
         return new OutboundMessage(UUID.randomUUID(), "engine", MessageType.COMMAND,
-                content, null, null, ActorType.AGENT, null);
+                content, null, null, ActorType.AGENT, null, null);
     }
 
     private OutboundMessage commandWithCorrelationId(String content, UUID correlationId) {
         return new OutboundMessage(UUID.randomUUID(), "engine", MessageType.COMMAND,
-                content, correlationId.toString(), null, ActorType.AGENT, null);
+                content, correlationId.toString(), null, ActorType.AGENT, null, null);
     }
 
     private OpenClawClientConfig config(String baseUrl, String model, int timeout) {

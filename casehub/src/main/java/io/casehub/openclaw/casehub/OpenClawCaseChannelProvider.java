@@ -88,8 +88,8 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
 
     @Override
     public void postToChannel(CaseChannel channel, String from, String content,
-                               MessageType type, String correlationId, String deadline) {
-        // MessageDispatch builder requires type — default to STATUS when unspecified
+                               MessageType type, String correlationId, String deadline,
+                               String target) {
         MessageType effectiveType = type != null ? type : MessageType.STATUS;
         messageService.dispatch(MessageDispatch.builder()
                 .channelId(UUID.fromString(channel.id()))
@@ -98,6 +98,7 @@ public class OpenClawCaseChannelProvider implements CaseChannelProvider {
                 .content(content)
                 .correlationId(correlationId)
                 .deadline(deadline != null ? Instant.parse(deadline) : null)
+                .target(target)
                 .actorType(ActorType.AGENT)
                 .build());
     }

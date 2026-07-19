@@ -179,7 +179,7 @@ class BidirectionalWiringTest {
         String correlationId = UUID.randomUUID().toString();
         ChannelRef ref = new ChannelRef(workChannelId, workChannelName);
         OutboundMessage msg = new OutboundMessage(UUID.randomUUID(), "engine",
-                MessageType.COMMAND, "Analyse the budget.", correlationId, null, ActorType.HUMAN, null);
+                MessageType.COMMAND, "Analyse the budget.", correlationId, null, ActorType.HUMAN, null, null);
 
         channelBackend.post(ref, msg);
 

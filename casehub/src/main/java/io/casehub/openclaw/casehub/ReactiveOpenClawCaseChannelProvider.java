@@ -95,7 +95,8 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
 
     @Override
     public Uni<Void> postToChannel(CaseChannel channel, String from, String content,
-                                    MessageType type, String correlationId, String deadline) {
+                                    MessageType type, String correlationId, String deadline,
+                                    String target) {
         MessageType effectiveType = type != null ? type : MessageType.STATUS;
         return messageService.dispatch(MessageDispatch.builder()
                         .channelId(UUID.fromString(channel.id()))
@@ -104,6 +105,7 @@ public class ReactiveOpenClawCaseChannelProvider implements ReactiveCaseChannelP
                         .content(content)
                         .correlationId(correlationId)
                         .deadline(deadline != null ? Instant.parse(deadline) : null)
+                        .target(target)
                         .actorType(ActorType.AGENT)
                         .build())
                 .replaceWithVoid();
