@@ -397,6 +397,12 @@ JAVA_HOME=$(/usr/libexec/java_home -v 26) mvn --batch-mode test -pl core -Dtest=
 
 # Python component (separate toolchain — not part of Maven build)
 cd python && pip install -e ".[dev]" && pytest
+
+# E2E tests (Playwright — separate from Maven build)
+cd app/src/main/webui && npx playwright test --config e2e/playwright.config.ts
+
+# Single E2E test file
+cd app/src/main/webui && npx playwright test e2e/tests/04-oversight-gate.spec.ts --config e2e/playwright.config.ts
 ```
 
 ---
