@@ -36,6 +36,7 @@ export class CaseExecutionView extends LitElement {
   @state() private status: 'idle' | 'running' | 'completed' | 'failed' = 'idle';
   private eventSource: EventSource | null = null;
   private _unsubGateDecided?: () => void;
+  private _sseInitialOpen = true;
 
   static styles = css`
     :host {
@@ -114,7 +115,15 @@ export class CaseExecutionView extends LitElement {
   }
 
   private subscribeToSSE() {
+    this._sseInitialOpen = true;
     this.eventSource = new EventSource('/api/scenarios/events');
+    this.eventSource.onopen = () => {
+      if (this._sseInitialOpen) {
+        this._sseInitialOpen = false;
+        return;
+      }
+      this.loadState();
+    };
     this.eventSource.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data) as CaseExecutionEvent;

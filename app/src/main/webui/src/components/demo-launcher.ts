@@ -6,6 +6,7 @@ import type { ScenarioDef, CaseExecutionEvent } from '../types/events.js';
 export class DemoLauncher extends LitElement {
   @state() private scenarios: ScenarioDef[] = [];
   private eventSource: EventSource | null = null;
+  private _sseInitialOpen = true;
 
   static styles = css`
     :host {
@@ -141,7 +142,15 @@ export class DemoLauncher extends LitElement {
   }
 
   private subscribeToSSE() {
+    this._sseInitialOpen = true;
     this.eventSource = new EventSource('/api/scenarios/events');
+    this.eventSource.onopen = () => {
+      if (this._sseInitialOpen) {
+        this._sseInitialOpen = false;
+        return;
+      }
+      this.loadScenarios();
+    };
     this.eventSource.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data) as CaseExecutionEvent;

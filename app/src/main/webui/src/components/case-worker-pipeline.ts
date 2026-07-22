@@ -96,6 +96,17 @@ export class CaseWorkerPipeline extends LitElement {
     }
   `;
 
+  private _durationText(state: string, durationMs: number): string {
+    const seconds = (durationMs / 1000).toFixed(1);
+    switch (state) {
+      case 'failed': return `Failed after ${seconds}s`;
+      case 'timeout': return `Timed out after ${seconds}s`;
+      case 'declined': return `Declined after ${seconds}s`;
+      case 'delegated': return `Delegated after ${seconds}s`;
+      default: return `Completed in ${seconds}s`;
+    }
+  }
+
   render() {
     return html`
       <div class="pipeline" role="list" aria-label="Agent pipeline">
@@ -110,7 +121,7 @@ export class CaseWorkerPipeline extends LitElement {
             </div>
             ${worker.durationMs !== null ? html`
               <div class="worker-duration">
-                Completed in ${(worker.durationMs / 1000).toFixed(1)}s
+                ${this._durationText(worker.state, worker.durationMs)}
               </div>
             ` : ''}
           </div>
