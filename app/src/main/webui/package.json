@@ -5,12 +5,12 @@
     "build": "node esbuild.config.mjs"
   },
   "dependencies": {
-    "@casehubio/blocks-ui-approval-gate": "^0.2.2",
-    "@casehubio/blocks-ui-channel-activity": "^0.2.2",
-    "@casehubio/blocks-ui-core": "^0.2.2",
-    "@casehubio/blocks-ui-split-workbench": "^0.2.2",
-    "@casehubio/pages-primitives": "^0.2.2",
-    "@casehubio/pages-ui-tokens": "^0.2.2",
+    "@casehubio/blocks-ui-approval-gate": "file:../../../../../blocks-ui/components/approval-gate",
+    "@casehubio/blocks-ui-channel-activity": "file:../../../../../blocks-ui/components/channel-activity",
+    "@casehubio/blocks-ui-core": "file:../../../../../blocks-ui/packages/blocks-ui-core",
+    "@casehubio/blocks-ui-split-workbench": "file:../../../../../blocks-ui/components/split-workbench",
+    "@casehubio/pages-primitives": "file:../../../../../pages/packages/pages-primitives",
+    "@casehubio/pages-ui-tokens": "file:../../../../../pages/packages/pages-ui-tokens",
     "lit": "^3.0.0"
   },
   "devDependencies": {
