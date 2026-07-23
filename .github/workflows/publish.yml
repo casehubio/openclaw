@@ -24,10 +24,13 @@ jobs:
         with:
           repository: casehubio/casehub-pages
           token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
-          path: ../pages
+          path: .sibling-pages
+
+      - name: Symlink pages as sibling
+        run: ln -s "$GITHUB_WORKSPACE/.sibling-pages" ../pages
 
       - name: Build pages packages
-        working-directory: ../pages
+        working-directory: .sibling-pages
         run: |
           corepack enable
           yarn install --immutable
@@ -38,10 +41,13 @@ jobs:
         with:
           repository: casehubio/blocks-ui
           token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
-          path: ../blocks-ui
+          path: .sibling-blocks-ui
+
+      - name: Symlink blocks-ui as sibling
+        run: ln -s "$GITHUB_WORKSPACE/.sibling-blocks-ui" ../blocks-ui
 
       - name: Build blocks-ui packages
-        working-directory: ../blocks-ui
+        working-directory: .sibling-blocks-ui
         run: |
           corepack enable
           yarn install --immutable
