@@ -19,6 +19,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout casehub-pages (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: casehubio/casehub-pages
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          path: ../pages
+
+      - name: Build pages packages
+        working-directory: ../pages
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn build
+
+      - name: Checkout blocks-ui (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: casehubio/blocks-ui
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          path: ../blocks-ui
+
+      - name: Build blocks-ui packages
+        working-directory: ../blocks-ui
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn build
+
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
