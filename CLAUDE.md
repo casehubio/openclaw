@@ -380,6 +380,20 @@ JAVA_HOME=/Library/Java/JavaVirtualMachines/graalvm-25.jdk/Contents/Home  # nati
 
 ---
 
+## Frontend Dependencies
+
+This project consumes frontend packages from casehub-pages and blocks-ui via **Maven SNAPSHOT** artifacts (WebJar pattern).
+See [casehub-pages ADR-0001](https://github.com/casehubio/casehub-pages/blob/main/docs/adr/0001-cross-repo-frontend-dependency-management.md).
+
+| Source | Mechanism |
+|--------|-----------|
+| casehub-pages | Maven SNAPSHOT (`META-INF/resources/`) |
+| blocks-ui | Maven SNAPSHOT (`META-INF/resources/`) |
+
+**Local development:** after changing pages or blocks-ui, run `yarn build && mvn install` in the source repo to publish the SNAPSHOT to `~/.m2`.
+
+**Do not use npm `file:` references for cross-repo dependencies** — they break in CI. See ADR-0001.
+
 ## Build Commands
 
 ```bash
