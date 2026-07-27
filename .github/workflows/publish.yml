@@ -32,7 +32,7 @@ jobs:
         working-directory: .sibling-pages
         run: |
           corepack enable
-          yarn install --immutable
+          yarn install
           yarn build
         env:
           GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -50,7 +50,7 @@ jobs:
         working-directory: .sibling-blocks-ui
         run: |
           corepack enable
-          yarn install --immutable
+          yarn install
           yarn build
         env:
           GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
