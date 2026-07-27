@@ -142,10 +142,50 @@
       <scope>test</scope>
     </dependency>
 
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-pages-npm</artifactId>
+      <version>0.2-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>io.casehub</groupId>
+      <artifactId>casehub-blocks-ui-npm</artifactId>
+      <version>0.1-SNAPSHOT</version>
+    </dependency>
+
   </dependencies>
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>unpack-casehub-packages</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>unpack</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>io.casehub</groupId>
+                  <artifactId>casehub-pages-npm</artifactId>
+                  <version>0.2-SNAPSHOT</version>
+                  <outputDirectory>${project.basedir}/src/main/webui/.casehub-packages</outputDirectory>
+                </artifactItem>
+                <artifactItem>
+                  <groupId>io.casehub</groupId>
+                  <artifactId>casehub-blocks-ui-npm</artifactId>
+                  <version>0.1-SNAPSHOT</version>
+                  <outputDirectory>${project.basedir}/src/main/webui/.casehub-packages</outputDirectory>
+                </artifactItem>
+              </artifactItems>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>io.quarkus.platform</groupId>
         <artifactId>quarkus-maven-plugin</artifactId>

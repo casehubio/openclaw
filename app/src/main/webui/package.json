@@ -5,13 +5,29 @@
     "build": "node esbuild.config.mjs"
   },
   "dependencies": {
-    "@casehubio/blocks-ui-approval-gate": "file:../../../../../blocks-ui/components/approval-gate",
-    "@casehubio/blocks-ui-channel-activity": "file:../../../../../blocks-ui/components/channel-activity",
-    "@casehubio/blocks-ui-core": "file:../../../../../blocks-ui/packages/blocks-ui-core",
-    "@casehubio/blocks-ui-split-workbench": "file:../../../../../blocks-ui/components/split-workbench",
-    "@casehubio/pages-primitives": "file:../../../../../pages/packages/pages-primitives",
-    "@casehubio/pages-ui-tokens": "file:../../../../../pages/packages/pages-ui-tokens",
+    "@casehubio/blocks-ui-approval-gate": "*",
+    "@casehubio/blocks-ui-channel-activity": "*",
+    "@casehubio/blocks-ui-core": "*",
+    "@casehubio/blocks-ui-split-workbench": "*",
+    "@casehubio/pages-primitives": "*",
+    "@casehubio/pages-ui-tokens": "*",
     "lit": "^3.0.0"
+  },
+  "resolutions": {
+    "@casehubio/pages-component": "portal:./.casehub-packages/packages/pages-component",
+    "@casehubio/pages-data": "portal:./.casehub-packages/packages/pages-data",
+    "@casehubio/pages-primitives": "portal:./.casehub-packages/packages/pages-primitives",
+    "@casehubio/pages-runtime": "portal:./.casehub-packages/packages/pages-runtime",
+    "@casehubio/pages-table": "portal:./.casehub-packages/packages/pages-table",
+    "@casehubio/pages-ui": "portal:./.casehub-packages/packages/pages-ui",
+    "@casehubio/pages-ui-components": "portal:./.casehub-packages/packages/pages-ui-components",
+    "@casehubio/pages-ui-tokens": "portal:./.casehub-packages/packages/pages-ui-tokens",
+    "@casehubio/pages-viz": "portal:./.casehub-packages/packages/pages-viz",
+    "@casehubio/blocks-ui-approval-gate": "portal:./.casehub-packages/packages/approval-gate",
+    "@casehubio/blocks-ui-channel-activity": "portal:./.casehub-packages/packages/channel-activity",
+    "@casehubio/blocks-ui-core": "portal:./.casehub-packages/packages/blocks-ui-core",
+    "@casehubio/blocks-ui-sla-indicator": "portal:./.casehub-packages/packages/sla-indicator",
+    "@casehubio/blocks-ui-split-workbench": "portal:./.casehub-packages/packages/split-workbench"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
