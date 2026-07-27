@@ -34,6 +34,8 @@ jobs:
           corepack enable
           yarn install --immutable
           yarn build
+        env:
+          GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkout blocks-ui (sibling)
         uses: actions/checkout@v4
@@ -50,6 +52,8 @@ jobs:
           corepack enable
           yarn install --immutable
           yarn build
+        env:
+          GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
