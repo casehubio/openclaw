@@ -9,3 +9,4 @@ python/*.egg-info/
 python/dist/
 .claude
 package-lock.json
+proj
