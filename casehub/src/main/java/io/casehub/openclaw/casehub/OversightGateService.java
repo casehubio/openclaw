@@ -252,7 +252,7 @@ public class OversightGateService implements io.casehub.api.spi.OversightGateSer
                         classifier.getClass().getSimpleName(), action.description(), e.getMessage());
                 return new RiskDecision.GateRequired(
                         "Classifier error — manual review required before proceeding",
-                        true, null, null, null, null);
+                        true, null, null, null, null, null);
             }
         }
         return result;

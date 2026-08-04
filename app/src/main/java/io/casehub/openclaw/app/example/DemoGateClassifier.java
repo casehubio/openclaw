@@ -55,6 +55,6 @@ class DemoGateClassifier implements ActionRiskClassifier {
         }
         return new RiskDecision.GateRequired(
                 "Demo gate — agent '" + context.workerId() + "' requires oversight approval",
-                true, null, null, null, null);
+                true, null, null, null, null, null);
     }
 }
