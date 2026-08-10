@@ -121,7 +121,7 @@ class OpenClawWorkerProvisionerTest {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private ProvisionContext ctx(UUID caseId) {
-        return new ProvisionContext(caseId, "finance", null, null, null, null, null);
+        return new ProvisionContext(caseId, "finance", null, null, null, null, null, null);
     }
 
     private OpenClawAgentConfigResolver buildResolver(Map<String, OpenClawAgentConfigResolver.AgentConfig> agents) {

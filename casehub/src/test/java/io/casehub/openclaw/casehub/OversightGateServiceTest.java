@@ -420,7 +420,7 @@ class OversightGateServiceTest {
 
     @Test
     void openGate_classifierReturnsGateRequired_dispatchesCommandToOversightAndReturnsPending() {
-        stubSingleClassifier(new RiskDecision.GateRequired("risk: file deletion", true, null, null, null, null));
+        stubSingleClassifier(new RiskDecision.GateRequired("risk: file deletion", true, null, null, null, null, null));
         stubOpenGateCommitment();
 
         GateOutcome result = service.openGate(agentId, commitmentId, "deleting old reports", "tenant-A");
@@ -443,7 +443,7 @@ class OversightGateServiceTest {
     @Test
     void openGate_gateCommandContentIsPropertiesFormatContainingOriginalCommitmentId()
             throws Exception {
-        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null, null));
+        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null, null, null));
         stubOpenGateCommitment();
 
         service.openGate(agentId, commitmentId, "outcome", "tenant-A");
@@ -474,7 +474,7 @@ class OversightGateServiceTest {
 
     @Test
     void openGate_oversightChannelMissing_returnsAutonomous() {
-        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null, null));
+        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null, null, null));
         stubOpenGateCommitment();
         when(channelService.findByName("case-" + caseId + "/oversight"))
                 .thenReturn(Optional.empty());
@@ -487,7 +487,7 @@ class OversightGateServiceTest {
 
     @Test
     void openGate_dispatchThrows_failsOpenAndReturnsAutonomous() {
-        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null, null));
+        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null, null, null));
         stubOpenGateCommitment();
         when(messageService.dispatch(any())).thenThrow(new RuntimeException("channel unavailable"));
 
@@ -498,7 +498,7 @@ class OversightGateServiceTest {
 
     @Test
     void openGate_noChannelBackedCommitment_returnsAutonomous() {
-        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null, null));
+        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null, null, null));
         Commitment c = new Commitment(
             UUID.randomUUID(), commitmentId, null, null, null, null,
             io.casehub.qhorus.api.message.CommitmentState.OPEN,
@@ -517,9 +517,9 @@ class OversightGateServiceTest {
         ActionRiskClassifier narrowClassifier = mock(ActionRiskClassifier.class);
         ActionRiskClassifier broadClassifier = mock(ActionRiskClassifier.class);
         when(narrowClassifier.classify(any(), any()))
-                .thenReturn(new RiskDecision.GateRequired("narrow", true, null, null, null, null));
+                .thenReturn(new RiskDecision.GateRequired("narrow", true, null, null, null, null, null));
         when(broadClassifier.classify(any(), any()))
-                .thenReturn(new RiskDecision.GateRequired("broad", true, null, null, null, null));
+                .thenReturn(new RiskDecision.GateRequired("broad", true, null, null, null, null, null));
         when(classifiers.isUnsatisfied()).thenReturn(false);
         when(classifiers.iterator()).thenReturn(List.of(narrowClassifier, broadClassifier).iterator());
         stubOpenGateCommitment();
@@ -536,7 +536,7 @@ class OversightGateServiceTest {
         ActionRiskClassifier gateClassifier = mock(ActionRiskClassifier.class);
         when(autonomousClassifier.classify(any(), any())).thenReturn(new RiskDecision.Autonomous());
         when(gateClassifier.classify(any(), any()))
-                .thenReturn(new RiskDecision.GateRequired("risk", true, null, null, null, null));
+                .thenReturn(new RiskDecision.GateRequired("risk", true, null, null, null, null, null));
         when(classifiers.isUnsatisfied()).thenReturn(false);
         when(classifiers.iterator()).thenReturn(List.of(autonomousClassifier, gateClassifier).iterator());
         stubOpenGateCommitment();
@@ -548,7 +548,7 @@ class OversightGateServiceTest {
 
     @Test
     void openGate_noCommandMessage_returnsAutonomousAndNoGateOpened() {
-        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null, null));
+        stubSingleClassifier(new RiskDecision.GateRequired("risky", true, null, null, null, null, null));
         Commitment c = new Commitment(
             UUID.randomUUID(), commitmentId, workChannelId, null, null, null,
             io.casehub.qhorus.api.message.CommitmentState.OPEN,

@@ -35,7 +35,7 @@ class ChannelContextWindowObserverTest {
     private MessageReceivedEvent event(MessageType type) {
         String content = (type == MessageType.EVENT) ? null : "content";
         return new MessageReceivedEvent(
-                null, "test/channel", UUID.randomUUID(), "test-tenant", type, "sender", "corr-1", java.time.Instant.now(), content, null);
+                null, "test/channel", UUID.randomUUID(), "test-tenant", type, "sender", null, null, "corr-1", java.time.Instant.now(), content, null);
     }
 
     @Test
