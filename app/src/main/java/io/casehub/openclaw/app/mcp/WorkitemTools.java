@@ -16,6 +16,7 @@ import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.api.channel.Channel;
 import io.casehub.qhorus.runtime.channel.ChannelService;
 import io.casehub.qhorus.runtime.message.MessageService;
+import io.quarkiverse.mcp.server.ToolArg;
 import io.quarkiverse.mcp.server.ToolResponse;
 
 /**
@@ -40,9 +41,7 @@ public class WorkitemTools {
     }
 
     // @McpDomain covers MCP registration — see OpenClawWorkitemApi
-    // @Tool(description = "Create a CaseHub work item with a deadline and Watchdog. "
-            + "Provide either assignee OR queueName — not both. "
-            + "Returns workitemId and confirmed deadline.")
+    // @Tool — replaced by @McpDomain; see OpenClawWorkitemApi
     public ToolResponse createWorkitem(
             @ToolArg(description = "Your OpenClaw agentId") String agentId,
             @ToolArg(description = "Task description") String description,
@@ -100,9 +99,7 @@ public class WorkitemTools {
     }
 
     // @McpDomain covers MCP registration — see OpenClawWorkitemApi
-    // @Tool(description = "Route a task to a named CaseHub queue without specifying an assignee. "
-            + "Whatever agent or person monitors the queue picks it up. "
-            + "Returns routed confirmation with workitemId.")
+    // @Tool — replaced by @McpDomain; see OpenClawWorkitemApi
     public ToolResponse queue(
             @ToolArg(description = "Your OpenClaw agentId") String agentId,
             @ToolArg(description = "Task description") String description,

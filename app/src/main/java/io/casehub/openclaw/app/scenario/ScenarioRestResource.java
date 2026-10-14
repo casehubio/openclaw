@@ -1,6 +1,7 @@
 package io.casehub.openclaw.app.scenario;
 
 import io.casehub.openclaw.app.OpenClawGroups;
+import io.casehub.platform.api.mcp.HandWrittenEndpoint;
 import io.casehub.openclaw.casehub.OversightGateService;
 import io.casehub.openclaw.casehub.scenario.ScenarioStateSnapshot;
 import io.casehub.openclaw.casehub.scenario.ScenarioStateStore;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 @ApplicationScoped
+@HandWrittenEndpoint("Demo scenario REST API — start/stop/gate management")
 @Path("/api/scenarios")
 @Produces(MediaType.APPLICATION_JSON)
 public class ScenarioRestResource {

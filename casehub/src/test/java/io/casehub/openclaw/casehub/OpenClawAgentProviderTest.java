@@ -33,7 +33,7 @@ class OpenClawAgentProviderTest {
 
         AgentSessionConfig config = new AgentSessionConfig(
                 "You are a health agent", "Book appointment with Dr Smith",
-                List.of(), Duration.ofSeconds(30), "test-corr-id");
+                List.of(), Duration.ofSeconds(30), "test-corr-id", null);
 
         provider.invoke(config).subscribe().with(e -> {}, e -> {});
 
@@ -52,7 +52,7 @@ class OpenClawAgentProviderTest {
                 bridge, hookClient, "health-agent", "https://casehub.internal", null);
 
         AgentSessionConfig config = new AgentSessionConfig(
-                "sys", "user", List.of(), Duration.ofSeconds(30), "my-corr-id");
+                "sys", "user", List.of(), Duration.ofSeconds(30), "my-corr-id", null);
 
         provider.invoke(config).subscribe().with(e -> {}, e -> {});
 
@@ -71,7 +71,7 @@ class OpenClawAgentProviderTest {
 
         AgentSessionConfig config = new AgentSessionConfig(
                 "System prompt here", "User prompt here",
-                List.of(), Duration.ofSeconds(30), null);
+                List.of(), Duration.ofSeconds(30), null, null);
 
         provider.invoke(config).subscribe().with(e -> {}, e -> {});
 

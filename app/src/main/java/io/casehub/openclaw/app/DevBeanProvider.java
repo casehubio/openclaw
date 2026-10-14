@@ -19,6 +19,7 @@ import io.casehub.qhorus.api.message.MessageType;
 import io.casehub.qhorus.api.store.CrossTenantChannelStore;
 import io.casehub.qhorus.api.store.CrossTenantMessageStore;
 import io.casehub.qhorus.api.store.query.MessageQuery;
+import io.casehub.qhorus.runtime.channel.ChannelService;
 
 /**
  * Fallback bean provider for CDI dependencies normally supplied by the full
@@ -33,14 +34,14 @@ public class DevBeanProvider {
     @CrossTenant
     @DefaultBean
     @ApplicationScoped
-    public CrossTenantMessageStore crossTenantMessageStore() {
+    public CrossTenantMessageStore crossTenantMessageStore(io.casehub.qhorus.api.store.MessageStore messageStore) {
         return new CrossTenantMessageStore() {
-            @Override public List<Message> scan(MessageQuery query) { return List.of(); }
-            @Override public long count(MessageQuery query) { return 0; }
-            @Override public int countByChannel(UUID channelId) { return 0; }
-            @Override public List<String> distinctSendersByChannel(UUID channelId, MessageType excludedType) { return List.of(); }
-            @Override public Optional<Message> findLastMessage(UUID channelId) { return Optional.empty(); }
-            @Override public Optional<Message> find(Long id) { return Optional.empty(); }
+            @Override public List<Message> scan(MessageQuery query) { return messageStore.scan(query); }
+            @Override public long count(MessageQuery query) { return messageStore.count(query); }
+            @Override public int countByChannel(UUID channelId) { return messageStore.countByChannel(channelId); }
+            @Override public List<String> distinctSendersByChannel(UUID channelId, MessageType excludedType) { return messageStore.distinctSendersByChannel(channelId, excludedType); }
+            @Override public Optional<Message> findLastMessage(UUID channelId) { return messageStore.findLastMessage(channelId); }
+            @Override public Optional<Message> find(Long id) { return messageStore.find(id); }
         };
     }
 
@@ -48,11 +49,11 @@ public class DevBeanProvider {
     @CrossTenant
     @DefaultBean
     @ApplicationScoped
-    public CrossTenantChannelStore crossTenantChannelStore() {
+    public CrossTenantChannelStore crossTenantChannelStore(ChannelService channelService) {
         return new CrossTenantChannelStore() {
-            @Override public List<Channel> listAll() { return List.of(); }
-            @Override public Optional<Channel> findById(UUID id) { return Optional.empty(); }
-            @Override public Optional<Channel> findByNameAndTenancy(String name, String tenancyId) { return Optional.empty(); }
+            @Override public List<Channel> listAll() { return channelService.listAll(); }
+            @Override public Optional<Channel> findById(UUID id) { return channelService.findById(id); }
+            @Override public Optional<Channel> findByNameAndTenancy(String name, String tenancyId) { return channelService.findByName(name); }
         };
     }
 

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import io.casehub.platform.api.mcp.HandWrittenEndpoint;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -44,6 +45,7 @@ import io.casehub.qhorus.api.store.CommitmentStore;
  */
 @RolesAllowed(OpenClawGroups.PLUGIN)
 @ApplicationScoped
+@HandWrittenEndpoint("Plugin-authenticated bridge endpoint for auto-commit/done hooks")
 @Path("/openclaw/plugin")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)

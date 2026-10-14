@@ -1,5 +1,6 @@
 package io.casehub.openclaw.app.scenario;
 
+import io.casehub.platform.api.mcp.HandWrittenEndpoint;
 import jakarta.annotation.security.PermitAll;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -19,6 +20,7 @@ import io.smallrye.mutiny.Multi;
 
 @PermitAll
 @ApplicationScoped
+@HandWrittenEndpoint("SSE streaming endpoint for live scenario events")
 @Path("/api/scenarios")
 public class ScenarioSseResource {
 

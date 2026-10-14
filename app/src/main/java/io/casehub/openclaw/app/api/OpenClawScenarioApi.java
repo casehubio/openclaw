@@ -20,7 +20,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @McpDomain(value = "openclaw/scenarios", app = "openclaw", basePath = "/api/openclaw/scenarios", summary = "Contract scenario simulation and what-if analysis")
@@ -63,8 +62,8 @@ public class OpenClawScenarioApi {
     @RestPath("/{id}/workitems/{gateId}/complete")
     @RolesAllowed("openclaw-admin")
     public ApiResult completeWorkitem(@PathParam String id, @PathParam String gateId,
-                                           Map<String, String> body) {
-        String fulfillText = "approve".equalsIgnoreCase(body.get("action")) ? "Approved" : "Rejected";
+                                           GateAction body) {
+        String fulfillText = "approve".equalsIgnoreCase(body.action()) ? "Approved" : "Rejected";
         oversightGateService.fulfill(UUID.fromString(gateId), fulfillText);
         return new ApiResult(true, null, "Completed gate " + gateId);
     }
@@ -79,4 +78,6 @@ public class OpenClawScenarioApi {
             emitter.onTermination(() -> stateStore.removeListener(listener));
         });
     }
+
+    public record GateAction(String action) {}
 }

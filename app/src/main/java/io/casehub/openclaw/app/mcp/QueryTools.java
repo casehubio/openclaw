@@ -7,6 +7,7 @@ import jakarta.inject.Inject;
 
 import io.casehub.qhorus.api.message.Commitment;
 import io.casehub.qhorus.api.store.CommitmentStore;
+import io.quarkiverse.mcp.server.ToolArg;
 import io.quarkiverse.mcp.server.ToolResponse;
 
 /**
@@ -25,9 +26,7 @@ public class QueryTools {
     }
 
     // @McpDomain covers MCP registration — see OpenClawCommitmentApi
-    // @Tool(description = "Query the current status of a CaseHub commitment by commitmentId "
-            + "(the correlationId returned by casehub_commit). Returns state, obligor, "
-            + "and deadline.")
+    // @Tool — replaced by @McpDomain; see OpenClawCommitmentApi
     public ToolResponse status(
             // agentId is reserved for future per-agent access scoping; currently unused
             @ToolArg(description = "Your OpenClaw agentId") String agentId,

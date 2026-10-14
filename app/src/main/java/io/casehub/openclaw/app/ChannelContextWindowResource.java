@@ -1,5 +1,6 @@
 package io.casehub.openclaw.app;
 
+import io.casehub.platform.api.mcp.HandWrittenEndpoint;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.DefaultValue;
@@ -24,6 +25,7 @@ import io.casehub.openclaw.context.WindowContent;
  * Authenticated via plugin bearer token (PluginTokenBridgeMechanism). See openclaw#51.
  */
 @RolesAllowed(OpenClawGroups.PLUGIN)
+@HandWrittenEndpoint("Plugin-authenticated REST API for Python SDK channel context retrieval")
 @Path("/channel-context")
 @Produces(MediaType.APPLICATION_JSON)
 public class ChannelContextWindowResource {

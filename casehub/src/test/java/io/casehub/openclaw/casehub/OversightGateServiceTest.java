@@ -301,7 +301,7 @@ class OversightGateServiceTest {
         UUID gateId = UUID.randomUUID();
         Message cmd = new Message(
             42L, oversightChannelId, null, MessageType.COMMAND, null, null, "not-properties-format-at-all",
-            gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
+            null, gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
         );
         when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
 
@@ -352,7 +352,7 @@ class OversightGateServiceTest {
 
         Message cmd = new Message(
             42L, oversightChannelId, null, MessageType.COMMAND, null, null, sw.toString(),
-            gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
+            null, gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
         );
         when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
 
@@ -381,7 +381,7 @@ class OversightGateServiceTest {
 
         Message cmd = new Message(
             42L, oversightChannelId, null, MessageType.COMMAND, null, null, sw.toString(),
-            gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
+            null, gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
         );
         when(crossTenantMessageStore.scan(any())).thenReturn(List.of(cmd));
         // crossTenantChannelStore returns Optional.empty() by default from setup()
@@ -502,7 +502,7 @@ class OversightGateServiceTest {
         Commitment c = new Commitment(
             UUID.randomUUID(), commitmentId, null, null, null, null,
             io.casehub.qhorus.api.message.CommitmentState.OPEN,
-            null, null, null, null, null, null, null
+            null, null, null, null, null, null, null, null
         );
         when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
 
@@ -552,7 +552,7 @@ class OversightGateServiceTest {
         Commitment c = new Commitment(
             UUID.randomUUID(), commitmentId, workChannelId, null, null, null,
             io.casehub.qhorus.api.message.CommitmentState.OPEN,
-            null, null, null, null, null, null, null
+            null, null, null, null, null, null, null, null
         );
         when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
         // No COMMAND message in history
@@ -571,13 +571,13 @@ class OversightGateServiceTest {
             UUID.randomUUID(), commitmentId, workChannelId, null, null, null,
             io.casehub.qhorus.api.message.CommitmentState.OPEN,
             java.time.Instant.now().plusSeconds(3600), null, null,
-            agentId, null, null, null
+            agentId, null, null, null, null
         );
         when(commitmentStore.findByCorrelationId(commitmentId)).thenReturn(Optional.of(c));
 
         Message cmd = new Message(
             commandMsgId, null, null, MessageType.COMMAND, null, null, null,
-            commitmentId, null, 0, null, null, null, null, null, null, 0, null
+            null, commitmentId, null, 0, null, null, null, null, null, null, 0, null
         );
         when(messageService.findAllByCorrelationId(commitmentId)).thenReturn(List.of(cmd));
     }
@@ -626,7 +626,7 @@ class OversightGateServiceTest {
 
         return new Message(
             msgId, oversightChanId, tenancyId, MessageType.COMMAND, null, null, sw.toString(),
-            gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
+            null, gateId.toString(), null, 0, null, null, null, null, null, null, 0, null
         );
     }
 
