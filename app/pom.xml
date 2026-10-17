@@ -145,12 +145,12 @@
     <dependency>
       <groupId>io.casehub</groupId>
       <artifactId>casehub-pages-npm</artifactId>
-      <version>0.3</version>
+      <version>${casehub.version}</version>
     </dependency>
     <dependency>
       <groupId>io.casehub</groupId>
       <artifactId>casehub-blocks-ui-npm</artifactId>
-      <version>0.3</version>
+      <version>${casehub.version}</version>
     </dependency>
 
   </dependencies>
