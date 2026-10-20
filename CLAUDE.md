@@ -52,7 +52,7 @@ Before any git operation, run `git rev-parse --show-toplevel` to confirm which r
 Every other casehubio repo is a peer repo with its own Claude session.
 
 Peer repos (never commit or push to these from this session):
-- `/Users/mdproctor/claude/casehub/parent` and all paths under it
+- `/Users/mdproctor/claude/casehub/slots/217/parent` and all paths under it
 - `/Users/mdproctor/claude/casehub/slots/194/engine`
 - `/Users/mdproctor/claude/casehub/slots/194/ledger`
 - `/Users/mdproctor/claude/casehub/slots/194/work`
