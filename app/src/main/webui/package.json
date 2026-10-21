@@ -5,10 +5,10 @@
     "build": "node esbuild.config.mjs"
   },
   "dependencies": {
-    "@casehubio/blocks-ui-approval-gate": "*",
-    "@casehubio/blocks-ui-channel-activity": "*",
-    "@casehubio/blocks-ui-core": "*",
-    "@casehubio/blocks-ui-split-workbench": "*",
+    "@casehubio/mosaic-approval-gate": "*",
+    "@casehubio/mosaic-channel-activity": "*",
+    "@casehubio/mosaic-core": "*",
+    "@casehubio/mosaic-split-workbench": "*",
     "@casehubio/pages-primitives": "*",
     "@casehubio/pages-ui-tokens": "*",
     "lit": "^3.0.0"
@@ -23,11 +23,11 @@
     "@casehubio/pages-ui-components": "portal:./.casehub-packages/packages/pages-ui-components",
     "@casehubio/pages-ui-tokens": "portal:./.casehub-packages/packages/pages-ui-tokens",
     "@casehubio/pages-viz": "portal:./.casehub-packages/packages/pages-viz",
-    "@casehubio/blocks-ui-approval-gate": "portal:./.casehub-packages/packages/approval-gate",
-    "@casehubio/blocks-ui-channel-activity": "portal:./.casehub-packages/packages/channel-activity",
-    "@casehubio/blocks-ui-core": "portal:./.casehub-packages/packages/blocks-ui-core",
-    "@casehubio/blocks-ui-sla-indicator": "portal:./.casehub-packages/packages/sla-indicator",
-    "@casehubio/blocks-ui-split-workbench": "portal:./.casehub-packages/packages/split-workbench"
+    "@casehubio/mosaic-approval-gate": "portal:./.casehub-packages/packages/approval-gate",
+    "@casehubio/mosaic-channel-activity": "portal:./.casehub-packages/packages/channel-activity",
+    "@casehubio/mosaic-core": "portal:./.casehub-packages/packages/mosaic-core",
+    "@casehubio/mosaic-sla-indicator": "portal:./.casehub-packages/packages/sla-indicator",
+    "@casehubio/mosaic-split-workbench": "portal:./.casehub-packages/packages/split-workbench"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
