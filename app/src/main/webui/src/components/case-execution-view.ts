@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { emitPagesEvent, onPagesEvent } from '@casehubio/blocks-ui-core';
-import type { QhorusMessage } from '@casehubio/blocks-ui-channel-activity';
+import { emitPagesEvent, onPagesEvent } from '@casehubio/mosaic-core';
+import type { QhorusMessage } from '@casehubio/mosaic-channel-activity';
 import type {
   CaseExecutionEvent,
   AgentState,
