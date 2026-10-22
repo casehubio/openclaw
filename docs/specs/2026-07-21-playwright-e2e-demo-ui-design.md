@@ -34,7 +34,7 @@ lifecycle. A mock server emitting the same `CaseExecutionEvent` JSON achieves th
 without JVM startup, SPI wiring, or external dependencies.
 
 **What's tested:** The real Lit components (`app-shell`, `demo-launcher`,
-`case-execution-view`, `case-worker-pipeline`), the real `@casehubio/blocks-ui-*`
+`case-execution-view`, `case-worker-pipeline`), the real `@casehubio/agency-ui-*`
 shared components (`split-workbench`, `channel-feed`, `approval-gate`), `pages-modal`
 from `@casehubio/pages-primitives`, real SSE parsing via `EventSource`, and real DOM
 rendering. Everything from the browser's perspective.
