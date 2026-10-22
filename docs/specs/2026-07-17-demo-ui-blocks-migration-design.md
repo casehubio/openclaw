@@ -6,7 +6,7 @@
 
 ## Overview
 
-Migrate the openclaw demo UI from five hand-rolled Lit components to blocks-ui shared components. The demo UI currently has zero `@casehubio/blocks-ui-*` imports. After migration, three of the five components are replaced by blocks-ui equivalents; two remain local with updated CSS tokens.
+Migrate the openclaw demo UI from five hand-rolled Lit components to blocks-ui shared components. The demo UI currently has zero `@casehubio/agency-ui-*` imports. After migration, three of the five components are replaced by blocks-ui equivalents; two remain local with updated CSS tokens.
 
 ## Migration Order
 
@@ -68,7 +68,7 @@ Add: `@casehubio/pages-ui-tokens`
 
 ### Changes to case-execution-view.ts
 
-- Import `@casehubio/blocks-ui-split-workbench`
+- Import `@casehubio/agency-ui-split-workbench`
 - Remove inline CSS grid layout: `.layout`, `.panel`, `.panel-content`, the `@media (max-width: 1024px)` breakpoint, and `h3` styles
 - Replace layout markup with `<split-workbench>`:
   - `header` slot: status banner
@@ -79,11 +79,11 @@ Add: `@casehubio/pages-ui-tokens`
 
 Openclaw's monitoring view always shows both panels — it is not a list→detail selection flow. Set `selectionTopic` to `"openclaw-scenario"` so the component initialises.
 
-On narrow viewports (container query `max-width: 768px`), split-workbench hides the detail pane until a `${selectionTopic}:selected` pages event fires. Since openclaw never emits selection events naturally, dispatch `emitPagesEvent(document, 'openclaw-scenario:selected', {})` in `firstUpdated()` to activate the detail pane immediately. Import `emitPagesEvent` from `@casehubio/blocks-ui-core`.
+On narrow viewports (container query `max-width: 768px`), split-workbench hides the detail pane until a `${selectionTopic}:selected` pages event fires. Since openclaw never emits selection events naturally, dispatch `emitPagesEvent(document, 'openclaw-scenario:selected', {})` in `firstUpdated()` to activate the detail pane immediately. Import `emitPagesEvent` from `@casehubio/agency-ui-core`.
 
 ### index.ts
 
-Add `import '@casehubio/blocks-ui-split-workbench'`.
+Add `import '@casehubio/agency-ui-split-workbench'`.
 
 ### Untouched
 
@@ -95,13 +95,13 @@ Draggable divider, responsive collapse at narrow widths, localStorage-persisted 
 
 ### package.json
 
-Add: `@casehubio/blocks-ui-split-workbench`
+Add: `@casehubio/agency-ui-split-workbench`
 
 ## §3 — Channel Feed: channel-activity (#67)
 
 ### Delete
 
-`channel-feed.ts` (118 lines) — replaced by `<channel-feed>` from `@casehubio/blocks-ui-channel-activity` (same tag name, drop-in registration).
+`channel-feed.ts` (118 lines) — replaced by `<channel-feed>` from `@casehubio/agency-ui-channel-activity` (same tag name, drop-in registration).
 
 **Custom element collision:** both the local `channel-feed.ts` and the blocks-ui package register as `channel-feed`. `customElements.define()` throws on duplicate names. The local import in `index.ts` must be removed **before** adding the blocks-ui import. During development, never import both simultaneously.
 
@@ -132,7 +132,7 @@ Reactions, commitments, threading — left at defaults. Available when the backe
 
 ### index.ts
 
-Remove `import './components/channel-feed.js'`. Add `import '@casehubio/blocks-ui-channel-activity'`. The blocks-ui import must appear **after** the local import is removed to avoid custom element name collision.
+Remove `import './components/channel-feed.js'`. Add `import '@casehubio/agency-ui-channel-activity'`. The blocks-ui import must appear **after** the local import is removed to avoid custom element name collision.
 
 ### Gains
 
@@ -140,7 +140,7 @@ Sender grouping, auto-scroll, stale cursor detection, markdown rendering.
 
 ### package.json
 
-Add: `@casehubio/blocks-ui-channel-activity`
+Add: `@casehubio/agency-ui-channel-activity`
 
 ## §4 — Approval Gate: approval-gate + backend adapter (#68)
 
@@ -180,7 +180,7 @@ Set `variant="alertdialog"` and `no-close-button` because gate decisions require
 Listen for `gate.decided` using the pages event API — `approval-gate` emits via `emitPagesEvent` (topic-based `CustomEvent('pages-event')`), not standard DOM events. A bare `document.addEventListener('gate.decided', ...)` will never fire.
 
 ```typescript
-import { onPagesEvent } from '@casehubio/blocks-ui-core';
+import { onPagesEvent } from '@casehubio/agency-ui-core';
 
 // In connectedCallback — subscribe:
 this._unsubGateDecided = onPagesEvent(document, 'gate.decided', () => {
@@ -212,7 +212,7 @@ Remove `POST .../approve` and `POST .../reject` from `ScenarioRestResource.java`
 
 ### index.ts
 
-Remove `import './components/gate-approval-modal.js'`. Add `import '@casehubio/blocks-ui-approval-gate'` and `import '@casehubio/pages-primitives'` (registers `<pages-modal>` custom element).
+Remove `import './components/gate-approval-modal.js'`. Add `import '@casehubio/agency-ui-approval-gate'` and `import '@casehubio/pages-primitives'` (registers `<pages-modal>` custom element).
 
 ### Gains
 
@@ -220,7 +220,7 @@ Quorum progress, SLA countdown, decision history, evidence display, focus trap, 
 
 ### package.json
 
-Add: `@casehubio/blocks-ui-approval-gate`
+Add: `@casehubio/agency-ui-approval-gate`
 
 ## §5 — Files Unchanged
 
@@ -236,9 +236,9 @@ Add: `@casehubio/blocks-ui-approval-gate`
 | Package | Version | Used by |
 |---------|---------|---------|
 | `@casehubio/pages-ui-tokens` | ^0.2.0 | Theme injection, CSS tokens |
-| `@casehubio/blocks-ui-split-workbench` | ^0.1.0 | Layout (#66) |
-| `@casehubio/blocks-ui-channel-activity` | ^0.1.0 | Channel feed (#67) |
-| `@casehubio/blocks-ui-approval-gate` | ^0.1.0 | Gate approval (#68) |
+| `@casehubio/agency-ui-split-workbench` | ^0.1.0 | Layout (#66) |
+| `@casehubio/agency-ui-channel-activity` | ^0.1.0 | Channel feed (#67) |
+| `@casehubio/agency-ui-approval-gate` | ^0.1.0 | Gate approval (#68) |
 | `@casehubio/pages-primitives` | ^0.2.0 | `<pages-modal>` for gate modal shell (#68) |
 
 ## Testing

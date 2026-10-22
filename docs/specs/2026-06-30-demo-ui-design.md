@@ -11,7 +11,7 @@ casehub-openclaw has three demo cases (trading-oversight, multi-agent-dev-team, 
 
 A case execution observer UI embedded in the openclaw Quarkus app via Quinoa. Built with Lit Web Components following the blocks-ui design language. Real-time SSE updates drive a live view of agent pipelines, channel messages, commitment lifecycle, and oversight gate approval.
 
-Components are designed as generic, extensible case execution observers — not demo-specific. They can be promoted to `@casehubio/blocks-ui-*` packages when stable. OpenClaw provides only the demo launcher and domain-specific renderers.
+Components are designed as generic, extensible case execution observers — not demo-specific. They can be promoted to `@casehubio/agency-ui-*` packages when stable. OpenClaw provides only the demo launcher and domain-specific renderers.
 
 ## Design Decisions
 
@@ -35,7 +35,7 @@ Components are designed as generic, extensible case execution observers — not 
 **Frontend** (`app/src/main/webui/`):
 
 ```
-package.json                 ← lit, @casehubio/blocks-ui-core
+package.json                 ← lit, @casehubio/agency-ui-core
 tsconfig.json
 esbuild.config.mjs
 .npmrc                       ← GitHub Packages registry for @casehubio scope
@@ -372,7 +372,7 @@ Built as extensible Lit Web Components with `--blocks-*` design tokens. Each has
 - `demo-launcher` → `app-shell`: navigation event on case selection
 - `case-execution-view` → children: distributes SSE events to pipeline, feed, audit
 - `gate-approval-modal` → REST: `POST /api/scenarios/{id}/gate/{gateId}/approve|reject`
-- All via `emitPagesEvent()` / `onPagesEvent()` from `@casehubio/blocks-ui-core`
+- All via `emitPagesEvent()` / `onPagesEvent()` from `@casehubio/agency-ui-core`
 
 ## Extensibility Model
 
@@ -424,7 +424,7 @@ quarkus.quinoa.package-manager-install.node-version=22.15.0
 {
   "dependencies": {
     "lit": "^3.0.0",
-    "@casehubio/blocks-ui-core": "0.2.0"
+    "@casehubio/agency-ui-core": "0.2.0"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
@@ -482,7 +482,7 @@ Run all three demo cases via the UI. Pipeline updates in real time, messages scr
 
 After the demo UI is working:
 
-1. Move `case-worker-pipeline`, `channel-feed`, `gate-approval-modal` to blocks-ui as `@casehubio/blocks-ui-*` packages
+1. Move `case-worker-pipeline`, `channel-feed`, `gate-approval-modal` to blocks-ui as `@casehubio/agency-ui-*` packages
 2. OpenClaw's webui depends on the published packages instead of local files
 3. Domain-specific renderers stay in openclaw
 4. File issues on blocks-ui for each component promotion
@@ -495,7 +495,7 @@ After the demo UI is working:
 | Theme | `--pages-*` CSS properties | `--blocks-*` OKLCH tokens |
 | Real-time transport | WebSocket with wire messages | SSE via `SSEManager` |
 | Data loading | WebSocket datasets with snapshots | REST + SSE deltas |
-| Dependencies | `@casehubio/pages-runtime`, `@casehubio/pages-ui` | `lit`, `@casehubio/blocks-ui-core` |
+| Dependencies | `@casehubio/pages-runtime`, `@casehubio/pages-ui` | `lit`, `@casehubio/agency-ui-core` |
 | Maven deps | `quarkus-websockets`, `quarkus-quinoa` | `quarkus-quinoa` only |
 | Event format | casehub-pages WireMessage (`{op, dataset, columns, rows}`) | Simple JSON (`{type, scenarioId, ...}`) |
 | Extensibility | None (pages DSL is declarative) | Lit slots + render callbacks |

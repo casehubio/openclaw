@@ -225,7 +225,7 @@ The `examples/` directory contains three reference multi-agent scenarios:
 
 Each scenario includes agent system prompts, mock service scripts (Python), and a `casehub-example` SKILL.md.
 
-The demo UI (`app/src/main/webui/`) is a Lit Web Components dashboard built with `casehub-pages` and `casehub-blocks-ui`. It provides real-time scenario execution monitoring via SSE (`OpenClawScenarioApi.watchEvents()`). The Quinoa extension bundles the frontend with the Quarkus app.
+The demo UI (`app/src/main/webui/`) is a Lit Web Components dashboard built with `casehub-pages` and `casehub-agency-ui`. It provides real-time scenario execution monitoring via SSE (`OpenClawScenarioApi.watchEvents()`). The Quinoa extension bundles the frontend with the Quarkus app.
 
 ---
 
