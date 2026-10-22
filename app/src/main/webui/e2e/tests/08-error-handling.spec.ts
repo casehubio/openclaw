@@ -33,7 +33,7 @@ test('gate decision failure keeps modal open', async ({ page, mockServer }) => {
   mockServer.setNextResponse('/api/scenarios/trading-oversight/workitems/gate-1/complete', 500, { error: 'Internal server error' });
 
   await page.locator('approval-gate').locator('button.action-btn', { hasText: 'Approve' }).click();
-  await page.locator('blocks-confirm-dialog button.btn-confirm').click();
+  await page.locator('agency-confirm-dialog button.btn-confirm').click();
 
   // Modal should stay open — user can retry
   await expect(page.locator('pages-modal')).toBeVisible();

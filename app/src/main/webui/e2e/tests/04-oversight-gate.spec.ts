@@ -30,7 +30,7 @@ test('approve gate sends PUT and modal dismisses on resolution', async ({ page, 
   await page.locator('approval-gate').locator('button.action-btn', { hasText: 'Approve' }).click();
 
   // Confirm in the dialog (button text mirrors the action name)
-  await page.locator('blocks-confirm-dialog button.btn-confirm').click();
+  await page.locator('agency-confirm-dialog button.btn-confirm').click();
 
   // Verify PUT was recorded
   await expect.poll(() => mockServer.getRecordedCalls().some(c =>
@@ -53,7 +53,7 @@ test('reject gate sends PUT with reject outcome', async ({ page, mockServer }) =
   await page.locator('approval-gate').locator('button.action-btn', { hasText: 'Reject' }).click();
 
   // Confirm in the dialog (button text mirrors the action name)
-  await page.locator('blocks-confirm-dialog button.btn-confirm').click();
+  await page.locator('agency-confirm-dialog button.btn-confirm').click();
 
   await expect.poll(() => {
     const calls = mockServer.getRecordedCalls();
