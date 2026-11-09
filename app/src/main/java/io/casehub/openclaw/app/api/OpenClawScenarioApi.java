@@ -58,7 +58,7 @@ public class OpenClawScenarioApi {
         }
     }
 
-    @PlatformMutation("Complete a work item gate in a scenario")
+    @PlatformMutation("Complete a work item gate in a scenario — action: approve or reject")
     @RestPath("/{id}/workitems/{gateId}/complete")
     @RolesAllowed("openclaw-admin")
     public ApiResult completeWorkitem(@PathParam String id, @PathParam String gateId,

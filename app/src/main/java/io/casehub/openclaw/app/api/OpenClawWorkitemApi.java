@@ -9,6 +9,8 @@ import io.quarkiverse.mcp.server.ToolResponse;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.util.Optional;
+
 @McpDomain(value = "openclaw/workitems", app = "openclaw", basePath = "/api/openclaw/workitems", summary = "Contract-triggered work item lifecycle")
 @ApplicationScoped
 public class OpenClawWorkitemApi {
@@ -26,8 +28,8 @@ public class OpenClawWorkitemApi {
     @PlatformMutation("Route a work item to a named queue")
     @RestPath("/queue")
     public ApiResult queue(String agentId, String description,
-                                String queueName, String priority) {
-        ToolResponse r = workitemTools.queue(agentId, description, queueName, priority);
+                                String queueName, Optional<String> priority) {
+        ToolResponse r = workitemTools.queue(agentId, description, queueName, priority.orElse(null));
         return toResult(r);
     }
 

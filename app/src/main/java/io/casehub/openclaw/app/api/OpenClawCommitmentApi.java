@@ -12,6 +12,8 @@ import io.quarkiverse.mcp.server.ToolResponse;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.util.Optional;
+
 @McpDomain(value = "openclaw/commitments", app = "openclaw", basePath = "/api/openclaw/commitments", summary = "Commitment lifecycle — create, fulfill, breach, compensate")
 @ApplicationScoped
 public class OpenClawCommitmentApi {
@@ -21,8 +23,8 @@ public class OpenClawCommitmentApi {
 
     @PlatformMutation("Register a commitment and arm the Watchdog")
     @RestPath("/commit")
-    public ApiResult commit(String agentId, String task, String deadline, String channelId) {
-        ToolResponse r = commitmentTools.commit(agentId, task, deadline, channelId);
+    public ApiResult commit(String agentId, String task, Optional<String> deadline, Optional<String> channelId) {
+        ToolResponse r = commitmentTools.commit(agentId, task, deadline.orElse(null), channelId.orElse(null));
         return toResult(r);
     }
 
@@ -49,22 +51,22 @@ public class OpenClawCommitmentApi {
 
     @PlatformMutation("Escalate a commitment to another agent or human")
     @RestPath("/escalate")
-    public ApiResult escalate(String agentId, String commitmentId, String reason, String toAgent) {
-        ToolResponse r = commitmentTools.escalate(agentId, commitmentId, reason, toAgent);
+    public ApiResult escalate(String agentId, String commitmentId, String reason, Optional<String> toAgent) {
+        ToolResponse r = commitmentTools.escalate(agentId, commitmentId, reason, toAgent.orElse(null));
         return toResult(r);
     }
 
     @PlatformMutation("Block a commitment with an extended deadline")
     @RestPath("/block")
-    public ApiResult block(String agentId, String commitmentId, String reason, String blockedUntil) {
-        ToolResponse r = commitmentTools.block(agentId, commitmentId, reason, blockedUntil);
+    public ApiResult block(String agentId, String commitmentId, String reason, Optional<String> blockedUntil) {
+        ToolResponse r = commitmentTools.block(agentId, commitmentId, reason, blockedUntil.orElse(null));
         return toResult(r);
     }
 
     @PlatformMutation("Delegate a commitment to a named agent")
     @RestPath("/delegate")
-    public ApiResult delegate(String agentId, String commitmentId, String reason, String toAgent) {
-        ToolResponse r = commitmentTools.delegate(agentId, commitmentId, reason, toAgent);
+    public ApiResult delegate(String agentId, String commitmentId, String reason, Optional<String> toAgent) {
+        ToolResponse r = commitmentTools.delegate(agentId, commitmentId, reason, toAgent.orElse(null));
         return toResult(r);
     }
 
