@@ -1,3 +1,12 @@
+---
+layout: post
+title: "SSE reconnection backfill and state-aware duration text"
+date: 2026-07-22
+entry_type: note
+subtype: diary
+projects: [casehubio/openclaw]
+---
+
 # SSE reconnection backfill and state-aware duration text
 
 **Date:** 2026-07-22
