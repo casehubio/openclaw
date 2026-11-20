@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "node esbuild.config.mjs",
-    "postinstall": "node ../../../../scripts/link-casehub-packages.mjs"
+    "postinstall": "node .casehub-packages/scripts/link-casehub-packages.mjs"
   },
   "dependencies": {
     "dompurify": "^3.2.0",
